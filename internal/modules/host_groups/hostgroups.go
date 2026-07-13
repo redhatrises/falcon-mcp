@@ -113,25 +113,25 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "create_host_group",
 		Description: "Create a host group of type static, staticByID, or dynamic. A dynamic group requires an assignment_rule (host FQL); the API rejects an assignment_rule on static and staticByID groups.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+		Annotations: base.MutatingAnnotations(),
 	}, m.createHostGroup)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "update_host_group",
 		Description: "Update a host group's name, description, or assignment_rule. Unspecified fields are left unchanged. Only set assignment_rule on dynamic groups.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+		Annotations: base.MutatingAnnotations(),
 	}, m.updateHostGroup)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "delete_host_groups",
 		Description: "Permanently delete one or more host groups by ID. Idempotent.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: true, DestructiveHint: ptr(true)},
+		Annotations: base.DestructiveAnnotations(true),
 	}, m.deleteHostGroups)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "perform_host_group_action",
 		Description: "Add or remove hosts from static host groups. The filter selects which hosts to act on using HOST/DEVICE FQL (see the hosts FQL guide). Applies to static groups only.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+		Annotations: base.MutatingAnnotations(),
 	}, m.performHostGroupAction)
 }
 

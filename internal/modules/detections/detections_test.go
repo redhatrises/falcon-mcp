@@ -9,6 +9,8 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client/alerts"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
 // testLogger discards output; modules require a non-nil logger.
@@ -230,5 +232,70 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 	}
 	if len(read.Contents) != 1 || read.Contents[0].Text != fqlGuide {
 		t.Fatalf("read content does not match embedded guide")
+	}
+}
+
+// TestRegisterToolsAnnotations verifies mutator tools use complete annotations
+// so DestructiveHint is never left nil (MCP default true).
+func TestRegisterToolsAnnotations(t *testing.T) {
+	t.Parallel()
+
+	var entries []base.ToolEntry
+	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	m := &Module{API: &fakeAlerts{}, Concurrency: 4, Logger: testLogger}
+	m.RegisterTools(reg)
+
+	byName := map[string]*mcp.Tool{}
+	for _, e := range entries {
+		byName[e.Tool.Name] = e.Tool
+	}
+
+	// Read-only tools get default annotations from base.AddTool.
+	for _, name := range []string{"falcon_search_detections", "falcon_get_detection_details"} {
+		tool := byName[name]
+		if tool == nil {
+			t.Fatalf("missing tool %s", name)
+		}
+		assertReadOnlyAnnotations(t, name, tool.Annotations)
+	}
+
+	update := byName["falcon_update_detections"]
+	if update == nil {
+		t.Fatal("missing falcon_update_detections")
+	}
+	assertMutatingAnnotations(t, "falcon_update_detections", update.Annotations)
+}
+
+// captureRegistrar adapts a func to base.Registrar for registration tests.
+type captureRegistrar func(base.ToolEntry)
+
+func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
+
+func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
+	t.Helper()
+	if a == nil || !a.ReadOnlyHint {
+		t.Errorf("%s: want read-only annotations, got %+v", name, a)
+	}
+	if a != nil && (a.DestructiveHint == nil || *a.DestructiveHint) {
+		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
+	}
+}
+
+func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
+	t.Helper()
+	if a == nil {
+		t.Fatalf("%s: annotations nil", name)
+	}
+	if a.ReadOnlyHint {
+		t.Errorf("%s: ReadOnlyHint = true, want false", name)
+	}
+	if a.IdempotentHint {
+		t.Errorf("%s: IdempotentHint = true, want false", name)
+	}
+	if a.DestructiveHint == nil || *a.DestructiveHint {
+		t.Errorf("%s: DestructiveHint = %v, want non-nil false (MCP defaults omitted to true)", name, a.DestructiveHint)
+	}
+	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
+		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
 	}
 }

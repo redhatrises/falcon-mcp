@@ -91,7 +91,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "update_detections",
 		Description: "Update one or more detections/alerts: status, assignment, comments, tags, or UI visibility.",
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, IdempotentHint: false},
+		Annotations: base.MutatingAnnotations(),
 	}, m.updateDetections)
 }
 
