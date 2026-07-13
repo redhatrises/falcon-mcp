@@ -3,11 +3,21 @@ name: Python Tests
 on:
   push:
     branches: [main]
+    paths:
+      - "python/**"
+      - ".github/workflows/python-test.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "python/**"
+      - ".github/workflows/python-test.yml"
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    working-directory: python
 
 jobs:
   test:
