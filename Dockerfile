@@ -1,58 +1,41 @@
-# Stage 1: uv binary (distroless image, COPY only)
-# ghcr.io/astral-sh/uv:0.11.15 (multi-arch: amd64, arm64)
-FROM ghcr.io/astral-sh/uv@sha256:e590846f4776907b254ac0f44b5b380347af5d90d668138ca7938d1b0c2f98d3 AS uv-bin
+# Build stage — Red Hat Hardened Images Go toolchain embeds the validated
+# FIPS module in all binaries automatically.
+FROM registry.access.redhat.com/hi/go:1.26-fips AS builder
 
-# Stage 2: Build dependencies
-# python:3.13-alpine (multi-arch: amd64, arm64)
-FROM python@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc AS builder
+WORKDIR /src
 
-COPY --from=uv-bin /uv /usr/local/bin/uv
+# Version metadata stamped into the binary via ldflags.
+ARG VERSION=0.0.0+dev
+ARG COMMIT=unknown
 
-# Install the project into `/app`
-WORKDIR /app
+# Download modules first so the layer is cached when only source changes.
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Enable bytecode compilation
-ENV UV_COMPILE_BYTECODE=1
+# Build the static binary. CGO_ENABLED=0 matches .goreleaser.yaml so the
+# runtime stage needs no C libraries.
+COPY . .
+RUN CGO_ENABLED=0 go build \
+        -trimpath \
+        -ldflags "-s -w \
+            -X github.com/crowdstrike/falcon-mcp/internal/version.Version=${VERSION} \
+            -X github.com/crowdstrike/falcon-mcp/internal/version.Commit=${COMMIT}" \
+        -o /tmp/falcon-mcp \
+        ./cmd/falcon-mcp/main.go
 
-# Copy from the cache instead of linking since it's a mounted volume
-ENV UV_LINK_MODE=copy
-
-# Generate proper TOML lockfile first
-RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv lock
-
-# Install the project's dependencies using the lockfile
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    uv sync --frozen --no-install-project --no-dev --no-editable
-
-# Then, add the rest of the project source code and install it
-ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    uv sync --frozen --no-dev --no-editable
-
-# Remove unnecessary files from the virtual environment before copying
-RUN find /app/.venv -name '__pycache__' -type d -exec rm -rf {} + && \
-    find /app/.venv -name '*.pyc' -delete && \
-    find /app/.venv -name '*.pyo' -delete && \
-    echo "Cleaned up .venv"
-
-# Stage 3: Runtime
-# python:3.13-alpine (multi-arch: amd64, arm64)
-FROM python@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc
+# Runtime stage — minimal hardened base; GODEBUG runs the binary in FIPS mode.
+FROM registry.access.redhat.com/hi/core-runtime:latest
 
 LABEL io.modelcontextprotocol.server.name="io.github.CrowdStrike/falcon-mcp"
 
-# Create a non-root user 'app'
-RUN adduser -D -h /home/app -s /bin/sh app
-WORKDIR /app
-USER app
+COPY --from=builder /tmp/falcon-mcp /falcon-mcp
 
-COPY --from=builder --chown=app:app /app/.venv /app/.venv
+# FIPS mode is off by default (GODEBUG empty). The validated FIPS module is
+# compiled into the binary regardless, so enabling it is a pure runtime toggle:
+# docker run -e GODEBUG=fips140=on ... (values: on, only).
+ENV GODEBUG=
 
-# Place executables in the environment at the front of the path
-ENV PATH="/app/.venv/bin:$PATH"
+# Run as a non-root user (UID matches OpenShift arbitrary-UID conventions).
+USER 1001
 
-ENTRYPOINT ["falcon-mcp"]
+ENTRYPOINT ["/falcon-mcp"]

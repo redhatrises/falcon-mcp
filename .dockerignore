@@ -76,6 +76,17 @@ logs/
 Thumbs.db
 ehthumbs.db
 
+# Go build artifacts and archives
+falcon-mcp
+bin/
+cover.out
+
+# Python sources not needed for the Go build
+python/
+falcon_mcp/
+uv.lock
+pyproject.toml
+
 # Security sensitive files
 *.pem
 *.key
