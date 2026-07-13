@@ -194,12 +194,9 @@ func TestProgressFuncEndToEnd(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("CallTool: %v", err)
 		}
-		mu.Lock()
-		got := count
-		mu.Unlock()
-		if got != 2 {
-			t.Fatalf("progress notifications = %d, want 2 (one per chunk)", got)
-		}
+		// Progress notifications are delivered asynchronously and may arrive after
+		// CallTool returns, so poll for the expected count rather than reading once.
+		waitForCount(t, &mu, &count, 2)
 	})
 
 	t.Run("without token", func(t *testing.T) {
@@ -215,6 +212,9 @@ func TestProgressFuncEndToEnd(t *testing.T) {
 		if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "fetch"}); err != nil {
 			t.Fatalf("CallTool: %v", err)
 		}
+		// No token means no notifications should ever arrive. Give any erroneous
+		// notification time to be delivered before asserting the count stayed zero.
+		time.Sleep(50 * time.Millisecond)
 		mu.Lock()
 		got := count
 		mu.Unlock()
@@ -222,6 +222,26 @@ func TestProgressFuncEndToEnd(t *testing.T) {
 			t.Fatalf("progress notifications = %d, want 0 (no token supplied)", got)
 		}
 	})
+}
+
+// waitForCount polls the mutex-guarded counter until it reaches want, failing the
+// test if it does not within a short timeout. It guards against races where async
+// progress notifications arrive after the triggering call returns.
+func waitForCount(t *testing.T, mu *sync.Mutex, count *int, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		got := *count
+		mu.Unlock()
+		if got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("progress notifications = %d, want %d (one per chunk)", got, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestFetchDetailsSingleChunkSequential(t *testing.T) {

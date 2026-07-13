@@ -74,7 +74,11 @@ func proxyHTTPClient(proxy string) (*http.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse proxy url %q: %w", proxy, err)
 	}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
+	dt, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("http.DefaultTransport is not an *http.Transport")
+	}
+	tr := dt.Clone()
 	tr.Proxy = http.ProxyURL(u)
 	return &http.Client{Transport: tr}, nil
 }

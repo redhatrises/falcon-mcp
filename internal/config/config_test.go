@@ -259,9 +259,9 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "proxy with userinfo accepted",
-			in:   Config{ClientID: "id", ClientSecret: "s", Proxy: "http://user:pass@proxy.example.com:8080"},
+			in:   Config{ClientID: "id", ClientSecret: "s", Proxy: "http://user:pass@proxy.example.com:8080"}, //nolint:gosec // G101: dummy proxy userinfo, not a real credential
 			check: func(t *testing.T, c *Config) {
-				if c.Proxy != "http://user:pass@proxy.example.com:8080" {
+				if c.Proxy != "http://user:pass@proxy.example.com:8080" { //nolint:gosec // G101: dummy proxy userinfo, not a real credential
 					t.Errorf("proxy = %q, want url with userinfo", c.Proxy)
 				}
 			},

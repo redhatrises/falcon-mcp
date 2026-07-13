@@ -38,7 +38,8 @@ func normalize(path string) error {
 	// A single trailing newline keeps the file POSIX-clean and editor-friendly.
 	guide := normalizeGuide(string(raw)) + "\n"
 
-	if err := os.WriteFile(path, []byte(guide), 0o644); err != nil {
+	// 0o644: this is a committed, world-readable source doc, not sensitive data.
+	if err := os.WriteFile(path, []byte(guide), 0o644); err != nil { //nolint:gosec // G306: generated source doc is intentionally world-readable
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
