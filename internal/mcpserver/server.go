@@ -37,9 +37,9 @@ type Server struct {
 	catalog *Catalog // non-nil only in dynamic mode
 }
 
-// New builds a Server from cfg and the shared Falcon client. It constructs the
-// full set of Phase 1 modules (detections, hosts, host groups), filters them
-// against cfg.Modules (empty enables all), and registers the selected modules.
+// New builds a Server from cfg and the shared Falcon client. It constructs all
+// registered modules (via the generated factory list), filters them against
+// cfg.Modules (empty enables all), and registers the selected modules.
 // It returns ErrUnknownModule (wrapped) when the allowlist names a module that
 // does not exist. In dynamic mode it wires the catalog's in-process session;
 // call Close to release it.

@@ -3,7 +3,9 @@
 <!-- meta:section development -->
 <!-- meta:link-base /falcon-mcp/ -->
 
-This guide provides instructions for implementing new modules for the Falcon MCP server.
+This guide provides instructions for implementing new modules for the **Python** Falcon MCP server.
+
+For the Go port, see [Go Module Development](go-module-development.md) — that is the architectural reference for `internal/modules`.
 
 ## Module Structure
 
