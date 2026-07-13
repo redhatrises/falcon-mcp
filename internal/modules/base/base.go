@@ -110,10 +110,41 @@ func readOnlyAnnotations() *mcp.ToolAnnotations {
 	}
 }
 
+// MutatingAnnotations returns annotations for non-destructive mutators
+// (create/update/action). All four MCP hints are set explicitly: the protocol
+// defaults DestructiveHint to true when omitted, so a partial override would
+// incorrectly advertise non-destructive tools as destructive.
+//
+//	readOnlyHint=false, destructiveHint=false, idempotentHint=false, openWorldHint=true
+func MutatingAnnotations() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:    false,
+		IdempotentHint:  false,
+		OpenWorldHint:   ptr(true),
+		DestructiveHint: ptr(false),
+	}
+}
+
+// DestructiveAnnotations returns annotations for tools that permanently remove
+// or irreversibly alter data (e.g. delete). idempotent should be true when
+// repeating the call with the same arguments has no additional effect (typical
+// for delete-by-id).
+//
+//	readOnlyHint=false, destructiveHint=true, openWorldHint=true
+func DestructiveAnnotations(idempotent bool) *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:    false,
+		IdempotentHint:  idempotent,
+		OpenWorldHint:   ptr(true),
+		DestructiveHint: ptr(true),
+	}
+}
+
 // AddTool registers a typed tool into r under the name "falcon_"+name. When
 // tool.Annotations is nil the default read-only annotations are applied;
-// mutating tools pass explicit annotations to override them. The output schema
-// is inferred from Out via inferOutputSchema so gofalcon's strfmt date types
+// mutating tools must pass MutatingAnnotations or DestructiveAnnotations so
+// DestructiveHint is never left nil (MCP default true). The output schema is
+// inferred from Out via inferOutputSchema so gofalcon's strfmt date types
 // resolve correctly.
 //
 // AddTool resolves the In/Out generics up front and hands the Registrar a
