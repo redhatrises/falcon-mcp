@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 )
 
 func TestServerMCPNotNil(t *testing.T) {
@@ -116,19 +118,20 @@ func TestNewUnknownModule(t *testing.T) {
 
 // TestNewRegistersAllModules guards against the aggregator import being dropped:
 // New must build the full default module set (sorted by name) from the registry.
+// It asserts the wiring relationship — New enables exactly the generated factory
+// set, in order — rather than restating the hand-copied module list that
+// TestModuleFactoriesDiscovered already canonicalizes.
 func TestNewRegistersAllModules(t *testing.T) {
 	t.Parallel()
 	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	want := []string{"detections", "host_groups", "hosts"}
-	if len(srv.modules) != len(want) {
-		t.Fatalf("modules = %v, want %v", moduleNames(srv.modules), want)
-	}
-	for i, n := range want {
-		if srv.modules[i].Name() != n {
-			t.Fatalf("modules = %v, want %v", moduleNames(srv.modules), want)
-		}
+	want := moduleNames(registry.Build(
+		registry.Deps{API: &client.CrowdStrikeAPISpecification{}},
+		moduleFactories(),
+	))
+	if got := moduleNames(srv.modules); !slices.Equal(got, want) {
+		t.Fatalf("modules = %v, want %v", got, want)
 	}
 }

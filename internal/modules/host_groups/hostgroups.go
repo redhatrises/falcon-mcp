@@ -254,7 +254,7 @@ func groupsFQLBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 	if !errors.As(err, &badReq) || badReq.Payload == nil {
 		return nil, false
 	}
-	return apiErrorDetails(badReq.Payload.Errors), true
+	return base.FQLErrorDetails(badReq.Payload.Errors), true
 }
 
 // membersFQLBadRequest is the member-search counterpart of groupsFQLBadRequest.
@@ -263,25 +263,5 @@ func membersFQLBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 	if !errors.As(err, &badReq) || badReq.Payload == nil {
 		return nil, false
 	}
-	return apiErrorDetails(badReq.Payload.Errors), true
-}
-
-// apiErrorDetails flattens gofalcon MsaAPIError values into base.FQLErrorDetail.
-func apiErrorDetails(errs []*models.MsaAPIError) []base.FQLErrorDetail {
-	details := make([]base.FQLErrorDetail, 0, len(errs))
-	for _, e := range errs {
-		if e == nil {
-			continue
-		}
-		var code int32
-		if e.Code != nil {
-			code = *e.Code
-		}
-		var msg string
-		if e.Message != nil {
-			msg = *e.Message
-		}
-		details = append(details, base.FQLErrorDetail{Code: code, Message: msg})
-	}
-	return details
+	return base.FQLErrorDetails(badReq.Payload.Errors), true
 }

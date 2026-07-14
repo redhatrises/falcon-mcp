@@ -36,6 +36,7 @@ import (
 	"reflect"
 	"sync/atomic"
 
+	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/sync/errgroup"
@@ -385,6 +386,27 @@ func FQLError[T any](details []FQLErrorDetail, filter, fqlGuide string) SearchRe
 type FQLErrorDetail struct {
 	Code    int32  `json:"code"`
 	Message string `json:"message"`
+}
+
+// FQLErrorDetails flattens gofalcon MsaAPIError values into FQLErrorDetail,
+// skipping nil entries and dereferencing the optional Code/Message pointers.
+func FQLErrorDetails(errs []*models.MsaAPIError) []FQLErrorDetail {
+	details := make([]FQLErrorDetail, 0, len(errs))
+	for _, e := range errs {
+		if e == nil {
+			continue
+		}
+		var code int32
+		if e.Code != nil {
+			code = *e.Code
+		}
+		var msg string
+		if e.Message != nil {
+			msg = *e.Message
+		}
+		details = append(details, FQLErrorDetail{Code: code, Message: msg})
+	}
+	return details
 }
 
 // DetailFetcher fetches the detail records for a single chunk of IDs. It must be
