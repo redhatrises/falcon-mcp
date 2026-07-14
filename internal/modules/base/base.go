@@ -492,7 +492,11 @@ func FetchDetails[T any](ctx context.Context, p FetchDetailsParams[T]) ([]T, err
 		return nil, err
 	}
 
-	var out []T
+	n := 0
+	for _, res := range perChunk {
+		n += len(res)
+	}
+	out := make([]T, 0, n)
 	for _, res := range perChunk {
 		out = append(out, res...)
 	}
@@ -502,7 +506,7 @@ func FetchDetails[T any](ctx context.Context, p FetchDetailsParams[T]) ([]T, err
 // chunkIDs splits ids into consecutive slices of at most size elements. The
 // returned slices share ids' backing array; callers must not mutate them.
 func chunkIDs(ids []string, size int) [][]string {
-	var chunks [][]string
+	chunks := make([][]string, 0, (len(ids)+size-1)/size)
 	for start := 0; start < len(ids); start += size {
 		end := min(start+size, len(ids))
 		chunks = append(chunks, ids[start:end])

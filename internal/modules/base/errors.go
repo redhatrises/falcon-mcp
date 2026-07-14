@@ -48,13 +48,18 @@ func APIError(transportErr error, resp any, scopes ...Scope) *Error {
 	return nil
 }
 
+// checkedStatusCodes are the HTTP statuses statusOf reports explicitly, in
+// precedence order. It is a package-level array so statusOf allocates nothing
+// on the error path.
+var checkedStatusCodes = [...]int{400, 401, 403, 404, 409, 429, 500, 503}
+
 // statusOf extracts the HTTP status from any gofalcon error generically, via
 // the go-openapi runtime.ClientResponseStatus interface, so no per-operation
 // type switch is needed. It returns 0 when the status is not recoverable.
 func statusOf(err error) int {
 	var st runtime.ClientResponseStatus
 	if errors.As(err, &st) {
-		for _, c := range []int{400, 401, 403, 404, 409, 429, 500, 503} {
+		for _, c := range checkedStatusCodes {
 			if st.IsCode(c) {
 				return c
 			}
