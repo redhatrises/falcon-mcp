@@ -6,6 +6,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/detections"
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/intel"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/ioc"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 )
@@ -17,6 +18,7 @@ func moduleFactories() []registry.Factory {
 		detections.Factory,
 		hostgroups.Factory,
 		hosts.Factory,
+		intel.Factory,
 		ioc.Factory,
 	}
 }
