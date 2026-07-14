@@ -22,7 +22,7 @@ func TestModuleFactoriesDiscovered(t *testing.T) {
 		got = append(got, m.Name())
 	}
 
-	want := []string{"detections", "host_groups", "hosts"}
+	want := []string{"detections", "host_groups", "hosts", "ioc"}
 	if len(got) != len(want) {
 		t.Fatalf("moduleFactories() built %v, want %v", got, want)
 	}
