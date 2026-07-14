@@ -47,13 +47,16 @@ func TestProxyHTTPClientClonesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("proxyHTTPClient: %v", err)
 	}
-	tr := c.Transport.(*http.Transport)
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport = %T, want *http.Transport", c.Transport)
+	}
 	// A clone of http.DefaultTransport keeps its connection-pool defaults rather
 	// than a zero-value transport.
 	if tr.MaxIdleConns == 0 {
 		t.Error("MaxIdleConns = 0, want DefaultTransport's non-zero default (clone lost defaults)")
 	}
-	if def := http.DefaultTransport.(*http.Transport); tr == def {
+	if def, ok := http.DefaultTransport.(*http.Transport); ok && tr == def {
 		t.Error("transport is the shared DefaultTransport, want an independent clone")
 	}
 }
