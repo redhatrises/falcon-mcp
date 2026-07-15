@@ -4,13 +4,21 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crowdstrike/falcon-mcp/internal/version"
 )
 
+// Valid-format credentials for tests: Load enforces a 32-char alphanumeric
+// client id and a 40-char alphanumeric client secret.
+const (
+	validID     = "abcdef0123456789abcdef0123456789"
+	validSecret = "abcdef0123456789abcdef0123456789abcdef01"
+)
+
 func TestLoad(t *testing.T) {
 	t.Parallel()
-	valid := Config{ClientID: "id", ClientSecret: "secret"}
+	valid := Config{ClientID: validID, ClientSecret: validSecret}
 	tests := []struct {
 		name      string
 		in        Config
@@ -29,6 +37,16 @@ func TestLoad(t *testing.T) {
 			wantErr: ErrMissingCredentials,
 		},
 		{
+			name:    "malformed client id rejected",
+			in:      Config{ClientID: "too-short", ClientSecret: validSecret},
+			wantErr: ErrInvalidClientID,
+		},
+		{
+			name:    "malformed client secret rejected",
+			in:      Config{ClientID: validID, ClientSecret: "too-short"},
+			wantErr: ErrInvalidClientSecret,
+		},
+		{
 			name: "defaults applied",
 			in:   valid,
 			check: func(t *testing.T, c *Config) {
@@ -41,18 +59,102 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			name: "non-zero http tuning passes through",
+			in: Config{ClientID: validID, ClientSecret: validSecret,
+				ResponseHeaderTimeout: 45 * time.Second, IdleTimeout: 90 * time.Second, MaxIdleConnsPerHost: 256},
+			check: func(t *testing.T, c *Config) {
+				if c.ResponseHeaderTimeout != 45*time.Second {
+					t.Errorf("responseHeaderTimeout = %v, want 45s", c.ResponseHeaderTimeout)
+				}
+				if c.IdleTimeout != 90*time.Second {
+					t.Errorf("idleTimeout = %v, want 90s", c.IdleTimeout)
+				}
+				if c.MaxIdleConnsPerHost != 256 {
+					t.Errorf("maxIdleConnsPerHost = %d, want 256", c.MaxIdleConnsPerHost)
+				}
+			},
+		},
+		{
+			name:    "negative response-header timeout rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, ResponseHeaderTimeout: -1},
+			wantErr: ErrInvalidHTTPTuning,
+		},
+		{
+			name:    "negative idle timeout rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, IdleTimeout: -1},
+			wantErr: ErrInvalidHTTPTuning,
+		},
+		{
+			name:    "negative max idle conns per host rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, MaxIdleConnsPerHost: -1},
+			wantErr: ErrInvalidHTTPTuning,
+		},
+		{
+			name: "non-zero detail fetch concurrency passes through",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, DetailFetchConcurrency: 16},
+			check: func(t *testing.T, c *Config) {
+				if c.DetailFetchConcurrency != 16 {
+					t.Errorf("detailFetchConcurrency = %d, want 16", c.DetailFetchConcurrency)
+				}
+			},
+		},
+		{
+			name: "valid cloud us-1 accepted",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Cloud: "us-1"},
+			check: func(t *testing.T, c *Config) {
+				if c.Cloud != "us-1" {
+					t.Errorf("cloud = %q, want us-1", c.Cloud)
+				}
+			},
+		},
+		{
+			name: "valid cloud eu-1 accepted",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Cloud: "eu-1"},
+		},
+		{
+			name: "valid cloud us-gov-1 accepted",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Cloud: "us-gov-1"},
+		},
+		{
+			name: "member cid bare 32-hex accepted",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, MemberCID: "abcdef0123456789abcdef0123456789"},
+			check: func(t *testing.T, c *Config) {
+				if c.MemberCID != "abcdef0123456789abcdef0123456789" {
+					t.Errorf("memberCID = %q, want bare 32-hex", c.MemberCID)
+				}
+			},
+		},
+		{
+			name: "member cid with checksum suffix stripped to 32-hex",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, MemberCID: "abcdef0123456789abcdef0123456789-9a"},
+			check: func(t *testing.T, c *Config) {
+				if c.MemberCID != "abcdef0123456789abcdef0123456789" {
+					t.Errorf("memberCID = %q, want -XX suffix stripped to bare 32-hex", c.MemberCID)
+				}
+			},
+		},
+		{
+			name: "member cid surrounding whitespace trimmed",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, MemberCID: "  abcdef0123456789abcdef0123456789  "},
+			check: func(t *testing.T, c *Config) {
+				if c.MemberCID != "abcdef0123456789abcdef0123456789" {
+					t.Errorf("memberCID = %q, want trimmed bare 32-hex", c.MemberCID)
+				}
+			},
+		},
+		{
 			name:    "invalid transport",
-			in:      Config{ClientID: "id", ClientSecret: "s", Transport: "grpc"},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "grpc"},
 			wantErr: ErrInvalidTransport,
 		},
 		{
 			name:      "http transport requires addr",
-			in:        Config{ClientID: "id", ClientSecret: "s", Transport: "http"},
-			errSubstr: "http-addr",
+			in:        Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http"},
+			errSubstr: "host and port",
 		},
 		{
 			name: "sse transport with addr",
-			in:   Config{ClientID: "id", ClientSecret: "s", Transport: "sse", HTTPAddr: ":8080"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: ":8080"},
 			check: func(t *testing.T, c *Config) {
 				if c.Transport != "sse" {
 					t.Errorf("transport = %q, want sse", c.Transport)
@@ -64,17 +166,17 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:      "invalid cloud",
-			in:        Config{ClientID: "id", ClientSecret: "s", Cloud: "mars"},
+			in:        Config{ClientID: validID, ClientSecret: validSecret, Cloud: "mars"},
 			errSubstr: "cloud",
 		},
 		{
 			name:      "invalid member cid",
-			in:        Config{ClientID: "id", ClientSecret: "s", MemberCID: "xyz"},
+			in:        Config{ClientID: validID, ClientSecret: validSecret, MemberCID: "xyz"},
 			errSubstr: "member",
 		},
 		{
 			name: "hosted is inert",
-			in:   Config{ClientID: "id", ClientSecret: "s", Hosted: true},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Hosted: true},
 			check: func(t *testing.T, c *Config) {
 				if !c.Hosted {
 					t.Errorf("hosted = false, want true")
@@ -83,7 +185,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "dynamic passes through",
-			in:   Config{ClientID: "id", ClientSecret: "s", Dynamic: true},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Dynamic: true},
 			check: func(t *testing.T, c *Config) {
 				if !c.Dynamic {
 					t.Errorf("dynamic = false, want true")
@@ -92,7 +194,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "stateless-http with http transport",
-			in:   Config{ClientID: "id", ClientSecret: "s", Transport: "http", HTTPAddr: ":8080", StatelessHTTP: true},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: ":8080", StatelessHTTP: true},
 			check: func(t *testing.T, c *Config) {
 				if !c.StatelessHTTP {
 					t.Errorf("statelessHTTP = false, want true")
@@ -101,22 +203,22 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:    "stateless-http rejected with stdio transport",
-			in:      Config{ClientID: "id", ClientSecret: "s", StatelessHTTP: true},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, StatelessHTTP: true},
 			wantErr: ErrStatelessRequiresHTTP,
 		},
 		{
 			name:    "stateless-http rejected with sse transport",
-			in:      Config{ClientID: "id", ClientSecret: "s", Transport: "sse", HTTPAddr: ":8080", StatelessHTTP: true},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: ":8080", StatelessHTTP: true},
 			wantErr: ErrStatelessRequiresHTTP,
 		},
 		{
 			name:    "api-key rejected with stdio transport",
-			in:      Config{ClientID: "id", ClientSecret: "s", APIKey: "secret"},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, APIKey: "secret"},
 			wantErr: ErrAPIKeyRequiresHTTP,
 		},
 		{
 			name: "api-key accepted with http transport",
-			in:   Config{ClientID: "id", ClientSecret: "s", Transport: "http", HTTPAddr: ":8080", APIKey: "secret"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: ":8080", APIKey: "secret"},
 			check: func(t *testing.T, c *Config) {
 				if c.APIKey != "secret" {
 					t.Errorf("apiKey = %q, want secret", c.APIKey)
@@ -125,7 +227,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "api-key accepted with sse transport",
-			in:   Config{ClientID: "id", ClientSecret: "s", Transport: "sse", HTTPAddr: ":8080", APIKey: "secret"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: ":8080", APIKey: "secret"},
 			check: func(t *testing.T, c *Config) {
 				if c.APIKey != "secret" {
 					t.Errorf("apiKey = %q, want secret", c.APIKey)
@@ -143,7 +245,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "modules normalized: trimmed and empties dropped",
-			in:   Config{ClientID: "id", ClientSecret: "s", Modules: []string{" hosts ", "", "  ", "detections"}},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Modules: []string{" hosts ", "", "  ", "detections"}},
 			check: func(t *testing.T, c *Config) {
 				want := []string{"hosts", "detections"}
 				if len(c.Modules) != len(want) {
@@ -158,7 +260,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "modules all empty normalized to nil",
-			in:   Config{ClientID: "id", ClientSecret: "s", Modules: []string{"", "   "}},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Modules: []string{"", "   "}},
 			check: func(t *testing.T, c *Config) {
 				if c.Modules != nil {
 					t.Errorf("modules = %v, want nil", c.Modules)
@@ -177,7 +279,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "user agent appended after versioned prefix and trimmed",
-			in:   Config{ClientID: "id", ClientSecret: "s", UserAgent: "  my-tool/1.2  "},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, UserAgent: "  my-tool/1.2  "},
 			check: func(t *testing.T, c *Config) {
 				want := "falcon-mcp/" + version.Version + " my-tool/1.2"
 				if c.UserAgent != want {
@@ -187,7 +289,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "host override bare fqdn passes through",
-			in:   Config{ClientID: "id", ClientSecret: "s", HostOverride: "api.us-2.crowdstrike.com"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, HostOverride: "api.us-2.crowdstrike.com"},
 			check: func(t *testing.T, c *Config) {
 				if c.HostOverride != "api.us-2.crowdstrike.com" {
 					t.Errorf("hostOverride = %q, want bare fqdn", c.HostOverride)
@@ -196,7 +298,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "host override strips scheme and path",
-			in:   Config{ClientID: "id", ClientSecret: "s", HostOverride: "https://api.us-2.crowdstrike.com/some/path"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, HostOverride: "https://api.us-2.crowdstrike.com/some/path"},
 			check: func(t *testing.T, c *Config) {
 				if c.HostOverride != "api.us-2.crowdstrike.com" {
 					t.Errorf("hostOverride = %q, want api.us-2.crowdstrike.com", c.HostOverride)
@@ -205,7 +307,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "host override strips trailing slash",
-			in:   Config{ClientID: "id", ClientSecret: "s", HostOverride: "  https://api.us-2.crowdstrike.com/  "},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, HostOverride: "  https://api.us-2.crowdstrike.com/  "},
 			check: func(t *testing.T, c *Config) {
 				if c.HostOverride != "api.us-2.crowdstrike.com" {
 					t.Errorf("hostOverride = %q, want api.us-2.crowdstrike.com", c.HostOverride)
@@ -232,7 +334,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "proxy http accepted and trimmed",
-			in:   Config{ClientID: "id", ClientSecret: "s", Proxy: "  http://proxy.example.com:8080  "},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Proxy: "  http://proxy.example.com:8080  "},
 			check: func(t *testing.T, c *Config) {
 				if c.Proxy != "http://proxy.example.com:8080" {
 					t.Errorf("proxy = %q, want trimmed http url", c.Proxy)
@@ -241,7 +343,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "proxy https accepted",
-			in:   Config{ClientID: "id", ClientSecret: "s", Proxy: "https://proxy.example.com:8443"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Proxy: "https://proxy.example.com:8443"},
 			check: func(t *testing.T, c *Config) {
 				if c.Proxy != "https://proxy.example.com:8443" {
 					t.Errorf("proxy = %q, want https url", c.Proxy)
@@ -250,7 +352,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "proxy socks5 accepted",
-			in:   Config{ClientID: "id", ClientSecret: "s", Proxy: "socks5://proxy.example.com:1080"},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Proxy: "socks5://proxy.example.com:1080"},
 			check: func(t *testing.T, c *Config) {
 				if c.Proxy != "socks5://proxy.example.com:1080" {
 					t.Errorf("proxy = %q, want socks5 url", c.Proxy)
@@ -259,7 +361,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "proxy with userinfo accepted",
-			in:   Config{ClientID: "id", ClientSecret: "s", Proxy: "http://user:pass@proxy.example.com:8080"}, //nolint:gosec // G101: dummy proxy userinfo, not a real credential
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Proxy: "http://user:pass@proxy.example.com:8080"}, //nolint:gosec // G101: dummy proxy userinfo, not a real credential
 			check: func(t *testing.T, c *Config) {
 				if c.Proxy != "http://user:pass@proxy.example.com:8080" { //nolint:gosec // G101: dummy proxy userinfo, not a real credential
 					t.Errorf("proxy = %q, want url with userinfo", c.Proxy)
@@ -268,22 +370,22 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:    "proxy missing scheme rejected",
-			in:      Config{ClientID: "id", ClientSecret: "s", Proxy: "proxy.example.com:8080"},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Proxy: "proxy.example.com:8080"},
 			wantErr: ErrInvalidProxy,
 		},
 		{
 			name:    "proxy unsupported scheme rejected",
-			in:      Config{ClientID: "id", ClientSecret: "s", Proxy: "ftp://proxy.example.com:8080"},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Proxy: "ftp://proxy.example.com:8080"},
 			wantErr: ErrInvalidProxy,
 		},
 		{
 			name:    "proxy missing host rejected",
-			in:      Config{ClientID: "id", ClientSecret: "s", Proxy: "http://"},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Proxy: "http://"},
 			wantErr: ErrInvalidProxy,
 		},
 		{
 			name:    "proxy unparseable rejected",
-			in:      Config{ClientID: "id", ClientSecret: "s", Proxy: "http://[::1"},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Proxy: "http://[::1"},
 			wantErr: ErrInvalidProxy,
 		},
 	}

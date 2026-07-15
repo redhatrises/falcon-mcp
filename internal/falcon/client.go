@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/crowdstrike/gofalcon/falcon"
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -21,23 +22,22 @@ import (
 // OAuth2 token exchange during construction (per gofalcon's ApiConfig
 // contract); per-call cancellation is supplied separately on each API call.
 //
-// When cfg.Proxy is set, the context carries a proxied *http.Client under the
-// oauth2.HTTPClient key. gofalcon resolves its base transport from that key
-// (via clientcredentials -> oauth2.NewClient), so both the token exchange and
-// all API calls route through the proxy. This is the correct injection point:
-// ApiConfig.TransportDecorator wraps gofalcon's outermost round-tripper (above
-// the OAuth transport), so using it to swap in a proxied transport would strip
-// the Authorization layer and break auth. When cfg.Proxy is empty the context
-// is left untouched, so gofalcon uses http.DefaultTransport, which honors the
-// HTTPS_PROXY/HTTP_PROXY/NO_PROXY environment variables.
+// The context always carries an *http.Client under the oauth2.HTTPClient key.
+// gofalcon resolves its base transport from that key (via clientcredentials ->
+// oauth2.NewClient), so both the token exchange and all API calls use it. This
+// is the correct injection point: ApiConfig.TransportDecorator wraps gofalcon's
+// outermost round-tripper (above the OAuth transport), so using it would strip
+// the Authorization layer and break auth. The injected client clones
+// http.DefaultTransport, preserving its connection-pool defaults and (when
+// cfg.Proxy is empty) its ProxyFromEnvironment behavior, so HTTPS_PROXY/
+// HTTP_PROXY/NO_PROXY are still honored; it adds a response-header timeout and,
+// when cfg.Proxy is set, overrides the proxy.
 func New(ctx context.Context, cfg *config.Config) (*client.CrowdStrikeAPISpecification, error) {
-	if cfg.Proxy != "" {
-		proxyClient, err := proxyHTTPClient(cfg.Proxy)
-		if err != nil {
-			return nil, err
-		}
-		ctx = context.WithValue(ctx, oauth2.HTTPClient, proxyClient)
+	httpClient, err := apiHTTPClient(cfg.Proxy, cfg.ResponseHeaderTimeout, cfg.MaxIdleConnsPerHost)
+	if err != nil {
+		return nil, err
 	}
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 
 	c, err := falcon.NewClient(&falcon.ApiConfig{
 		ClientId:          cfg.ClientID,
@@ -51,7 +51,7 @@ func New(ctx context.Context, cfg *config.Config) (*client.CrowdStrikeAPISpecifi
 	if err != nil {
 		return nil, err
 	}
-	// Log the client shape at construction, never the secret (SEC-2). MemberCID
+	// Log the client shape at construction, never the secret. MemberCID
 	// is reported only by presence; the proxy URL is reported only by presence
 	// because it can embed credentials in userinfo.
 	slog.Default().Debug("falcon client constructed",
@@ -64,21 +64,29 @@ func New(ctx context.Context, cfg *config.Config) (*client.CrowdStrikeAPISpecifi
 	return c, nil
 }
 
-// proxyHTTPClient builds an *http.Client whose transport routes requests through
-// proxy. It clones http.DefaultTransport to keep its connection-pool and timeout
-// defaults, overriding only the proxy. proxy is validated by config.Load; it is
-// re-parsed here rather than threaded through as a *url.URL to keep config.Config
-// free of net/url types.
-func proxyHTTPClient(proxy string) (*http.Client, error) {
-	u, err := url.Parse(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("parse proxy url %q: %w", proxy, err)
-	}
+// apiHTTPClient builds the *http.Client gofalcon uses for the token exchange and
+// all API calls. It clones http.DefaultTransport to keep its connection-pool
+// defaults, then sets the response-header timeout and per-host idle-connection
+// cap. When proxy is non-empty it overrides the proxy; when empty the clone
+// retains DefaultTransport's ProxyFromEnvironment, so HTTPS_PROXY/HTTP_PROXY/
+// NO_PROXY are still honored. proxy is validated by config.Load; it is re-parsed
+// here rather than threaded through as a *url.URL to keep config.Config free of
+// net/url types. respHeaderTimeout and maxIdleConnsPerHost are already
+// defaulted and validated by config.Load.
+func apiHTTPClient(proxy string, respHeaderTimeout time.Duration, maxIdleConnsPerHost int) (*http.Client, error) {
 	dt, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, fmt.Errorf("http.DefaultTransport is not an *http.Transport")
 	}
 	tr := dt.Clone()
-	tr.Proxy = http.ProxyURL(u)
+	tr.ResponseHeaderTimeout = respHeaderTimeout
+	tr.MaxIdleConnsPerHost = maxIdleConnsPerHost
+	if proxy != "" {
+		u, err := url.Parse(proxy)
+		if err != nil {
+			return nil, fmt.Errorf("parse proxy url %q: %w", proxy, err)
+		}
+		tr.Proxy = http.ProxyURL(u)
+	}
 	return &http.Client{Transport: tr}, nil
 }

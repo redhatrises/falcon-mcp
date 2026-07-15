@@ -24,25 +24,46 @@ const defaultDetailFetchConcurrency = 4
 var (
 	// ErrMissingCredentials is returned when client id/secret are absent.
 	ErrMissingCredentials = errors.New("config: client id and client secret are required")
+	// ErrInvalidClientID is returned when the client id is present but not the
+	// expected 32-character alphanumeric format.
+	ErrInvalidClientID = errors.New("config: invalid client id format")
+	// ErrInvalidClientSecret is returned when the client secret is present but
+	// not the expected 40-character alphanumeric format.
+	ErrInvalidClientSecret = errors.New("config: invalid client secret format")
 	// ErrInvalidTransport is returned when the transport is not one of the
 	// supported values.
-	ErrInvalidTransport = errors.New("config: transport must be stdio, http, or sse")
+	ErrInvalidTransport = errors.New("config: transport must be stdio, streamable-http, or sse")
+	// ErrAddrRequired is returned when a network transport is selected without a
+	// host and port.
+	ErrAddrRequired = errors.New("config: host and port are required for a network transport")
+	// ErrInvalidCloud is returned when the cloud region is present but not a
+	// recognized value.
+	ErrInvalidCloud = errors.New("config: invalid cloud region")
+	// ErrInvalidMemberCID is returned when the member CID is present but malformed.
+	ErrInvalidMemberCID = errors.New("config: invalid member cid")
 	// ErrStatelessRequiresHTTP is returned when stateless-http is set but the
-	// transport is not http. Stateless mode is a streamable-HTTP-only feature.
-	ErrStatelessRequiresHTTP = errors.New("config: stateless-http requires the http transport")
+	// transport is not streamable-http. Stateless mode is a streamable-HTTP-only
+	// feature.
+	ErrStatelessRequiresHTTP = errors.New("config: stateless-http requires the streamable-http transport")
 	// ErrAPIKeyRequiresHTTP is returned when api-key is set but the transport is
-	// not http or sse. A static endpoint secret only guards a network transport;
-	// it is meaningless for stdio.
-	ErrAPIKeyRequiresHTTP = errors.New("config: api-key requires the http or sse transport")
+	// not streamable-http or sse. A static endpoint secret only guards a network
+	// transport; it is meaningless for stdio.
+	ErrAPIKeyRequiresHTTP = errors.New("config: api-key requires the streamable-http or sse transport")
 	// ErrInvalidProxy is returned when a non-empty proxy value is not a usable
 	// proxy URL (unparseable, missing scheme/host, or an unsupported scheme).
 	ErrInvalidProxy = errors.New("config: invalid proxy url")
+	// ErrInvalidHTTPTuning is returned when a connection-tuning value
+	// (response-header timeout, idle timeout, or max idle connections per host)
+	// is negative. Zero is accepted and replaced by the built-in default.
+	ErrInvalidHTTPTuning = errors.New("config: invalid http tuning value")
 )
 
-// Validation patterns, compiled once at package scope (PERF-2).
+// Validation patterns, compiled once at package scope.
 var (
-	cloudRE     = regexp.MustCompile(`^(autodiscover|us-?1|us-?2|us-?3|eu-?1|us-?gov-?1|us-?gov-?2|gov-?1|gov-?2)$`)
-	memberCIDRE = regexp.MustCompile(`^[0-9a-fA-F]{32}(-[0-9a-fA-F]{2})?$`)
+	clientIDRE     = regexp.MustCompile(`^[a-zA-Z0-9]{32}$`)
+	clientSecretRE = regexp.MustCompile(`^[a-zA-Z0-9]{40}$`)
+	cloudRE        = regexp.MustCompile(`^(autodiscover|us-?1|us-?2|us-?3|eu-?1|us-?gov-?1|us-?gov-?2|gov-?1|gov-?2)$`)
+	memberCIDRE    = regexp.MustCompile(`^[0-9a-fA-F]{32}(-[0-9a-fA-F]{2})?$`)
 )
 
 // Config is the server configuration. The cli package populates it from flags,
@@ -72,7 +93,8 @@ type Config struct {
 	Dynamic bool
 	// StatelessHTTP runs the http transport in stateless mode: no
 	// Mcp-Session-Id tracking, a fresh temporary session per request. Intended
-	// for horizontally-scaled deployments. Only meaningful with transport "http".
+	// for horizontally-scaled deployments. Only meaningful with transport
+	// "streamable-http".
 	StatelessHTTP          bool
 	DetailFetchConcurrency int
 	// APIKey is an optional static shared secret. When non-empty, the http and
@@ -90,6 +112,18 @@ type Config struct {
 	// disables keepalive. It is only meaningful for the http and sse transports;
 	// stdio ignores it.
 	KeepAlive time.Duration
+	// ResponseHeaderTimeout bounds how long the Falcon API client waits for an
+	// upstream's response headers after writing a request. Zero selects
+	// defaultResponseHeaderTimeout; a negative value is rejected by Load.
+	ResponseHeaderTimeout time.Duration
+	// IdleTimeout bounds how long an idle keep-alive connection is kept open by
+	// the http/sse server before being reaped. Zero selects defaultIdleTimeout;
+	// a negative value is rejected by Load. Ignored by the stdio transport.
+	IdleTimeout time.Duration
+	// MaxIdleConnsPerHost caps idle Falcon API connections retained per host.
+	// Zero selects defaultMaxIdleConnsPerHost; a negative value is rejected by
+	// Load.
+	MaxIdleConnsPerHost int
 }
 
 // Load validates cfg, applies defaults, and returns the normalized Config. It
@@ -98,31 +132,39 @@ func Load(cfg Config) (*Config, error) {
 	if cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil, ErrMissingCredentials
 	}
+	if !clientIDRE.MatchString(cfg.ClientID) {
+		return nil, fmt.Errorf("%w: expected 32 alphanumeric characters", ErrInvalidClientID)
+	}
+	if !clientSecretRE.MatchString(cfg.ClientSecret) {
+		return nil, fmt.Errorf("%w: expected 40 alphanumeric characters", ErrInvalidClientSecret)
+	}
 
 	if cfg.Transport == "" {
 		cfg.Transport = "stdio"
 	}
 	switch cfg.Transport {
-	case "stdio", "http", "sse":
+	case "stdio", "streamable-http", "sse":
 	default:
 		return nil, ErrInvalidTransport
 	}
 	if cfg.Transport != "stdio" && cfg.HTTPAddr == "" {
-		return nil, fmt.Errorf("config: http-addr is required for %s transport", cfg.Transport)
+		return nil, fmt.Errorf("%w, got %q", ErrAddrRequired, cfg.Transport)
 	}
-	if cfg.StatelessHTTP && cfg.Transport != "http" {
+	if cfg.StatelessHTTP && cfg.Transport != "streamable-http" {
 		return nil, fmt.Errorf("%w, got %q", ErrStatelessRequiresHTTP, cfg.Transport)
 	}
 	if cfg.APIKey != "" && cfg.Transport == "stdio" {
 		return nil, fmt.Errorf("%w, got %q", ErrAPIKeyRequiresHTTP, cfg.Transport)
 	}
 
-	if err := matchOrEmpty(cloudRE, "cloud", cfg.Cloud); err != nil {
+	if err := matchOrEmpty(cloudRE, ErrInvalidCloud, cfg.Cloud); err != nil {
 		return nil, err
 	}
-	if err := matchOrEmpty(memberCIDRE, "member-cid", cfg.MemberCID); err != nil {
+	cfg.MemberCID = strings.TrimSpace(cfg.MemberCID)
+	if err := matchOrEmpty(memberCIDRE, ErrInvalidMemberCID, cfg.MemberCID); err != nil {
 		return nil, err
 	}
+	cfg.MemberCID = normalizeMemberCID(cfg.MemberCID)
 
 	cfg.Proxy = strings.TrimSpace(cfg.Proxy)
 	if err := validateProxy(cfg.Proxy); err != nil {
@@ -133,6 +175,10 @@ func Load(cfg Config) (*Config, error) {
 		cfg.DetailFetchConcurrency = defaultDetailFetchConcurrency
 	}
 
+	if err := validateHTTPTuning(&cfg); err != nil {
+		return nil, err
+	}
+
 	cfg.Modules = normalizeModules(cfg.Modules)
 
 	cfg.HostOverride = normalizeHostOverride(cfg.HostOverride)
@@ -140,6 +186,24 @@ func Load(cfg Config) (*Config, error) {
 	cfg.UserAgent = composeUserAgent(cfg.UserAgent)
 
 	return &cfg, nil
+}
+
+// validateHTTPTuning rejects a negative connection-tuning value (fail fast).
+// Defaults are supplied by the cli flag definitions, so Load does not
+// substitute them here; it only guards against a value that has no valid
+// meaning and, if passed through, would silently disable the very protection
+// the value exists to provide.
+func validateHTTPTuning(cfg *Config) error {
+	if cfg.ResponseHeaderTimeout < 0 {
+		return fmt.Errorf("%w: response-header timeout %v must not be negative", ErrInvalidHTTPTuning, cfg.ResponseHeaderTimeout)
+	}
+	if cfg.IdleTimeout < 0 {
+		return fmt.Errorf("%w: idle timeout %v must not be negative", ErrInvalidHTTPTuning, cfg.IdleTimeout)
+	}
+	if cfg.MaxIdleConnsPerHost < 0 {
+		return fmt.Errorf("%w: max idle connections per host %d must not be negative", ErrInvalidHTTPTuning, cfg.MaxIdleConnsPerHost)
+	}
+	return nil
 }
 
 // normalizeHostOverride reduces a base-URL value to the bare FQDN that gofalcon's
@@ -189,7 +253,8 @@ func validateProxy(proxy string) error {
 	return nil
 }
 
-// composeUserAgent builds the User-Agent value sent to the Falcon API. It always// leads with falcon-mcp/<version> and appends the caller-supplied string when
+// composeUserAgent builds the User-Agent value sent to the Falcon API. It always
+// leads with falcon-mcp/<version> and appends the caller-supplied string when
 // present.
 func composeUserAgent(user string) string {
 	if user = strings.TrimSpace(user); user != "" {
@@ -211,11 +276,23 @@ func normalizeModules(names []string) []string {
 	return out
 }
 
-// matchOrEmpty reports nil when s is empty or matches re, else a wrapped error
-// naming field.
-func matchOrEmpty(re *regexp.Regexp, field, s string) error {
+// normalizeMemberCID reduces a validated member CID to its bare 32-character
+// form. The value may be supplied with a trailing "-XX" checksum suffix, which
+// gofalcon's ApiConfig.MemberCID does not expect, so the suffix is dropped. An
+// empty value passes through unchanged. The caller must validate against
+// memberCIDRE first; this assumes a well-formed input.
+func normalizeMemberCID(cid string) string {
+	if len(cid) >= 32 {
+		return cid[:32]
+	}
+	return cid
+}
+
+// matchOrEmpty reports nil when s is empty or matches re, else sentinel wrapped
+// with the offending value.
+func matchOrEmpty(re *regexp.Regexp, sentinel error, s string) error {
 	if s == "" || re.MatchString(s) {
 		return nil
 	}
-	return fmt.Errorf("config: invalid %s %q", field, s)
+	return fmt.Errorf("%w %q", sentinel, s)
 }

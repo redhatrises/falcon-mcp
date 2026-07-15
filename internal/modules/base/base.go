@@ -224,7 +224,7 @@ func TextResource(s *mcp.Server, uri, name, description, mime, text string) {
 }
 
 // PromptParams describes a static MCP prompt registered via Prompt. It groups
-// the descriptor fields (CQ-3) so the handler stays a separate argument.
+// the descriptor fields so the handler stays a separate argument.
 type PromptParams struct {
 	// Name is the prompt name without the "falcon_" prefix, which Prompt adds.
 	Name string

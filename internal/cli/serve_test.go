@@ -13,7 +13,7 @@ func TestServeHTTPGracefulShutdown(t *testing.T) {
 	h := http.NewServeMux()
 	ctx, cancel := context.WithCancel(context.Background())
 	errc := make(chan error, 1)
-	go func() { errc <- serveHTTP(ctx, "127.0.0.1:0", h) }() // :0 = OS-assigned free port, no collisions
+	go func() { errc <- serveHTTP(ctx, "127.0.0.1:0", h, 120*time.Second) }() // :0 = OS-assigned free port, no collisions
 
 	time.Sleep(50 * time.Millisecond)
 	cancel()
@@ -32,7 +32,7 @@ func TestServeHTTPInvalidAddr(t *testing.T) {
 	h := http.NewServeMux()
 	// An unparseable address fails to bind and surfaces through the error channel
 	// before ctx is cancelled.
-	if err := serveHTTP(t.Context(), "bad:addr:99", h); err == nil {
+	if err := serveHTTP(t.Context(), "bad:addr:99", h, 120*time.Second); err == nil {
 		t.Fatal("expected error for invalid listen address")
 	}
 }
