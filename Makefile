@@ -54,8 +54,12 @@ generate: ## Run go generate (regenerate module aggregator and embedded FQL guid
 	go generate ./...
 
 .PHONY: test
-test: fmt vet ## Run tests with the race detector and coverage.
-	go test -race ./... -coverprofile cover.out
+test: fmt vet ## Run unit tests with the race detector and coverage.
+	go test -race $(shell go list ./... | grep -v /test/e2e) -coverprofile cover.out
+
+.PHONY: test-e2e
+test-e2e: ## Run live e2e tests against a real Falcon tenant (needs FALCON_CLIENT_ID/SECRET; LOG_RESULTS=1 to log returned records).
+	go test -race -count=1 -v ./test/e2e/... -args -ginkgo.vv $(if $(GINKGO_LABEL_FILTER),-ginkgo.label-filter='$(GINKGO_LABEL_FILTER)')
 
 .PHONY: license
 license: addlicense ## Run addlicense to add license headers to source code.
