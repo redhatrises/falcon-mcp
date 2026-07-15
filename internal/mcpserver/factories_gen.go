@@ -9,6 +9,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/intel"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/ioc"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/spotlight"
 )
 
 // moduleFactories returns every discovered module's factory, ordered by package
@@ -20,5 +21,6 @@ func moduleFactories() []registry.Factory {
 		hosts.Factory,
 		intel.Factory,
 		ioc.Factory,
+		spotlight.Factory,
 	}
 }
