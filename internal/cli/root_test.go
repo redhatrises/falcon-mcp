@@ -14,6 +14,18 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/version"
 )
 
+// Valid-format credentials for tests: config.Load enforces a 32-char
+// alphanumeric client id and a 40-char alphanumeric client secret. The distinct
+// *ID constants let precedence tests tell one credential source from another.
+const (
+	validID     = "abcdef0123456789abcdef0123456789"
+	validSecret = "abcdef0123456789abcdef0123456789abcdef01"
+	flagID      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	envID       = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	fileID      = "cccccccccccccccccccccccccccccccc"
+	dotenvID    = "dddddddddddddddddddddddddddddddd"
+)
+
 // resolveArgs builds the root command, parses args onto it, and runs PreRunE to
 // resolve the config. It stops short of RunE so tests never live-serve.
 func resolveArgs(t *testing.T, args []string) (*config.Config, error) {
@@ -31,15 +43,15 @@ func TestExecuteResolvesFlags(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", "")
 	t.Setenv("FALCON_CLIENT_SECRET", "")
 
-	cfg, err := resolveArgs(t, []string{"--client-id", "id", "--client-secret", "s"})
+	cfg, err := resolveArgs(t, []string{"--client-id", flagID, "--client-secret", validSecret})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.ClientID != "id" {
+	if cfg == nil || cfg.ClientID != flagID {
 		t.Fatalf("cfg not resolved: %+v", cfg)
 	}
-	if cfg.ClientSecret != "s" {
-		t.Errorf("ClientSecret = %q, want s", cfg.ClientSecret)
+	if cfg.ClientSecret != validSecret {
+		t.Errorf("ClientSecret = %q, want %q", cfg.ClientSecret, validSecret)
 	}
 	if cfg.Transport != "stdio" {
 		t.Errorf("Transport = %q, want stdio (default)", cfg.Transport)
@@ -50,12 +62,12 @@ func TestExecuteResolvesFlags(t *testing.T) {
 // level during PreRunE. It mutates the global default logger, so it must not run
 // in parallel; it restores the original logger via t.Cleanup.
 func TestExecuteDebugFlag(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	orig := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(orig) })
-	slog.SetDefault(newLogger(slog.LevelInfo))
+	slog.SetDefault(newLogger(slog.LevelInfo, "text"))
 
 	if _, err := resolveArgs(t, []string{"-d"}); err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -66,36 +78,36 @@ func TestExecuteDebugFlag(t *testing.T) {
 }
 
 func TestExecuteResolvesEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "e")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", envID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.ClientID != "e" {
+	if cfg == nil || cfg.ClientID != envID {
 		t.Fatalf("cfg not resolved from env: %+v", cfg)
 	}
 }
 
 func TestExecuteFlagBeatsEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "envval")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", envID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
-	cfg, err := resolveArgs(t, []string{"--client-id", "flagval"})
+	cfg, err := resolveArgs(t, []string{"--client-id", flagID})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.ClientID != "flagval" {
+	if cfg == nil || cfg.ClientID != flagID {
 		t.Fatalf("flag should beat env: got %+v", cfg)
 	}
 }
 
 func TestExecuteUserAgentCommentFlagAlias(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
-	t.Setenv("FALCON_USER_AGENT", "")
-	t.Setenv("FALCON_USER_AGENT_COMMENT", "")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_USER_AGENT", "")
+	t.Setenv("FALCON_MCP_USER_AGENT_COMMENT", "")
 
 	cfg, err := resolveArgs(t, []string{"--user-agent-comment", "my-tool/1.0"})
 	if err != nil {
@@ -108,10 +120,10 @@ func TestExecuteUserAgentCommentFlagAlias(t *testing.T) {
 }
 
 func TestExecuteUserAgentCommentEnvAlias(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
-	t.Setenv("FALCON_USER_AGENT", "")
-	t.Setenv("FALCON_USER_AGENT_COMMENT", "env-tool/2.0")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_USER_AGENT", "")
+	t.Setenv("FALCON_MCP_USER_AGENT_COMMENT", "env-tool/2.0")
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
@@ -126,10 +138,10 @@ func TestExecuteUserAgentCommentEnvAlias(t *testing.T) {
 // TestExecuteUserAgentEnvWinsOverComment documents precedence: BindEnv lists
 // FALCON_USER_AGENT first, so it wins when both env vars are set.
 func TestExecuteUserAgentEnvWinsOverComment(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
-	t.Setenv("FALCON_USER_AGENT", "primary/1.0")
-	t.Setenv("FALCON_USER_AGENT_COMMENT", "secondary/2.0")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_USER_AGENT", "primary/1.0")
+	t.Setenv("FALCON_MCP_USER_AGENT_COMMENT", "secondary/2.0")
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
@@ -150,8 +162,8 @@ func cfgUserAgent(c *config.Config) string {
 }
 
 func TestExecuteDynamicFlag(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{"--dynamic"})
 	if err != nil {
@@ -163,8 +175,8 @@ func TestExecuteDynamicFlag(t *testing.T) {
 }
 
 func TestExecuteDynamicEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_DYNAMIC", "true")
 
 	cfg, err := resolveArgs(t, []string{})
@@ -177,8 +189,8 @@ func TestExecuteDynamicEnv(t *testing.T) {
 }
 
 func TestExecuteDynamicDefaultsFalse(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
@@ -190,10 +202,10 @@ func TestExecuteDynamicDefaultsFalse(t *testing.T) {
 }
 
 func TestExecuteStatelessHTTPFlag(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
-	cfg, err := resolveArgs(t, []string{"--transport", "http", "--http-addr", ":8080", "--stateless-http"})
+	cfg, err := resolveArgs(t, []string{"--transport", "streamable-http", "--stateless-http"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -203,10 +215,10 @@ func TestExecuteStatelessHTTPFlag(t *testing.T) {
 }
 
 func TestExecuteKeepAliveFlag(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
-	cfg, err := resolveArgs(t, []string{"--transport", "http", "--http-addr", ":8080", "--keep-alive", "30s"})
+	cfg, err := resolveArgs(t, []string{"--transport", "streamable-http", "--keep-alive", "30s"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -216,11 +228,11 @@ func TestExecuteKeepAliveFlag(t *testing.T) {
 }
 
 func TestExecuteKeepAliveEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_KEEP_ALIVE", "45s")
 
-	cfg, err := resolveArgs(t, []string{"--transport", "http", "--http-addr", ":8080"})
+	cfg, err := resolveArgs(t, []string{"--transport", "streamable-http"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -230,8 +242,8 @@ func TestExecuteKeepAliveEnv(t *testing.T) {
 }
 
 func TestExecuteKeepAliveDefaultsZero(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, nil)
 	if err != nil {
@@ -242,12 +254,87 @@ func TestExecuteKeepAliveDefaultsZero(t *testing.T) {
 	}
 }
 
+func TestExecuteHTTPTuningFlags(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, []string{
+		"--api-response-timeout", "45s",
+		"--http-idle-timeout", "90s",
+		"--max-idle-conns-per-host", "256",
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.ResponseHeaderTimeout != 45*time.Second {
+		t.Errorf("ResponseHeaderTimeout = %v, want 45s from --api-response-timeout", cfg.ResponseHeaderTimeout)
+	}
+	if cfg.IdleTimeout != 90*time.Second {
+		t.Errorf("IdleTimeout = %v, want 90s from --http-idle-timeout", cfg.IdleTimeout)
+	}
+	if cfg.MaxIdleConnsPerHost != 256 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 256 from --max-idle-conns-per-host", cfg.MaxIdleConnsPerHost)
+	}
+}
+
+func TestExecuteHTTPTuningDefaults(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	// The flag definitions are the single source of truth for these defaults;
+	// with no flag or env set they must surface as the real values, not zero.
+	if cfg.ResponseHeaderTimeout != 30*time.Second {
+		t.Errorf("ResponseHeaderTimeout = %v, want 30s default", cfg.ResponseHeaderTimeout)
+	}
+	if cfg.IdleTimeout != 120*time.Second {
+		t.Errorf("IdleTimeout = %v, want 120s default", cfg.IdleTimeout)
+	}
+	if cfg.MaxIdleConnsPerHost != 100 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 100 default", cfg.MaxIdleConnsPerHost)
+	}
+}
+
+func TestExecuteHTTPTuningEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_API_RESPONSE_TIMEOUT", "15s")
+	t.Setenv("FALCON_MCP_HTTP_IDLE_TIMEOUT", "60s")
+	t.Setenv("FALCON_MCP_MAX_IDLE_CONNS_PER_HOST", "512")
+
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.ResponseHeaderTimeout != 15*time.Second {
+		t.Errorf("ResponseHeaderTimeout = %v, want 15s from FALCON_MCP_API_RESPONSE_TIMEOUT", cfg.ResponseHeaderTimeout)
+	}
+	if cfg.IdleTimeout != 60*time.Second {
+		t.Errorf("IdleTimeout = %v, want 60s from FALCON_MCP_HTTP_IDLE_TIMEOUT", cfg.IdleTimeout)
+	}
+	if cfg.MaxIdleConnsPerHost != 512 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 512 from FALCON_MCP_MAX_IDLE_CONNS_PER_HOST", cfg.MaxIdleConnsPerHost)
+	}
+}
+
 func TestExecuteStatelessHTTPEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_STATELESS_HTTP", "true")
 
-	cfg, err := resolveArgs(t, []string{"--transport", "http", "--http-addr", ":8080"})
+	cfg, err := resolveArgs(t, []string{"--transport", "streamable-http"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -257,8 +344,8 @@ func TestExecuteStatelessHTTPEnv(t *testing.T) {
 }
 
 func TestExecuteStatelessHTTPDefaultsFalse(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
@@ -274,22 +361,22 @@ func TestExecuteHTTPTransport(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_SECRET", "")
 
 	cfg, err := resolveArgs(t, []string{
-		"--transport", "http", "--http-addr", ":9000",
-		"--client-id", "id", "--client-secret", "s",
+		"--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9000",
+		"--client-id", validID, "--client-secret", validSecret,
 	})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.Transport != "http" || cfg.HTTPAddr != ":9000" {
+	if cfg == nil || cfg.Transport != "streamable-http" || cfg.HTTPAddr != "0.0.0.0:9000" {
 		t.Fatalf("http transport not resolved: %+v", cfg)
 	}
 }
 
 func TestExecuteAPIKeyFlag(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
-	cfg, err := resolveArgs(t, []string{"--transport", "http", "--http-addr", ":8080", "--api-key", "secret"})
+	cfg, err := resolveArgs(t, []string{"--transport", "streamable-http", "--api-key", "secret"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -299,11 +386,11 @@ func TestExecuteAPIKeyFlag(t *testing.T) {
 }
 
 func TestExecuteAPIKeyEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_API_KEY", "envsecret")
 
-	cfg, err := resolveArgs(t, []string{"--transport", "http", "--http-addr", ":8080"})
+	cfg, err := resolveArgs(t, []string{"--transport", "streamable-http"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -313,8 +400,8 @@ func TestExecuteAPIKeyEnv(t *testing.T) {
 }
 
 func TestExecuteAPIKeyRejectedWithStdio(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{"--api-key", "secret"})
 	if err == nil {
@@ -342,8 +429,8 @@ func cfgKeepAlive(c *config.Config) time.Duration {
 }
 
 func TestExecuteProxyFlag(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{"--proxy", "http://proxy.example.com:8080"})
 	if err != nil {
@@ -355,8 +442,8 @@ func TestExecuteProxyFlag(t *testing.T) {
 }
 
 func TestExecuteProxyEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_PROXY", "http://envproxy.example.com:3128")
 
 	cfg, err := resolveArgs(t, []string{})
@@ -369,8 +456,8 @@ func TestExecuteProxyEnv(t *testing.T) {
 }
 
 func TestExecuteProxyFlagBeatsEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_PROXY", "http://envproxy.example.com:3128")
 
 	cfg, err := resolveArgs(t, []string{"--proxy", "http://flagproxy.example.com:8080"})
@@ -383,8 +470,8 @@ func TestExecuteProxyFlagBeatsEnv(t *testing.T) {
 }
 
 func TestExecuteProxyDefaultsEmpty(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
@@ -396,8 +483,8 @@ func TestExecuteProxyDefaultsEmpty(t *testing.T) {
 }
 
 func TestExecuteProxyInvalidErrors(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{"--proxy", "not-a-url"})
 	if err == nil {
@@ -405,6 +492,83 @@ func TestExecuteProxyInvalidErrors(t *testing.T) {
 	}
 	if cfg != nil {
 		t.Fatal("cfg should be nil when config invalid")
+	}
+}
+
+func TestExecuteProxyURLEnvAlias(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_PROXY_URL", "http://upstream.example.com:3128")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || cfg.Proxy != "http://upstream.example.com:3128" {
+		t.Fatalf("Proxy not resolved from FALCON_PROXY_URL alias: %+v", cfg)
+	}
+}
+
+func TestExecuteBaseURLFlag(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, []string{"--base-url", "https://api.us-2.crowdstrike.com"})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || cfg.HostOverride != "api.us-2.crowdstrike.com" {
+		t.Fatalf("HostOverride not resolved from --base-url: %+v", cfg)
+	}
+}
+
+func TestExecuteBaseURLFlagBeatsEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_BASE_URL", "api.us-1.crowdstrike.com")
+
+	cfg, err := resolveArgs(t, []string{"--base-url", "api.eu-1.crowdstrike.com"})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || cfg.HostOverride != "api.eu-1.crowdstrike.com" {
+		t.Fatalf("--base-url should beat FALCON_BASE_URL: %+v", cfg)
+	}
+}
+
+func TestExecuteUserAgentMCPCommentEnvAlias(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_USER_AGENT", "")
+	t.Setenv("FALCON_MCP_USER_AGENT_COMMENT", "mcp-tool/3.0")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	want := "falcon-mcp/" + version.Version + " mcp-tool/3.0"
+	if cfg == nil || cfg.UserAgent != want {
+		t.Fatalf("UserAgent = %q, want %q from FALCON_MCP_USER_AGENT_COMMENT", cfgUserAgent(cfg), want)
+	}
+}
+
+// TestExecuteDebugEnv verifies FALCON_MCP_DEBUG reinstalls the default logger at
+// Debug level. Like TestExecuteDebugFlag it mutates the global logger, so it
+// must not run in parallel and restores the original via t.Cleanup.
+func TestExecuteDebugEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_DEBUG", "true")
+
+	orig := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(orig) })
+	slog.SetDefault(newLogger(slog.LevelInfo, "text"))
+
+	if _, err := resolveArgs(t, []string{}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		t.Errorf("default logger not enabled at Debug after FALCON_MCP_DEBUG")
 	}
 }
 
@@ -422,8 +586,8 @@ func TestExecuteMissingCredsErrors(t *testing.T) {
 }
 
 func TestExecuteMissingConfigFileErrors(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "id")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	cfg, err := resolveArgs(t, []string{"--config", filepath.Join(t.TempDir(), "nope.yaml")})
 	if err == nil {
@@ -440,7 +604,7 @@ func TestExecuteReadsConfigFile(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cfg.yaml")
-	if err := os.WriteFile(path, []byte("client_id: fromfile\nclient_secret: s\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("client_id: "+fileID+"\nclient_secret: "+validSecret+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -448,7 +612,7 @@ func TestExecuteReadsConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.ClientID != "fromfile" {
+	if cfg == nil || cfg.ClientID != fileID {
 		t.Fatalf("config file not read: %+v", cfg)
 	}
 }
@@ -494,14 +658,15 @@ func TestResolveMapsAllKeys(t *testing.T) {
 	v.Set("cloud", "us-1")
 	v.Set("base_url", "https://example.test")
 	v.Set("member_cid", "abc")
-	v.Set("transport", "http")
-	v.Set("http_addr", ":9000")
+	v.Set("transport", "streamable-http")
+	v.Set("host", "0.0.0.0")
+	v.Set("port", 9000)
 	v.Set("user_agent", "my-tool/1.0")
 	v.Set("api_key", "secret")
 	v.Set("proxy", "http://proxy.example.com:8080")
 	in := resolve(v)
 	if in.Cloud != "us-1" || in.HostOverride != "https://example.test" ||
-		in.MemberCID != "abc" || in.Transport != "http" || in.HTTPAddr != ":9000" ||
+		in.MemberCID != "abc" || in.Transport != "streamable-http" || in.HTTPAddr != "0.0.0.0:9000" ||
 		in.UserAgent != "my-tool/1.0" || in.APIKey != "secret" ||
 		in.Proxy != "http://proxy.example.com:8080" {
 		t.Errorf("resolve mapped keys incorrectly: %+v", in)
@@ -538,6 +703,22 @@ func TestReadConfigFileINISection(t *testing.T) {
 	normalizeFalconPrefix(v)
 	if got := v.GetString("client_id"); got != "fromini" {
 		t.Errorf("client_id = %q, want fromini", got)
+	}
+}
+
+// TestHoistFalconSectionDoesNotOverwrite verifies a [falcon] section key does
+// not clobber a value already set at the top level (root.go:343 `if !v.IsSet`).
+func TestHoistFalconSectionDoesNotOverwrite(t *testing.T) {
+	t.Parallel()
+	v := newTestViper(t)
+	v.Set("client_id", "toplevel")
+	v.Set("falcon", map[string]any{"client_id": "fromsection", "cloud": "us-2"})
+	hoistFalconSection(v)
+	if got := v.GetString("client_id"); got != "toplevel" {
+		t.Errorf("client_id = %q, want toplevel (existing value preserved)", got)
+	}
+	if got := v.GetString("cloud"); got != "us-2" {
+		t.Errorf("cloud = %q, want us-2 (hoisted from section)", got)
 	}
 }
 
@@ -638,14 +819,14 @@ func TestExecuteReadsDotEnv(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_SECRET", "")
 
 	dir := t.TempDir()
-	writeDotEnv(t, dir, "FALCON_CLIENT_ID=envfile\nFALCON_CLIENT_SECRET=s\n")
+	writeDotEnv(t, dir, "FALCON_CLIENT_ID="+dotenvID+"\nFALCON_CLIENT_SECRET="+validSecret+"\n")
 	t.Chdir(dir)
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.ClientID != "envfile" {
+	if cfg == nil || cfg.ClientID != dotenvID {
 		t.Fatalf(".env not resolved: %+v", cfg)
 	}
 }
@@ -653,18 +834,18 @@ func TestExecuteReadsDotEnv(t *testing.T) {
 // TestExecuteEnvBeatsDotEnv verifies a real env var outranks a .env value,
 // matching python-dotenv's non-overriding load_dotenv.
 func TestExecuteEnvBeatsDotEnv(t *testing.T) {
-	t.Setenv("FALCON_CLIENT_ID", "fromenv")
-	t.Setenv("FALCON_CLIENT_SECRET", "s")
+	t.Setenv("FALCON_CLIENT_ID", envID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
 	dir := t.TempDir()
-	writeDotEnv(t, dir, "FALCON_CLIENT_ID=fromdotenv\n")
+	writeDotEnv(t, dir, "FALCON_CLIENT_ID="+dotenvID+"\n")
 	t.Chdir(dir)
 
 	cfg, err := resolveArgs(t, []string{})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.ClientID != "fromenv" {
+	if cfg == nil || cfg.ClientID != envID {
 		t.Fatalf("env should beat .env: got %+v", cfg)
 	}
 }
