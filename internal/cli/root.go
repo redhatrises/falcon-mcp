@@ -10,10 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-viper/encoding/ini"
 	"github.com/spf13/cobra"
@@ -21,46 +24,63 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
+	"github.com/crowdstrike/falcon-mcp/internal/version"
 )
 
-// Execute is the process entry point for falcon-mcp. It installs a baseline
-// JSON logger so any pre-config error (flag parsing, or the final error log
-// below) is captured, derives a context cancelled on os.Interrupt (so http/sse
-// transports drain gracefully on Ctrl+C), builds the root command, and serves
-// until interrupted. preRunE reinstalls the logger at the configured level.
-// Errors are logged once here; the command is configured to stay silent so
-// failures are not printed twice.
-func Execute() error {
-	slog.SetDefault(newLogger(slog.LevelInfo))
+var (
+	progName   = "falcon-mcp"
+	cliVersion = fmt.Sprintf("%s %s <commit: %s>", progName, version.Version, version.Commit)
+)
 
+// Execute is the process entry point for falcon-mcp. It derives a context
+// cancelled on os.Interrupt (so the http/sse transports drain gracefully on
+// Ctrl+C), builds the root command, and runs it. preRunE installs the logger,
+// at debug level when --debug is set and INFO otherwise.
+func Execute() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if err := newRootCmd().ExecuteContext(ctx); err != nil {
-		slog.Error("server exited with error", "err", err)
-		return err
-	}
-	return nil
+	return newRootCmd().ExecuteContext(ctx)
 }
 
-// newLogger returns the process's JSON logger emitting to stderr at level.
-func newLogger(level slog.Level) *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+// newLogger returns the process's logger emitting to stderr at level. format
+// selects the handler: "json" emits JSON, anything else emits text.
+func newLogger(level slog.Level, format string) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: level}
+	if format == "json" {
+		return slog.New(slog.NewJSONHandler(os.Stderr, opts))
+	}
+	return slog.New(slog.NewTextHandler(os.Stderr, opts))
 }
 
 // newRootCmd builds the falcon-mcp root command. preRunE resolves the config
 // once; runE serves it. cfg is the only state shared between the two phases —
 // a single local held here and passed to each phase keeps it off package
-// globals (CFG-2) without a wrapper type or double indirection.
+// globals without a wrapper type or double indirection.
 func newRootCmd() *cobra.Command {
 	var cfg *config.Config
 
 	cmd := &cobra.Command{
-		Use:   "falcon-mcp",
+		Use:   progName,
 		Short: "CrowdStrike Falcon MCP server",
-		// Execute logs errors once via slog; don't let cobra print them too.
-		SilenceErrors: true,
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
+		Long: `The CrowdStrike Falcon MCP server is a Model Context Protocol (MCP) server that connects AI agents
+to the CrowdStrike Falcon platform, exposing detections, threat intelligence,
+host management, and more as MCP tools.
+
+It serves over stdio by default; the streamable-http and sse transports listen
+on a network address but serve a single credential set (not multi-tenant).
+Configuration precedence is flag > env > config file > default.`,
+		Example: `  # stdio (default), credentials from the environment
+  export FALCON_CLIENT_ID=... FALCON_CLIENT_SECRET=...
+  falcon-mcp
+
+  # streamable-http transport on all interfaces, port 8000
+  falcon-mcp -t streamable-http --host 0.0.0.0 -p 8000
+
+  # enable only specific modules
+  falcon-mcp -m detections,intel,hosts`,
+		Version: cliVersion,
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := preRunE(cmd)
 			cfg = c
 			return err
@@ -80,18 +100,25 @@ func newRootCmd() *cobra.Command {
 // normalizes falcon_-prefixed keys, and loads the validated config. viper is
 // scoped to this call so each invocation is independent (hermetic tests). Flags
 // have parsed cleanly by PreRunE, so any error here is a config error, not a
-// usage error — silence usage output.
+// usage error.
 func preRunE(cmd *cobra.Command) (*config.Config, error) {
-	if debug, _ := cmd.Flags().GetBool("debug"); debug {
-		slog.SetDefault(newLogger(slog.LevelDebug))
-	}
-
 	v, err := newViper()
 	if err != nil {
 		return nil, err
 	}
 	bindFlags(v, cmd)
 	bindEnv(v)
+
+	// Resolve debug through viper so it honors the same flag > env precedence as
+	// every other key, then install the logger before config-file discovery so
+	// that work logs at the requested level. The handler is always installed (not
+	// only under --debug) so the log format stays identical regardless of the
+	// flag; only the level changes.
+	level := slog.LevelInfo
+	if v.GetBool("debug") {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(newLogger(level, v.GetString("log_format")))
 
 	cfgFile, _ := cmd.Flags().GetString("config")
 	if err := readConfigFile(v, cfgFile); err != nil {
@@ -127,25 +154,28 @@ func runE(ctx context.Context, cfg *config.Config) error {
 // not bound to a viper key: it names the file to read, it is not a config value.
 func registerFlags(cmd *cobra.Command) {
 	f := cmd.Flags()
-	f.String("config", "", "path to a config file (yaml, json, or ini); overrides discovery")
+	f.String("config", "", "path to a config file")
 	f.BoolP("debug", "d", false, "enable debug-level logging")
-	f.String("client-id", "", "Falcon OAuth2 client id (env FALCON_CLIENT_ID)")
-	f.String("client-secret", "", "Falcon OAuth2 client secret (env FALCON_CLIENT_SECRET)")
-	f.String("cloud", "", "Falcon cloud region: autodiscover, us-1, us-2, eu-1, us-gov-1, ... (env FALCON_CLOUD). Overridden by FALCON_BASE_URL, which sets the API host directly (bare FQDN; any scheme/path is stripped)")
+	f.String("log-format", "text", "log output format: text or json")
+	f.String("client-id", "", "Falcon OAuth2 client id")
+	f.String("client-secret", "", "Falcon OAuth2 client secret")
+	f.String("cloud", "autodiscover", "Falcon cloud region: autodiscover, us-1, us-2, eu-1, us-gov-1, etc.")
+	f.String("base-url", "", "Falcon API base URL; overrides --cloud")
 	f.String("member-cid", "", "MSSP member CID selector")
-	f.String("proxy", "", "outbound HTTP/HTTPS proxy URL for Falcon API calls; empty honors HTTPS_PROXY/NO_PROXY (env FALCON_MCP_PROXY)")
-	f.String("transport", "stdio", "transport: stdio, http, or sse. Note: http/sse serve a single credential set, not multi-tenant (env FALCON_MCP_TRANSPORT)")
-	f.String("http-addr", ":8080", "listen address for the http and sse transports (env FALCON_MCP_HTTP_ADDR)")
+	f.String("proxy", "", "outbound HTTP/HTTPS proxy URL for Falcon API calls")
+	f.StringP("transport", "t", "stdio", "transport: stdio, streamable-http, or sse.")
+	f.String("host", "127.0.0.1", "host to bind for the http and sse transports")
+	f.IntP("port", "p", 8000, "port to listen on for the http and sse transports")
 	f.Bool("hosted", false, "reserved; logs a warning and proceeds as single-credential (not yet implemented)")
-	f.String("user-agent", "", "user agent comment appended to API requests (alias --user-agent-comment; env FALCON_USER_AGENT or FALCON_USER_AGENT_COMMENT)")
-	// --dynamic maps to env FALCON_MCP_DYNAMIC. Operational settings use the
-	// FALCON_MCP_ prefix (see bindEnv), matching upstream falcon-mcp; credentials
-	// keep the gofalcon-standard FALCON_ prefix.
-	f.Bool("dynamic", false, "expose only the 3 meta-tools (falcon_search_tools/execute_tool/list_enabled_modules) instead of all tools (env FALCON_MCP_DYNAMIC)")
-	f.Bool("stateless-http", false, "run the http transport in stateless mode: a fresh session per request, no session tracking, for scalable deployments (env FALCON_MCP_STATELESS_HTTP)")
-	f.String("api-key", "", "static secret required in the x-api-key header for http/sse clients; empty disables auth (env FALCON_MCP_API_KEY)")
-	f.StringSlice("modules", nil, "modules to enable (comma-separated); empty enables all")
-	f.Duration("keep-alive", 0, "interval to ping idle sessions and hold long-lived http/sse connections open; 0 disables; ignored by stdio (env FALCON_MCP_KEEP_ALIVE)")
+	f.String("user-agent", "", "Custom user agent appended to API requests")
+	f.Bool("dynamic", false, "expose only the 3 meta-tools (falcon_search_tools/execute_tool/list_enabled_modules) instead of all tools")
+	f.Bool("stateless-http", false, "run the streamable-http transport in stateless mode")
+	f.String("api-key", "", "static secret required in the x-api-key header for http/sse clients")
+	f.StringSliceP("modules", "m", nil, "a specific set of modules to enable (comma-separated)")
+	f.Duration("keep-alive", 0, "interval to ping idle sessions and hold long-lived http/sse connections open")
+	f.Duration("api-response-timeout", 30*time.Second, "max wait for Falcon API response headers before a request is abandoned; raise for heavy FQL queries")
+	f.Duration("http-idle-timeout", 120*time.Second, "max time an idle keep-alive http/sse connection is held open before reaping")
+	f.Int("max-idle-conns-per-host", 100, "idle Falcon API connections retained per host")
 
 	// Alias --user-agent-comment to the canonical --user-agent flag. Normalizing
 	// the input name (rather than declaring a second flag) means bindFlags's
@@ -162,11 +192,10 @@ func registerFlags(cmd *cobra.Command) {
 // bindFlags binds every flag on cmd to a viper key, converting dashes to
 // underscores (client-id -> client_id). This gives flags highest precedence
 // while env/file resolution flows through the same keys, all on the local viper
-// instance. --config and --debug are excluded: they select behavior, not config
-// values.
+// instance. --config is excluded: it names the file to read, not a config value.
 func bindFlags(v *viper.Viper, cmd *cobra.Command) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		if f.Name == "config" || f.Name == "debug" {
+		if f.Name == "config" {
 			return
 		}
 		key := strings.ReplaceAll(f.Name, "-", "_")
@@ -180,7 +209,7 @@ func bindFlags(v *viper.Viper, cmd *cobra.Command) {
 // gofalcon-standard FALCON_ prefix for credentials and connection settings, and
 // FALCON_MCP_ for this server's own operational settings. When BindEnv is given
 // explicit names, viper uses them verbatim and ignores any configured prefix, so
-// the two families coexist. FALCON_USER_AGENT wins over the upstream
+// the two families coexist. FALCON_MCP_USER_AGENT wins over the upstream
 // FALCON_USER_AGENT_COMMENT alias when both are set (first name listed wins).
 func bindEnv(v *viper.Viper) {
 	// Credentials and connection settings keep the gofalcon-standard FALCON_
@@ -190,19 +219,27 @@ func bindEnv(v *viper.Viper) {
 	_ = v.BindEnv("cloud", "FALCON_CLOUD")
 	_ = v.BindEnv("member_cid", "FALCON_MEMBER_CID")
 	_ = v.BindEnv("base_url", "FALCON_BASE_URL")
-	_ = v.BindEnv("user_agent", "FALCON_USER_AGENT", "FALCON_USER_AGENT_COMMENT")
+	_ = v.BindEnv("user_agent", "FALCON_MCP_USER_AGENT", "FALCON_MCP_USER_AGENT_COMMENT")
 
 	// This server's own operational settings live under FALCON_MCP_, matching
 	// upstream falcon-mcp (e.g. FALCON_MCP_DYNAMIC).
 	_ = v.BindEnv("transport", "FALCON_MCP_TRANSPORT")
-	_ = v.BindEnv("http_addr", "FALCON_MCP_HTTP_ADDR")
+	_ = v.BindEnv("debug", "FALCON_MCP_DEBUG")
+	_ = v.BindEnv("log_format", "FALCON_MCP_LOG_FORMAT")
+	_ = v.BindEnv("host", "FALCON_MCP_HOST")
+	_ = v.BindEnv("port", "FALCON_MCP_PORT")
 	_ = v.BindEnv("hosted", "FALCON_MCP_HOSTED")
 	_ = v.BindEnv("dynamic", "FALCON_MCP_DYNAMIC")
 	_ = v.BindEnv("stateless_http", "FALCON_MCP_STATELESS_HTTP")
 	_ = v.BindEnv("api_key", "FALCON_MCP_API_KEY")
 	_ = v.BindEnv("modules", "FALCON_MCP_MODULES")
-	_ = v.BindEnv("proxy", "FALCON_MCP_PROXY")
+	// FALCON_MCP_PROXY is this server's own name; FALCON_PROXY_URL is the upstream
+	// falcon-mcp alias, accepted so existing Python configs keep working.
+	_ = v.BindEnv("proxy", "FALCON_MCP_PROXY", "FALCON_PROXY_URL")
 	_ = v.BindEnv("keep_alive", "FALCON_MCP_KEEP_ALIVE")
+	_ = v.BindEnv("api_response_timeout", "FALCON_MCP_API_RESPONSE_TIMEOUT")
+	_ = v.BindEnv("http_idle_timeout", "FALCON_MCP_HTTP_IDLE_TIMEOUT")
+	_ = v.BindEnv("max_idle_conns_per_host", "FALCON_MCP_MAX_IDLE_CONNS_PER_HOST")
 }
 
 // newViper returns a viper instance with the INI codec registered. viper v1.20+
@@ -228,7 +265,7 @@ func resolve(v *viper.Viper) config.Config {
 		MemberCID:     v.GetString("member_cid"),
 		Proxy:         v.GetString("proxy"),
 		Transport:     v.GetString("transport"),
-		HTTPAddr:      v.GetString("http_addr"),
+		HTTPAddr:      net.JoinHostPort(v.GetString("host"), strconv.Itoa(v.GetInt("port"))),
 		Hosted:        v.GetBool("hosted"),
 		Dynamic:       v.GetBool("dynamic"),
 		StatelessHTTP: v.GetBool("stateless_http"),
@@ -236,6 +273,10 @@ func resolve(v *viper.Viper) config.Config {
 		Modules:       v.GetStringSlice("modules"),
 		UserAgent:     v.GetString("user_agent"),
 		KeepAlive:     v.GetDuration("keep_alive"),
+
+		ResponseHeaderTimeout: v.GetDuration("api_response_timeout"),
+		IdleTimeout:           v.GetDuration("http_idle_timeout"),
+		MaxIdleConnsPerHost:   v.GetInt("max_idle_conns_per_host"),
 	}
 }
 
