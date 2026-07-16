@@ -33,7 +33,14 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	switch cfg.Transport {
 	case "stdio":
 		slog.Info("falcon-mcp starting", "transport", "stdio")
-		return srv.Run(ctx, &mcp.StdioTransport{})
+		// Ctrl+C cancels ctx: a clean shutdown, not an error. Swallow
+		// context.Canceled so it isn't surfaced as a run failure, mirroring
+		// serveHTTP's clean-shutdown semantics.
+		if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
+		slog.Info("falcon-mcp shutdown complete")
+		return nil
 	case "streamable-http":
 		opts := &mcp.StreamableHTTPOptions{Stateless: cfg.StatelessHTTP}
 		h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv.MCP() }, opts)

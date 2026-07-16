@@ -32,6 +32,9 @@ var (
 	cliVersion = fmt.Sprintf("%s %s <commit: %s>", progName, version.Version, version.Commit)
 )
 
+// ErrInvalidLogFormat is returned when --log-format is not "text" or "json".
+var ErrInvalidLogFormat = errors.New("cli: invalid log format")
+
 // Execute is the process entry point for falcon-mcp. It derives a context
 // cancelled on os.Interrupt (so the http/sse transports drain gracefully on
 // Ctrl+C), builds the root command, and runs it. preRunE installs the logger,
@@ -80,6 +83,9 @@ Configuration precedence is flag > env > config file > default.`,
   # enable only specific modules
   falcon-mcp -m detections,intel,hosts`,
 		Version: cliVersion,
+		// A serve/config failure is not a usage error; don't dump the flag menu
+		// on RunE errors. Errors themselves are still printed once by cobra.
+		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := preRunE(cmd)
 			cfg = c
@@ -118,7 +124,11 @@ func preRunE(cmd *cobra.Command) (*config.Config, error) {
 	if v.GetBool("debug") {
 		level = slog.LevelDebug
 	}
-	slog.SetDefault(newLogger(level, v.GetString("log_format")))
+	logFormat := v.GetString("log_format")
+	if logFormat != "text" && logFormat != "json" {
+		return nil, fmt.Errorf("%w %q", ErrInvalidLogFormat, logFormat)
+	}
+	slog.SetDefault(newLogger(level, logFormat))
 
 	cfgFile, _ := cmd.Flags().GetString("config")
 	if err := readConfigFile(v, cfgFile); err != nil {
