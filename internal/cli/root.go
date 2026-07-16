@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -35,15 +34,11 @@ var (
 // ErrInvalidLogFormat is returned when --log-format is not "text" or "json".
 var ErrInvalidLogFormat = errors.New("cli: invalid log format")
 
-// Execute is the process entry point for falcon-mcp. It derives a context
-// cancelled on os.Interrupt (so the http/sse transports drain gracefully on
-// Ctrl+C), builds the root command, and runs it. preRunE installs the logger,
-// at debug level when --debug is set and INFO otherwise.
+// Execute is the process entry point for falcon-mcp. It builds the root command
+// and runs it. preRunE installs the logger, at debug level when --debug is set
+// and INFO otherwise; serve derives the os.Interrupt-cancelled context.
 func Execute() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	return newRootCmd().ExecuteContext(ctx)
+	return newRootCmd().ExecuteContext(context.Background())
 }
 
 // newLogger returns the process's logger emitting to stderr at level. format

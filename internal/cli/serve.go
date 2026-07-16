@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,8 +20,12 @@ import (
 
 // serve builds the Falcon client and MCP server, then serves over the
 // configured transport (stdio, streamable-http, or sse) until ctx is cancelled.
-// The server is closed when serve returns.
+// It derives a context cancelled on os.Interrupt so the transports drain
+// gracefully on Ctrl+C. The server is closed when serve returns.
 func serve(ctx context.Context, cfg *config.Config) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
+
 	api, err := falconapi.New(ctx, cfg)
 	if err != nil {
 		return err
