@@ -83,9 +83,6 @@ Configuration precedence is flag > env > config file > default.`,
   # enable only specific modules
   falcon-mcp -m detections,intel,hosts`,
 		Version: cliVersion,
-		// A serve/config failure is not a usage error; don't dump the flag menu
-		// on RunE errors. Errors themselves are still printed once by cobra.
-		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			c, err := preRunE(cmd)
 			cfg = c
