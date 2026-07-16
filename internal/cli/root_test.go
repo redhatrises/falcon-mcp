@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -492,6 +493,35 @@ func TestExecuteProxyInvalidErrors(t *testing.T) {
 	}
 	if cfg != nil {
 		t.Fatal("cfg should be nil when config invalid")
+	}
+}
+
+func TestExecuteLogFormatInvalidErrors(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, []string{"--log-format", "yaml"})
+	if !errors.Is(err, ErrInvalidLogFormat) {
+		t.Fatalf("err = %v, want ErrInvalidLogFormat", err)
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when log format invalid")
+	}
+}
+
+func TestExecuteLogFormatJSONAccepted(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	orig := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(orig) })
+
+	cfg, err := resolveArgs(t, []string{"--log-format", "json"})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("cfg should be non-nil for valid --log-format json")
 	}
 }
 
