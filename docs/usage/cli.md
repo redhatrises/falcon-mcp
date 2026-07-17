@@ -75,6 +75,45 @@ falcon-mcp --help
 | `--member-cid` | `FALCON_MEMBER_CID` | — | Flight Control child CID |
 | `--proxy` | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy for outbound API connections |
 | `--dynamic` | `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools instead of all module tools to reduce context usage |
+| `--health-addr` | `FALCON_MCP_HEALTH_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/healthz` liveness probe. Empty disables it. |
+| `--metrics-addr` | `FALCON_MCP_METRICS_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/metrics` (expvar) endpoint. Empty disables it. |
+| `--pprof-addr` | `FALCON_MCP_PPROF_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/debug/pprof/` profiling endpoints. Empty disables it. |
+
+## Operational Endpoints
+
+`falcon-mcp` can expose three optional HTTP endpoints for liveness probing,
+metrics, and profiling. All three are **disabled by default** and **independent
+of the MCP transport** — each is enabled only by supplying its own address, and
+each works under any transport, including `stdio`.
+
+| Endpoint | Flag / Env | Path | Purpose |
+|----------|------------|------|---------|
+| Health | `--health-addr` / `FALCON_MCP_HEALTH_ADDR` | `/healthz` | Liveness probe. Returns `200 ok` when the process is up. It does **not** check that CrowdStrike APIs are reachable. |
+| Metrics | `--metrics-addr` / `FALCON_MCP_METRICS_ADDR` | `/metrics` | Go runtime metrics (`memstats`) as JSON via the stdlib `expvar` package. |
+| Profiling | `--pprof-addr` / `FALCON_MCP_PPROF_ADDR` | `/debug/pprof/` | `net/http/pprof` profiling (heap, CPU, goroutine, trace). |
+
+Each endpoint binds a **separate listener** so operators can expose, firewall,
+and scope them individually — for example, exposing `/healthz` to an
+orchestrator's probe while keeping profiling on loopback only.
+
+```bash
+# Health probe reachable by the orchestrator; profiling loopback-only.
+falcon-mcp --transport streamable-http \
+  --health-addr 0.0.0.0:6061 \
+  --pprof-addr 127.0.0.1:6060
+```
+
+!!! warning "Metrics and profiling are debugging tools"
+    The `/metrics` and `/debug/pprof/` endpoints are intended for **debugging
+    and troubleshooting only**, not for continuous production exposure.
+    `/debug/pprof/heap` dumps live process memory, and `/debug/pprof/profile`
+    blocks the process while it captures a CPU profile. These endpoints are
+    **unauthenticated**.
+
+    Prefer binding `--pprof-addr` and `--metrics-addr` to a loopback address
+    (`127.0.0.1:PORT`) and reaching them through an SSH tunnel or
+    `kubectl port-forward`. If you must use a non-loopback address, **configure
+    firewall rules** to restrict access to trusted hosts only.
 
 ## Using as a Library
 
