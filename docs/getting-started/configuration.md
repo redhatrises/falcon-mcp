@@ -32,6 +32,9 @@ Configure your CrowdStrike API credentials and server settings using environment
 | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names |
 | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy URL for outbound API connections |
+| `FALCON_MCP_HEALTH_ADDR` | — | `host:port` for the `/healthz` liveness probe; empty disables it. See [Operational Endpoints](/falcon-mcp/usage/cli/#operational-endpoints). |
+| `FALCON_MCP_METRICS_ADDR` | — | `host:port` for the `/metrics` (expvar) endpoint; empty disables it. Debugging only — bind to loopback. |
+| `FALCON_MCP_PPROF_ADDR` | — | `host:port` for the `/debug/pprof/` profiling endpoints; empty disables it. Debugging only — bind to loopback. |
 
 ## Using a .env File
 
@@ -71,6 +74,11 @@ FALCON_BASE_URL=https://api.crowdstrike.com
 #FALCON_MCP_TOOLS=falcon_search_detections,falcon_search_hosts
 #FALCON_MCP_EXCLUDE_TOOLS=falcon_delete_host_groups
 #FALCON_PROXY_URL=http://proxy.corp.example.com:8080
+
+# Operational Endpoints (debugging; disabled when unset — see docs/usage/cli.md)
+#FALCON_MCP_HEALTH_ADDR=127.0.0.1:6061
+#FALCON_MCP_METRICS_ADDR=127.0.0.1:6062
+#FALCON_MCP_PPROF_ADDR=127.0.0.1:6060
 ```
 
 ## Module Selection
