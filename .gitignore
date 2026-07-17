@@ -26,21 +26,17 @@ go.work.sum
 bin/
 dist/
 
-# Environments
-.env
-env.bak/
+# Compiled binary (default `make build` output)
+/falcon-mcp
 
-# Local planning / scratch docs
-#  Implementation plans, design scratch, and prompt sequences live here so they
-#  stay OUT of docs/ (which is published and markdown-linted by CI).
-/plans/
-
-# Local testing ground (agent-level tests, claude -p harnesses, scratch scripts)
+# Local scratch: agent-test harnesses, planning docs (per falcon-mcp-dev skill)
 /local/
+/plans/
 
 # AI Assistants
 #  Various AI coding assistants create local cache, settings, and conversation history
 #  These contain user-specific data and should not be committed to version control
+.env
 .cursorignore
 .cursorindexingignore
 .claude/
@@ -56,3 +52,6 @@ CLAUDE.md
 .clinerules/
 .mcp.json
 memory-bank/
+
+# Playwright MCP screenshots
+.playwright-mcp/
