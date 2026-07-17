@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/data_protection"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/detections"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/discover"
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/intel"
@@ -21,6 +22,7 @@ func moduleFactories() []registry.Factory {
 	return []registry.Factory{
 		data_protection.Factory,
 		detections.Factory,
+		discover.Factory,
 		hostgroups.Factory,
 		hosts.Factory,
 		intel.Factory,
