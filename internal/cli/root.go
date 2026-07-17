@@ -168,6 +168,9 @@ func registerFlags(cmd *cobra.Command) {
 	f.StringP("transport", "t", "stdio", "transport: stdio, streamable-http, or sse.")
 	f.String("host", "127.0.0.1", "host to bind for the http and sse transports")
 	f.IntP("port", "p", 8000, "port to listen on for the http and sse transports")
+	f.String("health-addr", "", "address for the /healthz endpoint; empty disables")
+	f.String("metrics-addr", "", "address for the /metrics endpoint; empty disables")
+	f.String("pprof-addr", "", "address for /debug/pprof profiling; empty disables")
 	f.Bool("hosted", false, "reserved; logs a warning and proceeds as single-credential (not yet implemented)")
 	f.String("user-agent", "", "Custom user agent appended to API requests")
 	f.Bool("dynamic", false, "expose only the 3 meta-tools (falcon_search_tools/execute_tool/list_enabled_modules) instead of all tools")
@@ -230,6 +233,9 @@ func bindEnv(v *viper.Viper) {
 	_ = v.BindEnv("log_format", "FALCON_MCP_LOG_FORMAT")
 	_ = v.BindEnv("host", "FALCON_MCP_HOST")
 	_ = v.BindEnv("port", "FALCON_MCP_PORT")
+	_ = v.BindEnv("health_addr", "FALCON_MCP_HEALTH_ADDR")
+	_ = v.BindEnv("metrics_addr", "FALCON_MCP_METRICS_ADDR")
+	_ = v.BindEnv("pprof_addr", "FALCON_MCP_PPROF_ADDR")
 	_ = v.BindEnv("hosted", "FALCON_MCP_HOSTED")
 	_ = v.BindEnv("dynamic", "FALCON_MCP_DYNAMIC")
 	_ = v.BindEnv("stateless_http", "FALCON_MCP_STATELESS_HTTP")
@@ -268,6 +274,9 @@ func resolve(v *viper.Viper) config.Config {
 		Proxy:         v.GetString("proxy"),
 		Transport:     v.GetString("transport"),
 		HTTPAddr:      net.JoinHostPort(v.GetString("host"), strconv.Itoa(v.GetInt("port"))),
+		HealthAddr:    v.GetString("health_addr"),
+		MetricsAddr:   v.GetString("metrics_addr"),
+		PprofAddr:     v.GetString("pprof_addr"),
 		Hosted:        v.GetBool("hosted"),
 		Dynamic:       v.GetBool("dynamic"),
 		StatelessHTTP: v.GetBool("stateless_http"),
