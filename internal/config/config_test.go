@@ -388,6 +388,60 @@ func TestLoad(t *testing.T) {
 			in:      Config{ClientID: validID, ClientSecret: validSecret, Proxy: "http://[::1"},
 			wantErr: ErrInvalidProxy,
 		},
+		{
+			name: "ops addrs empty stay disabled",
+			in:   valid,
+			check: func(t *testing.T, c *Config) {
+				if c.HealthAddr != "" || c.MetricsAddr != "" || c.PprofAddr != "" {
+					t.Errorf("ops addrs = %q/%q/%q, want all empty (disabled)", c.HealthAddr, c.MetricsAddr, c.PprofAddr)
+				}
+			},
+		},
+		{
+			name: "valid ops addrs pass through",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, HealthAddr: "127.0.0.1:6061", MetricsAddr: ":6062", PprofAddr: "localhost:6063"},
+			check: func(t *testing.T, c *Config) {
+				if c.HealthAddr != "127.0.0.1:6061" {
+					t.Errorf("healthAddr = %q, want 127.0.0.1:6061", c.HealthAddr)
+				}
+				if c.MetricsAddr != ":6062" {
+					t.Errorf("metricsAddr = %q, want :6062", c.MetricsAddr)
+				}
+				if c.PprofAddr != "localhost:6063" {
+					t.Errorf("pprofAddr = %q, want localhost:6063", c.PprofAddr)
+				}
+			},
+		},
+		{
+			name:    "malformed health addr rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, HealthAddr: "bad:addr:99"},
+			wantErr: ErrInvalidDebugAddr,
+		},
+		{
+			name:    "malformed metrics addr rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, MetricsAddr: "bad:addr:99"},
+			wantErr: ErrInvalidDebugAddr,
+		},
+		{
+			name:    "malformed pprof addr rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, PprofAddr: "bad:addr:99"},
+			wantErr: ErrInvalidDebugAddr,
+		},
+		{
+			name:      "malformed ops addr names the flag",
+			in:        Config{ClientID: validID, ClientSecret: validSecret, PprofAddr: "bad:addr:99"},
+			errSubstr: "pprof-addr",
+		},
+		{
+			name:    "out-of-range ops port rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, HealthAddr: "127.0.0.1:99999999"},
+			wantErr: ErrInvalidDebugAddr,
+		},
+		{
+			name:    "non-numeric ops port rejected",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, MetricsAddr: "localhost:http"},
+			wantErr: ErrInvalidDebugAddr,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

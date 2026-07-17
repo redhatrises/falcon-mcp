@@ -615,6 +615,86 @@ func TestExecuteMissingCredsErrors(t *testing.T) {
 	}
 }
 
+func TestExecuteOpsAddrFlags(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, []string{
+		"--health-addr", "127.0.0.1:6061",
+		"--metrics-addr", "127.0.0.1:6062",
+		"--pprof-addr", "127.0.0.1:6063",
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.HealthAddr != "127.0.0.1:6061" {
+		t.Errorf("HealthAddr = %q, want 127.0.0.1:6061 from --health-addr", cfg.HealthAddr)
+	}
+	if cfg.MetricsAddr != "127.0.0.1:6062" {
+		t.Errorf("MetricsAddr = %q, want 127.0.0.1:6062 from --metrics-addr", cfg.MetricsAddr)
+	}
+	if cfg.PprofAddr != "127.0.0.1:6063" {
+		t.Errorf("PprofAddr = %q, want 127.0.0.1:6063 from --pprof-addr", cfg.PprofAddr)
+	}
+}
+
+func TestExecuteOpsAddrEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_HEALTH_ADDR", "127.0.0.1:7061")
+	t.Setenv("FALCON_MCP_METRICS_ADDR", "127.0.0.1:7062")
+	t.Setenv("FALCON_MCP_PPROF_ADDR", "127.0.0.1:7063")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.HealthAddr != "127.0.0.1:7061" {
+		t.Errorf("HealthAddr = %q, want 127.0.0.1:7061 from FALCON_MCP_HEALTH_ADDR", cfg.HealthAddr)
+	}
+	if cfg.MetricsAddr != "127.0.0.1:7062" {
+		t.Errorf("MetricsAddr = %q, want 127.0.0.1:7062 from FALCON_MCP_METRICS_ADDR", cfg.MetricsAddr)
+	}
+	if cfg.PprofAddr != "127.0.0.1:7063" {
+		t.Errorf("PprofAddr = %q, want 127.0.0.1:7063 from FALCON_MCP_PPROF_ADDR", cfg.PprofAddr)
+	}
+}
+
+func TestExecuteOpsAddrDefaultsEmpty(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.HealthAddr != "" || cfg.MetricsAddr != "" || cfg.PprofAddr != "" {
+		t.Errorf("ops addrs = %q/%q/%q, want all empty (disabled) by default", cfg.HealthAddr, cfg.MetricsAddr, cfg.PprofAddr)
+	}
+}
+
+func TestExecuteOpsAddrInvalidErrors(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, []string{"--pprof-addr", "bad:addr:99"})
+	if !errors.Is(err, config.ErrInvalidDebugAddr) {
+		t.Fatalf("err = %v, want ErrInvalidDebugAddr", err)
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when ops addr invalid")
+	}
+}
+
 func TestExecuteMissingConfigFileErrors(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", validID)
 	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
