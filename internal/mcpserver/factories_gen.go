@@ -9,6 +9,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/intel"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/ioc"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
+	sensorusage "github.com/crowdstrike/falcon-mcp/internal/modules/sensor_usage"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/spotlight"
 )
 
@@ -21,6 +22,7 @@ func moduleFactories() []registry.Factory {
 		hosts.Factory,
 		intel.Factory,
 		ioc.Factory,
+		sensorusage.Factory,
 		spotlight.Factory,
 	}
 }
