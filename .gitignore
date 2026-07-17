@@ -25,3 +25,33 @@ go.work.sum
 
 bin/
 dist/
+
+# Compiled binary (default `make build` output)
+/falcon-mcp
+
+# Local scratch: agent-test harnesses, planning docs (per falcon-mcp-dev skill)
+/local/
+/plans/
+
+# AI Assistants
+#  Various AI coding assistants create local cache, settings, and conversation history
+#  These contain user-specific data and should not be committed to version control
+.env
+.cursorignore
+.cursorindexingignore
+.claude/
+CLAUDE.md
+.anthropic/
+.openai/
+.codeium/
+.tabnine/
+.github-copilot/
+.roo/
+.aider/
+.aider*
+.clinerules/
+.mcp.json
+memory-bank/
+
+# Playwright MCP screenshots
+.playwright-mcp/
