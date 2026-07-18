@@ -8,6 +8,7 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client"
 	"github.com/crowdstrike/gofalcon/falcon/client/host_group"
 	gofalconhosts "github.com/crowdstrike/gofalcon/falcon/client/hosts"
+	"github.com/crowdstrike/gofalcon/falcon/client/serverless_vulnerabilities"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	hostsmod "github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/serverless"
 )
 
 // stubHosts and stubGroups are no-op fakes sufficient to register the tools and
@@ -49,13 +51,21 @@ func (stubGroups) PerformGroupAction(*host_group.PerformGroupActionParams, ...ho
 	return &host_group.PerformGroupActionOK{Payload: &models.HostGroupsRespV1{}}, nil
 }
 
+type stubServerless struct{}
+
+func (stubServerless) GetCombinedVulnerabilitiesSARIF(*serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, ...serverless_vulnerabilities.ClientOption) (any, error) {
+	// The module decodes the raw response body; return the live-shape SARIF
+	// envelope (resources is a single object whose runs field is the payload).
+	return []byte(`{"resources":{"version":"2.1.0","runs":[]},"errors":[]}`), nil
+}
+
 // connectTestServer registers the host and host-group modules on a server and
 // returns a connected in-memory client session.
 func connectTestServer(t *testing.T) *mcp.ClientSession {
 	t.Helper()
 	srv := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp-test", Version: "test"}, nil)
 	reg := base.ServerRegistrar(srv)
-	for _, m := range []base.Module{&hostsmod.Module{API: stubHosts{}, Concurrency: 4, Logger: slog.New(slog.DiscardHandler)}, &hostgroups.Module{API: stubGroups{}, Logger: slog.New(slog.DiscardHandler)}} {
+	for _, m := range []base.Module{&hostsmod.Module{API: stubHosts{}, Concurrency: 4, Logger: slog.New(slog.DiscardHandler)}, &hostgroups.Module{API: stubGroups{}, Logger: slog.New(slog.DiscardHandler)}, &serverless.Module{API: stubServerless{}, Logger: slog.New(slog.DiscardHandler)}} {
 		m.RegisterTools(reg)
 		m.RegisterResources(srv)
 	}
@@ -90,6 +100,7 @@ func TestToolsAndResourcesAreRegistered(t *testing.T) {
 		"falcon_search_host_groups": false, "falcon_search_host_group_members": false,
 		"falcon_create_host_group": false, "falcon_update_host_group": false,
 		"falcon_delete_host_groups": false, "falcon_perform_host_group_action": false,
+		"falcon_search_serverless_vulnerabilities": false,
 	}
 	for _, tool := range tools.Tools {
 		if _, ok := want[tool.Name]; ok {
@@ -113,8 +124,9 @@ func TestToolsAndResourcesAreRegistered(t *testing.T) {
 		gotNameForURI[r.URI] = r.Name
 	}
 	wantResources := map[string]string{
-		"falcon://hosts/search/fql-guide":       "falcon_search_hosts_fql_guide",
-		"falcon://host-groups/search/fql-guide": "falcon_search_host_groups_fql_guide",
+		"falcon://hosts/search/fql-guide":               "falcon_search_hosts_fql_guide",
+		"falcon://host-groups/search/fql-guide":         "falcon_search_host_groups_fql_guide",
+		"falcon://serverless/vulnerabilities/fql-guide": "falcon_serverless_vulnerabilities_fql_guide",
 	}
 	for uri, wantName := range wantResources {
 		name, ok := gotNameForURI[uri]
