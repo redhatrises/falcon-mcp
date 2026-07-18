@@ -92,11 +92,16 @@ func resolutionHint(required []string) string {
 			"CrowdStrike Falcon console.", strings.Join(required, ", "))
 }
 
-// payloadErrors reflectively reads resp.Payload.Errors ([]*models.MsaAPIError)
-// from any gofalcon *OK response. Every generated *OK type has a Payload
-// pointer whose target carries an Errors field, but the types are distinct per
-// operation with no shared interface, so reflection lets one funnel serve all
-// operations. It returns nil safely when the field or payload is absent.
+// payloadErrors reflectively reads resp.Payload.Errors from any gofalcon *OK
+// response and normalizes it to []*models.MsaAPIError for AssertNoError. Every
+// generated *OK type has a Payload pointer whose target carries an Errors slice,
+// but the element type varies per operation (models.MsaAPIError,
+// models.ResponsesError, models.PolicymanagerError, ...) with no shared
+// interface. They share the Code (*int32) and Message (*string) fields, so the
+// elements are read reflectively rather than type-asserted against a single
+// concrete type — a hardcoded assertion silently dropped errors on any operation
+// whose payload used a different error type. It returns nil safely when the
+// field or payload is absent.
 func payloadErrors(resp any) []*models.MsaAPIError {
 	if resp == nil {
 		return nil
@@ -125,12 +130,76 @@ func payloadErrors(resp any) []*models.MsaAPIError {
 		return nil
 	}
 	errsField := payload.FieldByName("Errors")
-	if !errsField.IsValid() {
+	if !errsField.IsValid() || errsField.Kind() != reflect.Slice {
 		return nil
 	}
-	errs, ok := errsField.Interface().([]*models.MsaAPIError)
-	if !ok {
+	// Fast path: the error slice is already the type AssertNoError expects.
+	if errs, ok := errsField.Interface().([]*models.MsaAPIError); ok {
+		return errs
+	}
+	// General path: read Code/Message off each element regardless of its concrete
+	// type, so operations whose payloads use ResponsesError/PolicymanagerError/etc.
+	// are surfaced too. Message is always non-nil: gofalcon's AssertNoError
+	// dereferences it unconditionally, so a nil here would panic the tool call.
+	out := make([]*models.MsaAPIError, 0, errsField.Len())
+	for i := 0; i < errsField.Len(); i++ {
+		elem := errsField.Index(i)
+		for elem.Kind() == reflect.Pointer {
+			if elem.IsNil() {
+				elem = reflect.Value{}
+				break
+			}
+			elem = elem.Elem()
+		}
+		if !elem.IsValid() || elem.Kind() != reflect.Struct {
+			continue
+		}
+		msg := stringField(elem, "Message")
+		out = append(out, &models.MsaAPIError{
+			Code:    int32Field(elem, "Code"),
+			Message: &msg,
+		})
+	}
+	return out
+}
+
+// int32Field returns the int32 value of the named field on struct value v as a
+// pointer, or nil when the field is absent or not int32-shaped. It accepts both
+// pointer (*int32) and value (int32) fields, since gofalcon error types vary.
+func int32Field(v reflect.Value, name string) *int32 {
+	f := v.FieldByName(name)
+	if !f.IsValid() {
 		return nil
 	}
-	return errs
+	if f.Kind() == reflect.Pointer {
+		if f.IsNil() {
+			return nil
+		}
+		f = f.Elem()
+	}
+	if code, ok := f.Interface().(int32); ok {
+		return &code
+	}
+	return nil
+}
+
+// stringField returns the string value of the named field on struct value v, or
+// "" when the field is absent, nil, or not string-shaped. It accepts both
+// pointer (*string) and value (string) fields, since gofalcon error types vary.
+// It never returns a form that would make a downstream *Message deref panic.
+func stringField(v reflect.Value, name string) string {
+	f := v.FieldByName(name)
+	if !f.IsValid() {
+		return ""
+	}
+	if f.Kind() == reflect.Pointer {
+		if f.IsNil() {
+			return ""
+		}
+		f = f.Elem()
+	}
+	if s, ok := f.Interface().(string); ok {
+		return s
+	}
+	return ""
 }
