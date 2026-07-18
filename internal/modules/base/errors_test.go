@@ -87,6 +87,78 @@ func TestAPIError_PayloadErrors(t *testing.T) {
 	}
 }
 
+// respErrOK and policyErrOK mirror gofalcon *OK payloads whose Errors slices use
+// error element types other than MsaAPIError (ResponsesError for the
+// data_protection query responses, PolicymanagerError for its entity-get
+// responses). They guard the generalized payloadErrors path: a hardcoded
+// []*models.MsaAPIError assertion silently dropped these.
+type respErrPayload struct {
+	Errors    []*models.ResponsesError
+	Resources []string
+}
+type respErrOK struct{ Payload *respErrPayload }
+
+type policyErrPayload struct {
+	Errors    []*models.PolicymanagerError
+	Resources []string
+}
+type policyErrOK struct{ Payload *policyErrPayload }
+
+func TestAPIError_PayloadErrors_NonMsaTypes(t *testing.T) {
+	t.Parallel()
+	code := int32(500)
+	msg := "partial fetch failed"
+
+	respErr := &respErrOK{Payload: &respErrPayload{Errors: []*models.ResponsesError{{Code: &code, Message: &msg}}}}
+	if e := APIError(nil, respErr, Scope{Name: "Data Protection", Read: true}); e == nil {
+		t.Fatal("APIError with ResponsesError payload = nil, want the embedded error surfaced")
+	}
+
+	polErr := &policyErrOK{Payload: &policyErrPayload{Errors: []*models.PolicymanagerError{{Code: &code, Message: &msg}}}}
+	if e := APIError(nil, polErr, Scope{Name: "Data Protection", Read: true}); e == nil {
+		t.Fatal("APIError with PolicymanagerError payload = nil, want the embedded error surfaced")
+	}
+
+	// A populated-but-empty-message error slice still counts as an error; an
+	// empty slice is clean success.
+	clean := &respErrOK{Payload: &respErrPayload{Resources: []string{"a"}}}
+	if e := APIError(nil, clean, Scope{Name: "Data Protection", Read: true}); e != nil {
+		t.Fatalf("APIError with no embedded errors = %+v, want nil", e)
+	}
+}
+
+// valErrPayload mirrors a gofalcon error type whose Code/Message are plain
+// value fields (not pointers), e.g. models.AccessscopemanagerV1Error. The
+// generalized path must read these without panicking.
+type valErr struct {
+	Code    int32
+	Message string
+}
+type valErrPayload struct {
+	Errors    []valErr
+	Resources []string
+}
+type valErrOK struct{ Payload *valErrPayload }
+
+func TestAPIError_PayloadErrors_NonPointerAndNilFields(t *testing.T) {
+	t.Parallel()
+
+	// Non-pointer Code/Message fields must not panic and must surface the error.
+	valResp := &valErrOK{Payload: &valErrPayload{Errors: []valErr{{Code: 500, Message: "value-typed boom"}}}}
+	if e := APIError(nil, valResp, Scope{Name: "Data Protection", Read: true}); e == nil {
+		t.Fatal("APIError with value-typed Code/Message = nil, want the embedded error surfaced")
+	}
+
+	// A pointer-shaped error with a nil Message must not panic (gofalcon's
+	// AssertNoError dereferences Message unconditionally).
+	code := int32(500)
+	nilMsg := &respErrOK{Payload: &respErrPayload{Errors: []*models.ResponsesError{{Code: &code}}}}
+	e := APIError(nil, nilMsg, Scope{Name: "Data Protection", Read: true})
+	if e == nil {
+		t.Fatal("APIError with nil Message pointer = nil, want the embedded error surfaced")
+	}
+}
+
 func TestAPIError_ReflectiveNilGuards(t *testing.T) {
 	t.Parallel()
 	// nil response, no transport error: nothing to report.
