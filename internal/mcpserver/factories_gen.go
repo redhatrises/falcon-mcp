@@ -3,6 +3,7 @@
 package mcpserver
 
 import (
+	"github.com/crowdstrike/falcon-mcp/internal/modules/data_protection"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/detections"
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
@@ -17,6 +18,7 @@ import (
 // directory name for deterministic module ordering.
 func moduleFactories() []registry.Factory {
 	return []registry.Factory{
+		data_protection.Factory,
 		detections.Factory,
 		hostgroups.Factory,
 		hosts.Factory,
