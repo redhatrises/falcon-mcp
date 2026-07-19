@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/cases"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/correlation_rules"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/custom_ioa"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/data_protection"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/detections"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/discover"
@@ -30,6 +31,7 @@ func moduleFactories() []registry.Factory {
 	return []registry.Factory{
 		cases.Factory,
 		correlation_rules.Factory,
+		custom_ioa.Factory,
 		data_protection.Factory,
 		detections.Factory,
 		discover.Factory,
