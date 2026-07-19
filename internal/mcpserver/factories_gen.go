@@ -3,6 +3,7 @@
 package mcpserver
 
 import (
+	"github.com/crowdstrike/falcon-mcp/internal/modules/cases"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/correlation_rules"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/data_protection"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/detections"
@@ -26,6 +27,7 @@ import (
 // directory name for deterministic module ordering.
 func moduleFactories() []registry.Factory {
 	return []registry.Factory{
+		cases.Factory,
 		correlation_rules.Factory,
 		data_protection.Factory,
 		detections.Factory,
