@@ -33,12 +33,12 @@ import (
 const modulePath = "github.com/crowdstrike/falcon-mcp"
 
 // excluded names the non-module packages under internal/modules so the scan
-// skips them. These provide the module contract (base, registry) or a distinct
-// meta layer (dynamic) rather than a tool module with a Factory.
+// skips them. These provide the module contract (base defines the Module
+// interface and toolkit; registry defines the Factory type and assembly) rather
+// than a tool module with a Factory.
 var excluded = map[string]bool{
 	"base":     true,
 	"registry": true,
-	"dynamic":  true,
 }
 
 // module is one discovered tool-module package: its directory name (used for
