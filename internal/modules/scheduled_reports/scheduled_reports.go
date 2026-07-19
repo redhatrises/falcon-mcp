@@ -23,6 +23,7 @@
 package scheduledreports
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -405,20 +406,35 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 			"Please configure the scheduled report to use CSV or JSON format instead", errUnsupportedFormat)
 	}
 
-	// JSON format: the body is a MsaReplyMetaOnly-style envelope carrying a
-	// "resources" array. Return that array verbatim, matching the Python module.
+	// JSON format: the download endpoint returns the report rows as a bare
+	// top-level JSON array (e.g. `[{...},{...}]`, or `[]` when empty) — not a
+	// {"resources": [...]} envelope. Return that array verbatim as Resources.
+	// Some endpoints/versions may wrap the rows in an object envelope, so an
+	// object body is unwrapped defensively.
 	if isJSONContentType(payload.ContentType) {
-		var envelope struct {
-			Resources json.RawMessage `json:"resources"`
+		trimmed := bytes.TrimSpace(payload.Body)
+		switch {
+		case len(trimmed) == 0:
+			return nil, DownloadResult{Format: "json", Resources: json.RawMessage(`[]`)}, nil
+		case trimmed[0] == '[':
+			var rows json.RawMessage
+			if err := json.Unmarshal(trimmed, &rows); err != nil {
+				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", errInvalidInput)
+			}
+			return nil, DownloadResult{Format: "json", Resources: rows}, nil
+		default:
+			var envelope struct {
+				Resources json.RawMessage `json:"resources"`
+			}
+			if err := json.Unmarshal(trimmed, &envelope); err != nil {
+				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", errInvalidInput)
+			}
+			result := DownloadResult{Format: "json", Resources: envelope.Resources}
+			if len(result.Resources) == 0 {
+				result.Resources = json.RawMessage(`[]`)
+			}
+			return nil, result, nil
 		}
-		if err := json.Unmarshal(payload.Body, &envelope); err != nil {
-			return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", errInvalidInput)
-		}
-		result := DownloadResult{Format: "json", Resources: envelope.Resources}
-		if len(result.Resources) == 0 {
-			result.Resources = json.RawMessage(`[]`)
-		}
-		return nil, result, nil
 	}
 
 	// Otherwise treat the body as CSV/text and return it verbatim.
