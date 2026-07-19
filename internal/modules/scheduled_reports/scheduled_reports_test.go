@@ -341,8 +341,11 @@ func TestDownloadReportExecutionCSV(t *testing.T) {
 func TestDownloadReportExecutionJSON(t *testing.T) {
 	t.Parallel()
 
+	// The live download endpoint returns the report rows as a bare top-level
+	// JSON array, not a {"resources": [...]} envelope (verified against a real
+	// tenant). The handler must pass that array through verbatim.
 	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte(`{"resources":[{"a":1},{"a":2}],"meta":{}}`),
+		Body:        []byte(`[{"a":1},{"a":2}]`),
 		ContentType: "application/json; charset=utf-8",
 	}}
 	m := newModule(&fakeReports{}, e)
@@ -355,18 +358,62 @@ func TestDownloadReportExecutionJSON(t *testing.T) {
 		t.Fatalf("expected json format, got %q", out.Format)
 	}
 	if got := strings.ReplaceAll(string(out.Resources), " ", ""); got != `[{"a":1},{"a":2}]` {
-		t.Fatalf("resources array not extracted: %s", out.Resources)
+		t.Fatalf("resources array not returned verbatim: %s", out.Resources)
 	}
 	if out.Raw != "" {
 		t.Fatalf("raw should be empty for json format, got %q", out.Raw)
 	}
 }
 
-func TestDownloadReportExecutionJSONEmptyResources(t *testing.T) {
+func TestDownloadReportExecutionJSONEmptyArray(t *testing.T) {
 	t.Parallel()
 
+	// An execution with no rows downloads as a bare empty array `[]` (verified
+	// live). It must succeed and surface an empty resources array, not error.
 	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte(`{"meta":{}}`),
+		Body:        []byte(`[]`),
+		ContentType: "application/json",
+	}}
+	m := newModule(&fakeReports{}, e)
+
+	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
+	if err != nil {
+		t.Fatalf("downloadReportExecution: %v", err)
+	}
+	if out.Format != "json" || string(out.Resources) != "[]" {
+		t.Fatalf("expected empty json array, got %+v", out)
+	}
+}
+
+func TestDownloadReportExecutionJSONEnvelopeFallback(t *testing.T) {
+	t.Parallel()
+
+	// Defensive: if a version/endpoint ever wraps rows in a {"resources": [...]}
+	// object envelope, the handler unwraps it rather than returning the object.
+	e := &fakeExecutions{dlPayload: &downloadPayload{
+		Body:        []byte(`{"resources":[{"a":1},{"a":2}],"meta":{}}`),
+		ContentType: "application/json",
+	}}
+	m := newModule(&fakeReports{}, e)
+
+	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
+	if err != nil {
+		t.Fatalf("downloadReportExecution: %v", err)
+	}
+	if out.Format != "json" {
+		t.Fatalf("expected json format, got %q", out.Format)
+	}
+	if got := strings.ReplaceAll(string(out.Resources), " ", ""); got != `[{"a":1},{"a":2}]` {
+		t.Fatalf("resources not unwrapped from envelope: %s", out.Resources)
+	}
+}
+
+func TestDownloadReportExecutionJSONEmptyBody(t *testing.T) {
+	t.Parallel()
+
+	// A zero-length JSON body must not error; it maps to an empty array.
+	e := &fakeExecutions{dlPayload: &downloadPayload{
+		Body:        []byte(``),
 		ContentType: "application/json",
 	}}
 	m := newModule(&fakeReports{}, e)
