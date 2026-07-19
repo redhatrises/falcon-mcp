@@ -12,15 +12,14 @@ import (
 )
 
 // excludedModuleDirs names the non-module packages under internal/modules that
-// the aggregator generator skips: they provide the module contract (base,
-// registry) or a distinct meta layer (dynamic) rather than a tool module with a
-// Factory. This must stay in sync with the `excluded` map in
+// the aggregator generator skips: base defines the Module interface and toolkit,
+// registry defines the Factory type and assembly. Neither is a tool module with
+// a Factory. This must stay in sync with the `excluded` map in
 // tools/genmodules/main.go — the two are intentionally duplicated because
 // genmodules is package main and cannot be imported here.
 var excludedModuleDirs = map[string]bool{
 	"base":     true,
 	"registry": true,
-	"dynamic":  true,
 }
 
 // TestModuleFactoriesDiscovered verifies that the generated aggregator wires
