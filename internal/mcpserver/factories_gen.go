@@ -15,6 +15,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/quarantine"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/recon"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
+	scheduledreports "github.com/crowdstrike/falcon-mcp/internal/modules/scheduled_reports"
 	sensorusage "github.com/crowdstrike/falcon-mcp/internal/modules/sensor_usage"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/serverless"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/spotlight"
@@ -35,6 +36,7 @@ func moduleFactories() []registry.Factory {
 		ngsiem.Factory,
 		quarantine.Factory,
 		recon.Factory,
+		scheduledreports.Factory,
 		sensorusage.Factory,
 		serverless.Factory,
 		spotlight.Factory,
