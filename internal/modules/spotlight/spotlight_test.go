@@ -46,6 +46,7 @@ func (f *fakeSpotlight) CombinedQueryVulnerabilities(p *spotlight_vulnerabilitie
 
 func str(s string) *string { return &s }
 func i32(v int32) *int32   { return &v }
+func i64(v int64) *int64   { return &v }
 
 func okResp(vulns ...*models.DomainBaseAPIVulnerabilityV2) *spotlight_vulnerabilities.CombinedQueryVulnerabilitiesOK {
 	return &spotlight_vulnerabilities.CombinedQueryVulnerabilitiesOK{
@@ -57,14 +58,18 @@ func TestSearchVulnerabilitiesSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeSpotlight{resp: okResp(&models.DomainBaseAPIVulnerabilityV2{ID: str("vuln-1")})}
+	f.resp.Payload.Meta = &models.DomainSPAPIQueryMeta{Pagination: &models.DomainSPAPIQueryPaging{Total: i64(120), After: str("cursor-next")}}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchVulnerabilities(context.Background(), nil, SearchInput{Filter: "status:'open'"})
 	if err != nil {
 		t.Fatalf("searchVulnerabilities: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "status:'open'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "status:'open'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.resp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 	if *out.Resources[0].ID != "vuln-1" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
@@ -111,8 +116,11 @@ func TestSearchVulnerabilitiesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchVulnerabilities: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
+	if out.Resources == nil || len(out.Resources) != 0 {
 		t.Fatalf("expected empty non-nil resources, got %+v", out)
+	}
+	if out.Meta != nil {
+		t.Fatalf("Meta = %+v, want nil when the response carries no meta", out.Meta)
 	}
 }
 

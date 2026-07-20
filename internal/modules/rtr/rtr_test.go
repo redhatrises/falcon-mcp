@@ -58,6 +58,7 @@ type fakeRTR struct {
 	filesResp *real_time_response.RTRListFilesV2OK
 	filesErr  error
 
+	deleteResp   *real_time_response.RTRDeleteSessionNoContent
 	deleteErr    error
 	lastDeleteID string
 }
@@ -116,7 +117,10 @@ func (f *fakeRTR) RTRListFilesV2(*real_time_response.RTRListFilesV2Params, ...re
 
 func (f *fakeRTR) RTRDeleteSession(p *real_time_response.RTRDeleteSessionParams, _ ...real_time_response.ClientOption) (*real_time_response.RTRDeleteSessionNoContent, error) {
 	f.lastDeleteID = p.SessionID
-	return &real_time_response.RTRDeleteSessionNoContent{}, f.deleteErr
+	if f.deleteResp == nil {
+		f.deleteResp = &real_time_response.RTRDeleteSessionNoContent{Payload: &models.MsaReplyMetaOnly{}}
+	}
+	return f.deleteResp, f.deleteErr
 }
 
 // fakeAudit is a test double for the rtrAuditAPI interface.
@@ -143,6 +147,7 @@ func TestSearchSessionsTwoStep(t *testing.T) {
 	f := &fakeRTR{
 		listAllResp: &real_time_response.RTRListAllSessionsOK{Payload: &models.DomainListSessionsResponseMsa{
 			Resources: []string{"s1", "s2"},
+			Meta:      &models.MsaMetaInfo{},
 		}},
 		listResp: &real_time_response.RTRListSessionsOK{Payload: &models.DomainSessionResponseWrapper{
 			Resources: []*models.DomainSession{{ID: str("s1"), Hostname: str("H1")}, {ID: str("s2"), Hostname: str("H2")}},
@@ -154,7 +159,7 @@ func TestSearchSessionsTwoStep(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchSessions: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 || out.FilterUsed != "hostname:'H*'" {
+	if len(out.Resources) != 2 || out.FilterUsed != "hostname:'H*'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if f.listCalls != 1 {
@@ -162,6 +167,9 @@ func TestSearchSessionsTwoStep(t *testing.T) {
 	}
 	if len(f.lastIDs) != 2 || f.lastIDs[0] != "s1" {
 		t.Fatalf("expected ids threaded to details call, got %v", f.lastIDs)
+	}
+	if out.Meta != any(f.listAllResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -197,7 +205,7 @@ func TestSearchSessionsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchSessions: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 	if f.listCalls != 0 {
@@ -245,6 +253,7 @@ func TestSearchAuditSessions(t *testing.T) {
 	t.Parallel()
 	f := &fakeAudit{resp: &real_time_response_audit.RTRAuditSessionsOK{Payload: &models.DomainSessionResponseWrapper{
 		Resources: []*models.DomainSession{{ID: str("a1")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := newModule(&fakeRTR{}, f)
 
@@ -252,8 +261,11 @@ func TestSearchAuditSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchAuditSessions: %v", err)
 	}
-	if out.Total != 1 || out.FilterUsed != "created_at:>'now-7d'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "created_at:>'now-7d'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.resp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -279,6 +291,7 @@ func TestAggregateSessions(t *testing.T) {
 	t.Parallel()
 	f := &fakeRTR{aggResp: &real_time_response.RTRAggregateSessionsOK{Payload: &models.MsaAggregatesResponse{
 		Resources: []*models.MsaAggregationResult{{Name: str("rtr_session_aggregation")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := newModule(f, nil)
 
@@ -292,6 +305,9 @@ func TestAggregateSessions(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected one aggregation result, got %+v", out)
+	}
+	if out.Meta != any(f.aggResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	if len(f.lastAgg) != 1 {
 		t.Fatalf("expected one aggregate query in body")
@@ -377,6 +393,7 @@ func TestListSessionFiles(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{filesResp: &real_time_response.RTRListFilesV2OK{Payload: &models.DomainListFilesV2ResponseWrapper{
 			Resources: []*models.DomainFileV2{{ID: str("f1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, nil)
 		_, out, err := m.listSessionFiles(context.Background(), nil, ListFilesInput{SessionID: "s1"})
@@ -385,6 +402,9 @@ func TestListSessionFiles(t *testing.T) {
 		}
 		if out.Total != 1 {
 			t.Fatalf("expected one file, got %+v", out)
+		}
+		if out.Meta != any(f.filesResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
@@ -407,6 +427,7 @@ func TestInitSession(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{initResp: &real_time_response.RTRInitSessionCreated{Payload: &models.DomainInitResponseWrapper{
 			Resources: []*models.DomainInitResponse{{SessionID: str("s1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, nil)
 		_, out, err := m.initSession(context.Background(), nil, InitInput{DeviceID: "aid1"})
@@ -422,6 +443,9 @@ func TestInitSession(t *testing.T) {
 		if f.lastInit.Origin == nil || *f.lastInit.Origin != defaultOrigin {
 			t.Fatalf("expected default origin, got %+v", f.lastInit.Origin)
 		}
+		if out.Meta != any(f.initResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+		}
 	})
 }
 
@@ -429,6 +453,7 @@ func TestPulseSession(t *testing.T) {
 	t.Parallel()
 	f := &fakeRTR{pulseResp: &real_time_response.RTRPulseSessionCreated{Payload: &models.DomainInitResponseWrapper{
 		Resources: []*models.DomainInitResponse{{SessionID: str("s1")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := newModule(f, nil)
 	_, out, err := m.pulseSession(context.Background(), nil, PulseInput{DeviceID: "aid1"})
@@ -437,6 +462,9 @@ func TestPulseSession(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected one session record, got %+v", out)
+	}
+	if out.Meta != any(f.pulseResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -454,7 +482,9 @@ func TestDeleteSession(t *testing.T) {
 
 	t.Run("success returns ActionResult", func(t *testing.T) {
 		t.Parallel()
-		f := &fakeRTR{}
+		f := &fakeRTR{deleteResp: &real_time_response.RTRDeleteSessionNoContent{Payload: &models.MsaReplyMetaOnly{
+			Meta: &models.MsaMetaInfo{},
+		}}}
 		m := newModule(f, nil)
 		_, out, err := m.deleteSession(context.Background(), nil, DeleteInput{SessionID: "s1"})
 		if err != nil {
@@ -465,6 +495,9 @@ func TestDeleteSession(t *testing.T) {
 		}
 		if f.lastDeleteID != "s1" {
 			t.Fatalf("expected session id passed, got %q", f.lastDeleteID)
+		}
+		if out.Meta != any(f.deleteResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
@@ -492,6 +525,7 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{execResp: &real_time_response.RTRExecuteCommandCreated{Payload: &models.DomainCommandExecuteResponseWrapper{
 			Resources: []*models.DomainCommandExecuteResponse{{CloudRequestID: str("crid1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, nil)
 		_, out, err := m.executeReadOnlyCommand(context.Background(), nil, ExecuteInput{SessionID: "s1", BaseCommand: "ls", CommandString: "ls C:\\", Persist: true})
@@ -507,6 +541,9 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 		}
 		if got.CommandString == nil || *got.CommandString != "ls C:\\" {
 			t.Fatalf("expected command_string sent, got %+v", got.CommandString)
+		}
+		if out.Meta != any(f.execResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
@@ -526,7 +563,7 @@ func TestCheckCommandStatus(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{statusResps: []*real_time_response.RTRCheckCommandStatusOK{
-			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{{Complete: b(true), Stdout: str("out")}}}},
+			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{{Complete: b(true), Stdout: str("out")}}, Meta: &models.MsaMetaInfo{}}},
 		}}
 		m := newModule(f, nil)
 		_, out, err := m.checkCommandStatus(context.Background(), nil, CheckStatusInput{CloudRequestID: "crid1", SequenceID: 2})
@@ -538,6 +575,9 @@ func TestCheckCommandStatus(t *testing.T) {
 		}
 		if len(f.lastSeqIDs) != 1 || f.lastSeqIDs[0] != 2 {
 			t.Fatalf("expected sequence_id 2 passed, got %v", f.lastSeqIDs)
+		}
+		if out.Meta != any(f.statusResps[0].Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }

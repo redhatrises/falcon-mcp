@@ -51,7 +51,7 @@ func (m *Module) createHostGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 	if e := base.APIError(err, resp, scopeHostGroupWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // validate enforces the client-side constraints on a create request: the API
@@ -104,7 +104,7 @@ func (m *Module) updateHostGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 	if e := base.APIError(err, resp, scopeHostGroupWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // DeleteInput is the input for falcon_delete_host_groups.
@@ -125,7 +125,7 @@ func (m *Module) deleteHostGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 	if e := base.APIError(err, resp, scopeHostGroupWrite); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }
 
 // ActionInput is the input for falcon_perform_host_group_action.
@@ -155,7 +155,7 @@ func (m *Module) performHostGroupAction(ctx context.Context, _ *mcp.CallToolRequ
 	if e := base.APIError(err, resp, scopeHostGroupWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // validate enforces the client-side constraints on a membership action.

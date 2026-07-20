@@ -31,16 +31,18 @@ type fakeCustomIOA struct {
 	getRuleTypesErr    error
 	getRuleTypesCalls  int
 
-	createGroupResp *custom_ioa.CreateRuleGroupMixin0Created
-	createGroupErr  error
-	updateGroupResp *custom_ioa.UpdateRuleGroupMixin0OK
-	updateGroupErr  error
-	deleteGroupsErr error
-	createRuleResp  *custom_ioa.CreateRuleCreated
-	createRuleErr   error
-	updateRulesResp *custom_ioa.UpdateRulesV2OK
-	updateRulesErr  error
-	deleteRulesErr  error
+	createGroupResp  *custom_ioa.CreateRuleGroupMixin0Created
+	createGroupErr   error
+	updateGroupResp  *custom_ioa.UpdateRuleGroupMixin0OK
+	updateGroupErr   error
+	deleteGroupsMeta *models.MsaMetaInfo
+	deleteGroupsErr  error
+	createRuleResp   *custom_ioa.CreateRuleCreated
+	createRuleErr    error
+	updateRulesResp  *custom_ioa.UpdateRulesV2OK
+	updateRulesErr   error
+	deleteRulesMeta  *models.MsaMetaInfo
+	deleteRulesErr   error
 
 	lastCreateGroupBody *models.APIRuleGroupCreateRequestV1
 	lastUpdateGroupBody *models.APIRuleGroupModifyRequestV1
@@ -84,7 +86,7 @@ func (f *fakeCustomIOA) UpdateRuleGroupMixin0(p *custom_ioa.UpdateRuleGroupMixin
 func (f *fakeCustomIOA) DeleteRuleGroupsMixin0(p *custom_ioa.DeleteRuleGroupsMixin0Params, _ ...custom_ioa.ClientOption) (*custom_ioa.DeleteRuleGroupsMixin0OK, error) {
 	f.lastDeleteGroupIDs = p.Ids
 	f.lastDeleteGroupCmt = p.Comment
-	return &custom_ioa.DeleteRuleGroupsMixin0OK{}, f.deleteGroupsErr
+	return &custom_ioa.DeleteRuleGroupsMixin0OK{Payload: &models.MsaReplyMetaOnly{Meta: f.deleteGroupsMeta}}, f.deleteGroupsErr
 }
 
 func (f *fakeCustomIOA) CreateRule(p *custom_ioa.CreateRuleParams, _ ...custom_ioa.ClientOption) (*custom_ioa.CreateRuleCreated, error) {
@@ -100,7 +102,7 @@ func (f *fakeCustomIOA) UpdateRulesV2(p *custom_ioa.UpdateRulesV2Params, _ ...cu
 func (f *fakeCustomIOA) DeleteRules(p *custom_ioa.DeleteRulesParams, _ ...custom_ioa.ClientOption) (*custom_ioa.DeleteRulesOK, error) {
 	f.lastDeleteRulesGrp = p.RuleGroupID
 	f.lastDeleteRulesIDs = p.Ids
-	return &custom_ioa.DeleteRulesOK{}, f.deleteRulesErr
+	return &custom_ioa.DeleteRulesOK{Payload: &models.MsaReplyMetaOnly{Meta: f.deleteRulesMeta}}, f.deleteRulesErr
 }
 
 func str(s string) *string { return &s }
@@ -126,6 +128,7 @@ func TestSearchRuleGroupsSuccess(t *testing.T) {
 
 	f := &fakeCustomIOA{queryGroupsResp: &custom_ioa.QueryRuleGroupsFullOK{Payload: &models.APIRuleGroupsResponse{
 		Resources: []*models.APIRuleGroupV1{{ID: str("g1"), Name: str("Suspicious")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -133,8 +136,11 @@ func TestSearchRuleGroupsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchRuleGroups: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "platform:'windows'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "platform:'windows'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.queryGroupsResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -150,7 +156,7 @@ func TestSearchRuleGroupsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchRuleGroups: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 }
@@ -197,6 +203,7 @@ func TestGetPlatforms(t *testing.T) {
 
 	f := &fakeCustomIOA{queryPlatformsResp: &custom_ioa.QueryPlatformsMixin0OK{Payload: &models.MsaQueryResponse{
 		Resources: []string{"windows", "mac", "linux"},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -206,6 +213,9 @@ func TestGetPlatforms(t *testing.T) {
 	}
 	if out.Total != 3 || out.Resources[0].ID != "windows" {
 		t.Fatalf("unexpected platforms: %+v", out)
+	}
+	if out.Meta != any(f.queryPlatformsResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -234,6 +244,7 @@ func TestGetRuleTypesTwoStep(t *testing.T) {
 	f := &fakeCustomIOA{
 		queryRuleTypesResp: &custom_ioa.QueryRuleTypesOK{Payload: &models.MsaQueryResponse{
 			Resources: []string{"1", "2"},
+			Meta:      &models.MsaMetaInfo{},
 		}},
 		getRuleTypesResp: &custom_ioa.GetRuleTypesOK{Payload: &models.APIRuleTypesResponse{
 			// Returned out of query order to exercise reordering.
@@ -254,6 +265,9 @@ func TestGetRuleTypesTwoStep(t *testing.T) {
 	}
 	if f.lastGetRuleTypeIDs[0] != "1" || f.lastGetRuleTypeIDs[1] != "2" {
 		t.Fatalf("expected get called with query IDs, got %v", f.lastGetRuleTypeIDs)
+	}
+	if out.Meta != any(f.queryRuleTypesResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -313,6 +327,7 @@ func TestCreateRuleGroupBody(t *testing.T) {
 
 	f := &fakeCustomIOA{createGroupResp: &custom_ioa.CreateRuleGroupMixin0Created{Payload: &models.APIRuleGroupsResponse{
 		Resources: []*models.APIRuleGroupV1{{ID: str("new")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -324,6 +339,9 @@ func TestCreateRuleGroupBody(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected created record, got %+v", out)
+	}
+	if out.Meta != any(f.createGroupResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	b := f.lastCreateGroupBody
 	if *b.Name != "Grp" || *b.Platform != "windows" || b.Description == nil || *b.Description != "desc" || b.Comment == nil || *b.Comment != "why" {
@@ -364,6 +382,7 @@ func TestUpdateRuleGroup(t *testing.T) {
 		t.Parallel()
 		f := &fakeCustomIOA{updateGroupResp: &custom_ioa.UpdateRuleGroupMixin0OK{Payload: &models.APIRuleGroupsResponse{
 			Resources: []*models.APIRuleGroupV1{{ID: str("g1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := &Module{API: f, Logger: testLogger}
 		enabled := false
@@ -375,6 +394,9 @@ func TestUpdateRuleGroup(t *testing.T) {
 		}
 		if out.Total != 1 {
 			t.Fatalf("expected updated record, got %+v", out)
+		}
+		if out.Meta != any(f.updateGroupResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 		b := f.lastUpdateGroupBody
 		if *b.ID != "g1" || *b.RulegroupVersion != 7 || b.Name == nil || *b.Name != "renamed" {
@@ -415,7 +437,7 @@ func TestDeleteRuleGroups(t *testing.T) {
 
 	t.Run("success with comment", func(t *testing.T) {
 		t.Parallel()
-		f := &fakeCustomIOA{}
+		f := &fakeCustomIOA{deleteGroupsMeta: &models.MsaMetaInfo{}}
 		m := &Module{API: f, Logger: testLogger}
 		_, out, err := m.deleteRuleGroups(context.Background(), nil, DeleteGroupsInput{IDs: []string{"g1", "g2"}, Comment: "cleanup"})
 		if err != nil {
@@ -429,6 +451,9 @@ func TestDeleteRuleGroups(t *testing.T) {
 		}
 		if f.lastDeleteGroupCmt == nil || *f.lastDeleteGroupCmt != "cleanup" {
 			t.Fatalf("expected comment passed, got %v", f.lastDeleteGroupCmt)
+		}
+		if out.Meta != any(f.deleteGroupsMeta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
@@ -469,6 +494,7 @@ func TestCreateRuleBody(t *testing.T) {
 
 	f := &fakeCustomIOA{createRuleResp: &custom_ioa.CreateRuleCreated{Payload: &models.APIRulesResponse{
 		Resources: []*models.APIRuleV1{{InstanceID: str("r1")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -484,6 +510,9 @@ func TestCreateRuleBody(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected created record, got %+v", out)
+	}
+	if out.Meta != any(f.createRuleResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	b := f.lastCreateRuleBody
 	if *b.RulegroupID != "g1" || *b.Name != "Block" || *b.RuletypeID != "5" || *b.DispositionID != 30 || *b.PatternSeverity != "critical" {
@@ -531,6 +560,7 @@ func TestUpdateRuleBody(t *testing.T) {
 
 	f := &fakeCustomIOA{updateRulesResp: &custom_ioa.UpdateRulesV2OK{Payload: &models.APIRulesResponse{
 		Resources: []*models.APIRuleV1{{InstanceID: str("r1")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -546,6 +576,9 @@ func TestUpdateRuleBody(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected updated record, got %+v", out)
+	}
+	if out.Meta != any(f.updateRulesResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	b := f.lastUpdateRulesBody
 	if *b.RulegroupID != "g1" || *b.RulegroupVersion != 3 {
@@ -607,7 +640,7 @@ func TestDeleteRules(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		f := &fakeCustomIOA{}
+		f := &fakeCustomIOA{deleteRulesMeta: &models.MsaMetaInfo{}}
 		m := &Module{API: f, Logger: testLogger}
 		_, out, err := m.deleteRules(context.Background(), nil, DeleteRulesInput{RuleGroupID: "g1", IDs: []string{"r1", "r2"}})
 		if err != nil {
@@ -618,6 +651,9 @@ func TestDeleteRules(t *testing.T) {
 		}
 		if f.lastDeleteRulesGrp != "g1" || len(f.lastDeleteRulesIDs) != 2 {
 			t.Fatalf("expected group g1 and 2 ids, got grp=%q ids=%v", f.lastDeleteRulesGrp, f.lastDeleteRulesIDs)
+		}
+		if out.Meta != any(f.deleteRulesMeta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
