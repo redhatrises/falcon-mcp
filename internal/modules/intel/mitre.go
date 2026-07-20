@@ -1,16 +1,15 @@
 package intel
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/intel"
-	"github.com/go-openapi/runtime"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -21,63 +20,6 @@ var errActorNotFound = errors.New("intel: actor not found")
 
 // errInvalidInput classifies client-side validation failures in get_mitre_report.
 var errInvalidInput = errors.New("intel: invalid input")
-
-// mitreClient adapts the gofalcon intel.ClientService to the intelAPI interface,
-// overriding only GetMitreReport. The generated GetMitreReport returns a typed
-// *GetMitreReportOK that carries no report body: the swagger spec defines no 200
-// schema for /intel/entities/mitre-reports/v1, so go-openapi generated a reader
-// that never consumes the response body. Worse, the generated method panics if
-// the transport returns any non-*GetMitreReportOK value, so a Reader override
-// cannot simply return the raw bytes in its place. Instead the override captures
-// the 200 body into a field on a custom reader while still returning a valid
-// *GetMitreReportOK to satisfy the method's type assertion; this adapter then
-// hands the captured bytes back as the any result. Non-200 responses
-// fall through to the generated typed errors.
-type mitreClient struct {
-	intel.ClientService
-}
-
-// GetMitreReport fetches the MITRE report, recovering the 200 body the generated
-// reader discards. It returns the report bytes as an any ([]byte) on
-// success, or the generated typed error on a non-200 response. Callers pass no
-// opts (the reader override is applied internally); any opts are forwarded after
-// it so a caller could still layer on further overrides.
-func (c mitreClient) GetMitreReport(params *intel.GetMitreReportParams, opts ...intel.ClientOption) (any, error) {
-	capture := &mitreReportReader{}
-	override := func(op *runtime.ClientOperation) {
-		capture.orig = op.Reader
-		op.Reader = capture
-	}
-	_, err := c.ClientService.GetMitreReport(params, append([]intel.ClientOption{override}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-	return capture.body, nil
-}
-
-// mitreReportReader wraps the generated reader to capture the 200 response body,
-// which the generated reader leaves unconsumed (see mitreClient). On non-200
-// responses it delegates to the original reader so 403/429/500 still surface as
-// gofalcon's typed errors.
-type mitreReportReader struct {
-	orig runtime.ClientResponseReader
-	body []byte
-}
-
-// ReadResponse captures the 200 body into r.body and returns a valid
-// *GetMitreReportOK so the generated method's type assertion succeeds; other
-// status codes delegate to the wrapped reader.
-func (r *mitreReportReader) ReadResponse(resp runtime.ClientResponse, c runtime.Consumer) (any, error) {
-	if resp.Code() == 200 {
-		b, err := io.ReadAll(resp.Body())
-		if err != nil {
-			return nil, fmt.Errorf("read mitre report body: %w", err)
-		}
-		r.body = b
-		return intel.NewGetMitreReportOK(), nil
-	}
-	return r.orig.ReadResponse(resp, c)
-}
 
 // MitreInput is the input for falcon_get_mitre_report.
 type MitreInput struct {
@@ -120,11 +62,12 @@ func (m *Module) getMitreReport(ctx context.Context, _ *mcp.CallToolRequest, in 
 	params.ActorID = actorID
 	params.Format = format
 
-	raw, err := m.API.GetMitreReport(params)
+	var buf bytes.Buffer
+	_, err = m.API.GetMitreReport(params, &buf)
 	if e := base.APIError(err, nil, scopeActors); e != nil {
 		return nil, zero, e
 	}
-	body, _ := raw.([]byte)
+	body := buf.Bytes()
 
 	result := MitreResult{ActorID: actorID, Format: format}
 	if format == "csv" {
