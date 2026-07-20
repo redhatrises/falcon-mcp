@@ -223,6 +223,74 @@ func TestCreateExclusionSuccess(t *testing.T) {
 	}
 }
 
+// TestCreateMLExclusionForwardsFlags verifies the ML create body carries
+// applied_globally and is_descendant_process when the caller sets them (the
+// gofalcon ML item models gained these fields in 7ccbeaf1), and leaves them
+// false when the caller omits them.
+func TestCreateMLExclusionForwardsFlags(t *testing.T) {
+	t.Parallel()
+
+	tru := true
+	t.Run("forwards when set", func(t *testing.T) {
+		t.Parallel()
+		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		m := moduleWith("ml", fb)
+		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{
+			ExclusionType: "ml", Value: "/x",
+			AppliedGlobally: &tru, IsDescendantProcess: &tru,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, ok := fb.lastCreateBody.(*models.DomainExclusionsCreateReqV2)
+		if !ok {
+			t.Fatalf("expected ML create body, got %T", fb.lastCreateBody)
+		}
+		item := body.Exclusions[0]
+		if !item.AppliedGlobally || !item.IsDescendantProcess {
+			t.Fatalf("expected both flags true, got applied=%v descendant=%v", item.AppliedGlobally, item.IsDescendantProcess)
+		}
+	})
+
+	t.Run("false when unset", func(t *testing.T) {
+		t.Parallel()
+		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		m := moduleWith("ml", fb)
+		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", Value: "/x"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, ok := fb.lastCreateBody.(*models.DomainExclusionsCreateReqV2)
+		if !ok {
+			t.Fatalf("expected ML create body, got %T", fb.lastCreateBody)
+		}
+		item := body.Exclusions[0]
+		if item.AppliedGlobally || item.IsDescendantProcess {
+			t.Fatalf("expected both flags false when unset, got applied=%v descendant=%v", item.AppliedGlobally, item.IsDescendantProcess)
+		}
+	})
+
+	t.Run("update forwards flags on singular body", func(t *testing.T) {
+		t.Parallel()
+		fb := &fakeBackend{updateRes: []byte(`{"resources":[]}`)}
+		m := moduleWith("ml", fb)
+		_, _, err := m.updateExclusion(context.Background(), nil, MutateInput{
+			ExclusionType: "ml", ID: "e1", Value: "/x",
+			AppliedGlobally: &tru, IsDescendantProcess: &tru,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		item, ok := fb.lastUpdateBody.(*models.DomainExclusionUpdateReqV2)
+		if !ok {
+			t.Fatalf("expected singular ML update body, got %T", fb.lastUpdateBody)
+		}
+		if !item.AppliedGlobally || !item.IsDescendantProcess {
+			t.Fatalf("expected both flags true on update, got applied=%v descendant=%v", item.AppliedGlobally, item.IsDescendantProcess)
+		}
+	})
+}
+
 func TestUpdateExclusionRequiresID(t *testing.T) {
 	t.Parallel()
 	m := moduleWith("ml", &fakeBackend{})
