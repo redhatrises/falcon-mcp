@@ -192,27 +192,34 @@ func buildIOABody(in MutateInput, id string) (any, error) {
 }
 
 // buildMLBody builds the ML v2 request: create is wrapped, update is the SINGULAR
-// DomainExclusionUpdateReqV2. The gofalcon item models have no applied_globally
-// or is_descendant_process field, so those params are not sent for ML.
+// DomainExclusionUpdateReqV2. As of gofalcon 7ccbeaf1 the ML item models carry
+// applied_globally and is_descendant_process, so those params are forwarded when
+// set (matching the Python module); a nil pointer leaves the omitempty field out.
 func buildMLBody(in MutateInput, id string) (any, error) {
 	if in.Value == "" {
 		return nil, wrapInvalid("create ml exclusion", "ml exclusions require a value (the path or pattern to exclude)")
 	}
+	applied := in.AppliedGlobally != nil && *in.AppliedGlobally
+	descendant := in.IsDescendantProcess != nil && *in.IsDescendantProcess
 	if id == "" {
 		item := &models.DomainExclusionCreateReqV2{
-			Value:        in.Value,
-			ExcludedFrom: in.ExcludedFrom,
-			Groups:       in.HostGroups,
-			Comment:      in.Comment,
+			Value:               in.Value,
+			ExcludedFrom:        in.ExcludedFrom,
+			Groups:              in.HostGroups,
+			AppliedGlobally:     applied,
+			IsDescendantProcess: descendant,
+			Comment:             in.Comment,
 		}
 		return &models.DomainExclusionsCreateReqV2{Exclusions: []*models.DomainExclusionCreateReqV2{item}}, nil
 	}
 	return &models.DomainExclusionUpdateReqV2{
-		ID:           &id,
-		Value:        in.Value,
-		ExcludedFrom: in.ExcludedFrom,
-		Groups:       in.HostGroups,
-		Comment:      in.Comment,
+		ID:                  &id,
+		Value:               in.Value,
+		ExcludedFrom:        in.ExcludedFrom,
+		Groups:              in.HostGroups,
+		AppliedGlobally:     applied,
+		IsDescendantProcess: descendant,
+		Comment:             in.Comment,
 	}, nil
 }
 
