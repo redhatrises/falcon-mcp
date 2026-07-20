@@ -37,7 +37,7 @@ func (m *Module) executeReadOnlyCommand(ctx context.Context, _ *mcp.CallToolRequ
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // validate enforces the client-side constraints shared by execute and wait.
@@ -85,7 +85,7 @@ func (m *Module) checkCommandStatus(ctx context.Context, _ *mcp.CallToolRequest,
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // checkStatus issues one RTRCheckCommandStatus request shared by the check and

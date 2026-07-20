@@ -69,7 +69,7 @@ func (m *Module) applyActionByIDs(ctx context.Context, ids []string, action, com
 	if e := base.APIError(err, resp, scopeQuarantineWrite); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }
 
 // applyActionByQuery applies a quarantine action to records selected by filter.
@@ -85,5 +85,5 @@ func (m *Module) applyActionByQuery(ctx context.Context, action, filter, comment
 	if e := base.APIError(err, resp, scopeQuarantineWrite); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }

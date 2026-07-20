@@ -179,7 +179,7 @@ func (m *Module) searchActors(ctx context.Context, _ *mcp.CallToolRequest, in Ac
 
 	actors := resp.Payload.Resources
 	m.Logger.Debug("search_actors query complete", "matched", len(actors))
-	return nil, base.Found(actors, in.Filter), nil
+	return nil, base.Found(actors, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // IndicatorsInput is the input for falcon_search_indicators.
@@ -236,7 +236,7 @@ func (m *Module) searchIndicators(ctx context.Context, _ *mcp.CallToolRequest, i
 
 	indicators := resp.Payload.Resources
 	m.Logger.Debug("search_indicators query complete", "matched", len(indicators))
-	return nil, base.Found(indicators, in.Filter), nil
+	return nil, base.Found(indicators, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // ReportsInput is the input for falcon_search_reports.
@@ -284,7 +284,7 @@ func (m *Module) searchReports(ctx context.Context, _ *mcp.CallToolRequest, in R
 
 	reports := resp.Payload.Resources
 	m.Logger.Debug("search_reports query complete", "matched", len(reports))
-	return nil, base.Found(reports, in.Filter), nil
+	return nil, base.Found(reports, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // actorsFQLBadRequest reports whether err is a 400-class actor query error and,
