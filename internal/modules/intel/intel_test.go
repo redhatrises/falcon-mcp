@@ -3,6 +3,7 @@ package intel
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"testing"
 
@@ -49,13 +50,16 @@ func (f *fakeIntel) QueryIntelReportEntities(*intel.QueryIntelReportEntitiesPara
 	return f.reportsResp, f.reportsErr
 }
 
-func (f *fakeIntel) GetMitreReport(p *intel.GetMitreReportParams, _ ...intel.ClientOption) (any, error) {
+func (f *fakeIntel) GetMitreReport(p *intel.GetMitreReportParams, w io.Writer, _ ...intel.ClientOption) (*intel.GetMitreReportOK, error) {
 	f.lastMitreActorID = p.ActorID
 	f.lastMitreFormat = p.Format
 	if f.mitreErr != nil {
 		return nil, f.mitreErr
 	}
-	return f.mitreBody, nil
+	if _, err := w.Write(f.mitreBody); err != nil {
+		return nil, err
+	}
+	return &intel.GetMitreReportOK{}, nil
 }
 
 func str(s string) *string { return &s }
