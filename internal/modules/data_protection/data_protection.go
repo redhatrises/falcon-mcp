@@ -229,7 +229,7 @@ func (m *Module) searchClassifications(ctx context.Context, req *mcp.CallToolReq
 
 	ids := qresp.Payload.Resources
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.PolicymanagerExternalClassification{}, in.Filter), nil
+		return nil, base.Found([]*models.PolicymanagerExternalClassification{}, in.Filter).WithMeta(qresp.Payload.Meta), nil
 	}
 
 	got, err := base.FetchDetails(ctx, base.FetchDetailsParams[*models.PolicymanagerExternalClassification]{
@@ -258,7 +258,7 @@ func (m *Module) searchClassifications(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(got, in.Filter), nil
+	return nil, base.Found(got, in.Filter).WithMeta(qresp.Payload.Meta), nil
 }
 
 func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, in SearchPoliciesInput) (*mcp.CallToolResult, base.SearchResult[*models.PolicymanagerExternalPolicy], error) {
@@ -290,7 +290,7 @@ func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, i
 
 	ids := qresp.Payload.Resources
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.PolicymanagerExternalPolicy{}, in.Filter), nil
+		return nil, base.Found([]*models.PolicymanagerExternalPolicy{}, in.Filter).WithMeta(qresp.Payload.Meta), nil
 	}
 
 	got, err := base.FetchDetails(ctx, base.FetchDetailsParams[*models.PolicymanagerExternalPolicy]{
@@ -317,7 +317,7 @@ func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(got, in.Filter), nil
+	return nil, base.Found(got, in.Filter).WithMeta(qresp.Payload.Meta), nil
 }
 
 func (m *Module) searchContentPatterns(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, base.SearchResult[*models.APIContentPatternV1], error) {
@@ -348,7 +348,7 @@ func (m *Module) searchContentPatterns(ctx context.Context, req *mcp.CallToolReq
 
 	ids := qresp.Payload.Resources
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.APIContentPatternV1{}, in.Filter), nil
+		return nil, base.Found([]*models.APIContentPatternV1{}, in.Filter).WithMeta(qresp.Payload.Meta), nil
 	}
 
 	got, err := base.FetchDetails(ctx, base.FetchDetailsParams[*models.APIContentPatternV1]{
@@ -375,7 +375,7 @@ func (m *Module) searchContentPatterns(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(got, in.Filter), nil
+	return nil, base.Found(got, in.Filter).WithMeta(qresp.Payload.Meta), nil
 }
 
 // limitOrDefault returns the caller's limit or defaultLimit when unset.

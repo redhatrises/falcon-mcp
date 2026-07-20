@@ -176,13 +176,13 @@ func (m *Module) searchHosts(ctx context.Context, req *mcp.CallToolRequest, in S
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_hosts query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.DeviceapiDeviceSwagger{}, in.Filter), nil
+		return nil, base.Found([]*models.DeviceapiDeviceSwagger{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	devices, err := m.fetchDetails(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(devices, in.Filter), nil
+	return nil, base.Found(devices, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // DetailsInput is the input for falcon_get_host_details. Its schema is inferred

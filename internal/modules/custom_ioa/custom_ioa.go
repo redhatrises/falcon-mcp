@@ -256,7 +256,7 @@ func (m *Module) searchRuleGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 
 	groups := resp.Payload.Resources
 	m.Logger.Debug("search_ioa_rule_groups query complete", "matched", len(groups))
-	return nil, base.Found(groups, in.Filter), nil
+	return nil, base.Found(groups, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // Platform is one available Custom IOA platform. The Custom IOA platform detail
@@ -290,7 +290,7 @@ func (m *Module) getPlatforms(ctx context.Context, _ *mcp.CallToolRequest, _ str
 		platforms = append(platforms, Platform{ID: id})
 	}
 	m.Logger.Debug("get_ioa_platforms complete", "count", len(platforms))
-	return nil, base.Entities(platforms), nil
+	return nil, base.Entities(platforms).WithMeta(resp.Payload.Meta), nil
 }
 
 // RuleTypesInput is the input for falcon_get_ioa_rule_types.
@@ -320,7 +320,7 @@ func (m *Module) getRuleTypes(ctx context.Context, _ *mcp.CallToolRequest, in Ru
 
 	ids := qresp.Payload.Resources
 	if len(ids) == 0 {
-		return nil, base.Entities([]*models.APIRuleTypeV1{}), nil
+		return nil, base.Entities([]*models.APIRuleTypeV1{}).WithMeta(qresp.Payload.Meta), nil
 	}
 
 	gp := custom_ioa.NewGetRuleTypesParamsWithContext(ctx)
@@ -333,7 +333,7 @@ func (m *Module) getRuleTypes(ctx context.Context, _ *mcp.CallToolRequest, in Ru
 	// Preserve the query-step order in case the details endpoint reorders results.
 	types := reorderRuleTypes(ids, gresp.Payload.Resources)
 	m.Logger.Debug("get_ioa_rule_types complete", "count", len(types))
-	return nil, base.Entities(types), nil
+	return nil, base.Entities(types).WithMeta(qresp.Payload.Meta), nil
 }
 
 // reorderRuleTypes reorders rule types to match the query-step ID order. Rule

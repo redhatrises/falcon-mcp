@@ -200,7 +200,7 @@ func (m *Module) searchVulnerabilities(ctx context.Context, _ *mcp.CallToolReque
 
 	vulnerabilities := resp.Payload.Resources
 	m.Logger.Debug("search_vulnerabilities query complete", "matched", len(vulnerabilities))
-	return nil, base.Found(vulnerabilities, in.Filter), nil
+	return nil, base.Found(vulnerabilities, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // fqlBadRequest reports whether err is a 400-class combined vulnerabilities

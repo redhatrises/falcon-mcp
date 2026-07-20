@@ -98,6 +98,7 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 	r := &fakeReports{
 		queryResp: &scheduled_reports.QueryOK{Payload: &models.MsaQueryResponse{
 			Resources: []string{"r1", "r2"},
+			Meta:      &models.MsaMetaInfo{},
 		}},
 		getResp: &scheduled_reports.QueryByIDOK{Payload: &models.DomainScheduledReportsResultV1{
 			// Returned out of query order to exercise reordering by id.
@@ -113,7 +114,7 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchScheduledReports: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 {
+	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 results, got %+v", out)
 	}
 	if *out.Resources[0].ID != "r1" || *out.Resources[1].ID != "r2" {
@@ -128,6 +129,9 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 	if strings.Join(r.getIDs, ",") != "r1,r2" {
 		t.Fatalf("detail fetch got IDs %v", r.getIDs)
 	}
+	if out.Meta != any(r.queryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	}
 }
 
 func TestSearchScheduledReportsEmpty(t *testing.T) {
@@ -140,7 +144,7 @@ func TestSearchScheduledReportsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchScheduledReports: %v", err)
 	}
-	if out.Total != 0 || len(out.Resources) != 0 {
+	if len(out.Resources) != 0 {
 		t.Fatalf("expected empty result, got %+v", out)
 	}
 	if out.Resources == nil {
@@ -194,6 +198,7 @@ func TestLaunchScheduledReportSuccess(t *testing.T) {
 
 	r := &fakeReports{execResp: &scheduled_reports.ExecuteOK{Payload: &models.DomainReportExecutionsResponseV1{
 		Resources: []*models.DomainReportExecutionV1{{ID: str("exec1")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := newModule(r, &fakeExecutions{})
 
@@ -210,6 +215,9 @@ func TestLaunchScheduledReportSuccess(t *testing.T) {
 	// The Execute body must be a list of {id} objects preserving the entity ID.
 	if len(r.execBody) != 1 || r.execBody[0].ID == nil || *r.execBody[0].ID != "report1" {
 		t.Fatalf("execute body not shaped as [{id}]: %+v", r.execBody)
+	}
+	if out.Meta != any(r.execResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -236,6 +244,7 @@ func TestSearchReportExecutionsSuccess(t *testing.T) {
 	e := &fakeExecutions{
 		queryResp: &report_executions.ReportExecutionsQueryOK{Payload: &models.MsaQueryResponse{
 			Resources: []string{"e1", "e2"},
+			Meta:      &models.MsaMetaInfo{},
 		}},
 		getResp: &report_executions.ReportExecutionsGetOK{Payload: &models.DomainReportExecutionsResponseV1{
 			Resources: []*models.DomainReportExecutionV1{
@@ -250,11 +259,14 @@ func TestSearchReportExecutionsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchReportExecutions: %v", err)
 	}
-	if out.Total != 2 || *out.Resources[0].ID != "e1" || *out.Resources[1].ID != "e2" {
+	if len(out.Resources) != 2 || *out.Resources[0].ID != "e1" || *out.Resources[1].ID != "e2" {
 		t.Fatalf("unexpected/misordered result %+v", out)
 	}
 	if e.getCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", e.getCalls)
+	}
+	if out.Meta != any(e.queryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -268,7 +280,7 @@ func TestSearchReportExecutionsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchReportExecutions: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty result, got %+v", out)
 	}
 	if e.getCalls != 0 {

@@ -282,13 +282,13 @@ func (m *Module) searchScheduledReports(ctx context.Context, req *mcp.CallToolRe
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_scheduled_reports query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.DomainScheduledReportV1{}, in.Filter), nil
+		return nil, base.Found([]*models.DomainScheduledReportV1{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchReports(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(details, in.Filter), nil
+	return nil, base.Found(details, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // LaunchInput is the input for falcon_launch_scheduled_report.
@@ -311,7 +311,7 @@ func (m *Module) launchScheduledReport(ctx context.Context, _ *mcp.CallToolReque
 	if e := base.APIError(err, resp, scopeScheduledReports); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // SearchExecutionsInput is the input for falcon_search_report_executions.
@@ -356,13 +356,13 @@ func (m *Module) searchReportExecutions(ctx context.Context, req *mcp.CallToolRe
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_report_executions query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.DomainReportExecutionV1{}, in.Filter), nil
+		return nil, base.Found([]*models.DomainReportExecutionV1{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchExecutions(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(details, in.Filter), nil
+	return nil, base.Found(details, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // DownloadInput is the input for falcon_download_report_execution.

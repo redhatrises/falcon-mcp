@@ -279,6 +279,8 @@ func (m *Module) searchServerlessVulnerabilities(ctx context.Context, _ *mcp.Cal
 		return nil, zero, err
 	}
 	m.Logger.Debug("search_serverless_vulnerabilities query complete", "runs", len(runs))
+	// No meta is attached: the combined-SARIF body is decoded for its runs
+	// only (see sarifResponse), and the endpoint carries no pagination cursor.
 	return nil, base.Found(runs, in.Filter), nil
 }
 

@@ -48,14 +48,18 @@ func TestSearchSensorUsageSuccess(t *testing.T) {
 
 	workstations := 42.0
 	f := &fakeSensorUsage{resp: okResp(&models.EntitiesRollingAverage{Workstations: &workstations})}
+	f.resp.Payload.Meta = &models.MsaMetaInfo{PoweredBy: "sensor-usage-api"}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchSensorUsage(context.Background(), nil, SearchInput{Filter: "period:'30'"})
 	if err != nil {
 		t.Fatalf("searchSensorUsage: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "period:'30'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "period:'30'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.resp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
 
@@ -101,8 +105,11 @@ func TestSearchSensorUsageEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchSensorUsage: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
+	if out.Resources == nil || len(out.Resources) != 0 {
 		t.Fatalf("expected empty non-nil resources, got %+v", out)
+	}
+	if out.Meta != nil {
+		t.Fatalf("Meta = %+v, want nil when the response carries no meta", out.Meta)
 	}
 }
 

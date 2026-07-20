@@ -76,6 +76,7 @@ func TestSearchSuccess(t *testing.T) {
 
 	f := &fakeAPI{searchResp: &correlation_rules.CombinedRulesGetV2OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
 		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("r1"), Name: str("Rule One")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -83,7 +84,7 @@ func TestSearchSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchCorrelationRules: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "status:'active'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "status:'active'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if f.lastSearch.Filter == nil || *f.lastSearch.Filter != "status:'active'" {
@@ -91,6 +92,9 @@ func TestSearchSuccess(t *testing.T) {
 	}
 	if f.lastSearch.Limit == nil || *f.lastSearch.Limit != defaultLimit {
 		t.Fatalf("expected default limit %d, got %v", defaultLimit, f.lastSearch.Limit)
+	}
+	if out.Meta != any(f.searchResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -129,7 +133,7 @@ func TestSearchEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchCorrelationRules: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 }
@@ -206,6 +210,7 @@ func TestCreateBodyDefaults(t *testing.T) {
 
 	f := &fakeAPI{createResp: &correlation_rules.EntitiesRulesPostV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
 		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("new"), RuleID: "rule-new"}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -220,6 +225,9 @@ func TestCreateBodyDefaults(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected created record returned, got %+v", out)
+	}
+	if out.Meta != any(f.createResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	body := f.lastCreate
 	if body == nil {
@@ -340,6 +348,7 @@ func TestUpdateBodyPartial(t *testing.T) {
 
 	f := &fakeAPI{patchResp: &correlation_rules.EntitiesRulesPatchV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
 		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("r1")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -352,6 +361,9 @@ func TestUpdateBodyPartial(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected updated record returned, got %+v", out)
+	}
+	if out.Meta != any(f.patchResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	// The wire body is a single-element list of patch maps.
 	body, ok := f.lastPatchReq.([]map[string]any)
@@ -490,6 +502,7 @@ func TestDeleteSuccess(t *testing.T) {
 
 	f := &fakeAPI{deleteResp: &correlation_rules.EntitiesRulesDeleteV1OK{Payload: &models.MsaspecQueryResponse{
 		Resources: []string{"r1", "r2"},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -502,6 +515,9 @@ func TestDeleteSuccess(t *testing.T) {
 	}
 	if len(f.lastDelete) != 2 {
 		t.Fatalf("expected 2 ids passed, got %v", f.lastDelete)
+	}
+	if out.Meta != any(f.deleteResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 

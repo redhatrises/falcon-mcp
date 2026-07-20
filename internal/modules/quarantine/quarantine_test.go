@@ -77,14 +77,18 @@ func TestSearchQuarantinedFilesSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeQuarantine{queryResp: queryOK("q1", "q2"), getResp: getOK("q1", "q2")}
+	f.queryResp.Payload.Meta = &models.MsaMetaInfo{}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
 
 	_, out, err := m.searchQuarantinedFiles(context.Background(), nil, SearchInput{Filter: "hostname:'DC01'"})
 	if err != nil {
 		t.Fatalf("searchQuarantinedFiles: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 || out.FilterUsed != "hostname:'DC01'" {
+	if len(out.Resources) != 2 || out.FilterUsed != "hostname:'DC01'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.queryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -98,7 +102,7 @@ func TestSearchQuarantinedFilesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchQuarantinedFiles: %v", err)
 	}
-	if out.Total != 0 || len(out.Resources) != 0 {
+	if len(out.Resources) != 0 {
 		t.Fatalf("expected empty result, got %+v", out)
 	}
 	if out.Resources == nil {
@@ -162,6 +166,7 @@ func TestPreviewQuarantineActionsSuccess(t *testing.T) {
 
 	f := &fakeQuarantine{countResp: &quarantine.ActionUpdateCountOK{Payload: &models.MsaAggregatesResponse{
 		Resources: []*models.MsaAggregationResult{{Name: str("release")}, {Name: str("delete")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -171,6 +176,9 @@ func TestPreviewQuarantineActionsSuccess(t *testing.T) {
 	}
 	if out.Total != 2 || len(out.Resources) != 2 {
 		t.Fatalf("expected 2 action counts, got %+v", out)
+	}
+	if out.Meta != any(f.countResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -228,7 +236,7 @@ func TestNormalizeRestoreAction(t *testing.T) {
 func TestUpdateQuarantinedFilesByIDs(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeQuarantine{byIDsResp: &quarantine.UpdateQuarantinedDetectsByIdsOK{Payload: &models.MsaReplyMetaOnly{}}}
+	f := &fakeQuarantine{byIDsResp: &quarantine.UpdateQuarantinedDetectsByIdsOK{Payload: &models.MsaReplyMetaOnly{Meta: &models.MsaMetaInfo{}}}}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.updateQuarantinedFiles(context.Background(), nil, UpdateInput{
@@ -250,6 +258,9 @@ func TestUpdateQuarantinedFilesByIDs(t *testing.T) {
 	}
 	if f.lastByQryBody != nil {
 		t.Fatalf("expected by-query path not taken when ids provided")
+	}
+	if out.Meta != any(f.byIDsResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -367,7 +378,7 @@ func TestDeleteQuarantinedFilesByIDs(t *testing.T) {
 func TestDeleteQuarantinedFilesByQuery(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeQuarantine{byQryResp: &quarantine.UpdateQfByQueryOK{Payload: &models.MsaReplyMetaOnly{}}}
+	f := &fakeQuarantine{byQryResp: &quarantine.UpdateQfByQueryOK{Payload: &models.MsaReplyMetaOnly{Meta: &models.MsaMetaInfo{}}}}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.deleteQuarantinedFiles(context.Background(), nil, DeleteInput{Filter: "hostname:'DC01'"})
@@ -382,6 +393,9 @@ func TestDeleteQuarantinedFilesByQuery(t *testing.T) {
 	}
 	if f.lastByQryBody.Filter != "hostname:'DC01'" {
 		t.Fatalf("expected filter passed through, got %+v", f.lastByQryBody)
+	}
+	if out.Meta != any(f.byQryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 

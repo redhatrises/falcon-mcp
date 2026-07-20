@@ -124,6 +124,7 @@ func TestSearchCasesSuccess(t *testing.T) {
 	f := &fakeCases{
 		queryResp: &cases.QueriesCasesGetV1OK{Payload: &models.CasesapiGetQueriesCasesV1Response{
 			Resources: []string{"c1", "c2"},
+			Meta:      &models.MsaMetaInfo{},
 		}},
 		getResp: &cases.EntitiesCasesPostV2OK{Payload: &models.OperationsGetCasesByIDsResponseVM{
 			// Deliberately reversed to exercise reorder-by-id.
@@ -139,12 +140,15 @@ func TestSearchCasesSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchCases: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 || out.FilterUsed != "status:'new'" {
+	if len(out.Resources) != 2 || out.FilterUsed != "status:'new'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	// Reorder must restore the query-step order c1, c2.
 	if *out.Resources[0].ID != "c1" || *out.Resources[1].ID != "c2" {
 		t.Fatalf("expected reordered [c1 c2], got [%s %s]", *out.Resources[0].ID, *out.Resources[1].ID)
+	}
+	if out.Meta != any(f.queryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -160,7 +164,7 @@ func TestSearchCasesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchCases: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 	if f.getCalls != 0 {
@@ -240,6 +244,7 @@ func TestListCaseTemplates(t *testing.T) {
 		ft := &fakeTemplates{
 			queryResp: &case_management.QueriesTemplatesGetV1OK{Payload: &models.MsaspecQueryResponse{
 				Resources: []string{"t1", "t2"},
+				Meta:      &models.MsaMetaInfo{},
 			}},
 			getResp: &case_management.EntitiesTemplatesGetV1OK{Payload: &models.APITemplateV1Response{
 				Resources: []*models.APITemplateV1{{ID: str("t2")}, {ID: str("t1")}},
@@ -257,12 +262,16 @@ func TestListCaseTemplates(t *testing.T) {
 		if *out.Resources[0].ID != "t1" || *out.Resources[1].ID != "t2" {
 			t.Fatalf("expected reordered [t1 t2], got [%s %s]", *out.Resources[0].ID, *out.Resources[1].ID)
 		}
+		if out.Meta != any(ft.queryResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+		}
 	})
 
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
 		ft := &fakeTemplates{queryResp: &case_management.QueriesTemplatesGetV1OK{Payload: &models.MsaspecQueryResponse{
 			Resources: []string{},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(&fakeCases{}, ft)
 		_, out, err := m.listCaseTemplates(context.Background(), nil, TemplatesInput{})
@@ -271,6 +280,9 @@ func TestListCaseTemplates(t *testing.T) {
 		}
 		if out.Total != 0 || out.Resources == nil {
 			t.Fatalf("expected non-nil empty slice, got %+v", out)
+		}
+		if out.Meta != any(ft.queryResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 		if ft.getCalls != 0 {
 			t.Fatalf("expected no detail fetch on empty result, got %d", ft.getCalls)
@@ -312,6 +324,7 @@ func TestCreateCaseBody(t *testing.T) {
 
 	f := &fakeCases{createResp: &cases.EntitiesCasesPutV2Created{Payload: &models.OperationsCreateCaseResponseVM{
 		Resources: []*models.SdkCaseVM{{ID: str("new")}},
+		Meta:      &models.MsaMetaInfo{},
 	}}}
 	m := newModule(f, &fakeTemplates{})
 
@@ -329,6 +342,9 @@ func TestCreateCaseBody(t *testing.T) {
 	}
 	if out.Total != 1 {
 		t.Fatalf("expected created record returned, got %+v", out)
+	}
+	if out.Meta != any(f.createResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	b := f.lastCreateBody
 	if b == nil || b.Name == nil || *b.Name != "Lateral movement" || b.Severity == nil || *b.Severity != 70 {
@@ -394,6 +410,7 @@ func TestUpdateCase(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{patchResp: &cases.EntitiesCasesPatchV2OK{Payload: &models.OperationsUpdateCaseResponseVM{
 			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, &fakeTemplates{})
 		sev := 90
@@ -411,6 +428,9 @@ func TestUpdateCase(t *testing.T) {
 		}
 		if out.Total != 1 {
 			t.Fatalf("expected updated record returned, got %+v", out)
+		}
+		if out.Meta != any(f.patchResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 		b := f.lastPatchBody
 		if b == nil || b.ID == nil || *b.ID != "c1" {
@@ -453,6 +473,7 @@ func TestAddCaseAlertEvidence(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{alertResp: &cases.EntitiesAlertEvidencePostV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
 			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, &fakeTemplates{})
 		_, out, err := m.addCaseAlertEvidence(context.Background(), nil, AlertEvidenceInput{ID: "c1", AlertIDs: []string{"a1", "a2"}})
@@ -465,6 +486,9 @@ func TestAddCaseAlertEvidence(t *testing.T) {
 		b := f.lastAlertBody
 		if *b.ID != "c1" || len(b.Alerts) != 2 || *b.Alerts[0].ID != "a1" {
 			t.Fatalf("unexpected alert body: %+v", b)
+		}
+		if out.Meta != any(f.alertResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
@@ -491,6 +515,7 @@ func TestAddCaseEventEvidence(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{eventResp: &cases.EntitiesEventEvidencePostV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
 			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, &fakeTemplates{})
 		_, out, err := m.addCaseEventEvidence(context.Background(), nil, EventEvidenceInput{ID: "c1", EventIDs: []string{"e1"}})
@@ -503,6 +528,9 @@ func TestAddCaseEventEvidence(t *testing.T) {
 		b := f.lastEventBody
 		if *b.ID != "c1" || len(b.Events) != 1 || *b.Events[0].ID != "e1" {
 			t.Fatalf("unexpected event body: %+v", b)
+		}
+		if out.Meta != any(f.eventResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 }
@@ -530,6 +558,7 @@ func TestManageCaseTags(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{tagPostResp: &cases.EntitiesCaseTagsPostV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
 			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Meta:      &models.MsaMetaInfo{},
 		}}}
 		m := newModule(f, &fakeTemplates{})
 		_, out, err := m.manageCaseTags(context.Background(), nil, TagsInput{ID: "c1", Action: "add", Tags: []string{"triage", "p1"}})
@@ -541,6 +570,9 @@ func TestManageCaseTags(t *testing.T) {
 		}
 		if *f.lastTagPostBody.ID != "c1" || len(f.lastTagPostBody.Tags) != 2 {
 			t.Fatalf("unexpected add-tags body: %+v", f.lastTagPostBody)
+		}
+		if out.Meta != any(f.tagPostResp.Payload.Meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
 

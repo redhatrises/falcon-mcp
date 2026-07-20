@@ -69,9 +69,9 @@ func (m *Module) updateDetections(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, base.ActionResult{
 			Ok:   true,
 			Hint: "Detection closed without a resolution tag (true_positive/false_positive/ignored). Consider adding one via add_tags.",
-		}, nil
+		}.WithMeta(resp.Payload.Meta), nil
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }
 
 // actionParameters validates the input and builds the ordered gofalcon action

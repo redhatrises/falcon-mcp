@@ -198,7 +198,7 @@ func (m *Module) searchCorrelationRules(ctx context.Context, _ *mcp.CallToolRequ
 	// fetch step is needed.
 	rules := resp.Payload.Resources
 	m.Logger.Debug("search_correlation_rules query complete", "matched", len(rules))
-	return nil, base.Found(rules, in.Filter), nil
+	return nil, base.Found(rules, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // fqlBadRequest reports whether err is a 400-class correlation-rules query error

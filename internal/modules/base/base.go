@@ -296,7 +296,14 @@ func inferOutputSchema[Out any]() *jsonschema.Schema {
 		return nil
 	}
 
-	typeSchemas := map[reflect.Type]*jsonschema.Schema{}
+	// An any-typed field (the Meta passthrough) reflects to the JSON Schema
+	// boolean `true`. That is a valid schema, but a boolean where a property
+	// schema is expected trips strict MCP clients, which then drop the whole
+	// tools/list. Describe it as an opaque object so the property carries a
+	// schema object instead.
+	typeSchemas := map[reflect.Type]*jsonschema.Schema{
+		reflect.TypeFor[any](): opaqueRecordSchema,
+	}
 	if ot.Kind() == reflect.Struct {
 		if f, ok := ot.FieldByName("Resources"); ok && f.Type.Kind() == reflect.Slice {
 			elem := f.Type.Elem()
@@ -319,9 +326,17 @@ func inferOutputSchema[Out any]() *jsonschema.Schema {
 // EntitiesResult is the structured output envelope for tools that return a set
 // of entities without an FQL filter context (detail lookups and host-group
 // query/CRUD tools). It is a JSON object so the SDK can derive an output schema.
+//
+// Total is the number of records in this response, i.e. len(Resources). Detail
+// lookups are assembled from multiple chunked API calls with no single meta
+// total, so this response-level count is the only count available and reflects
+// resolved-versus-requested records. This differs from SearchResult, which
+// carries no Total because the authoritative match count for a paginated FQL
+// search lives in the Meta object (meta.pagination.total et al.).
 type EntitiesResult[T any] struct {
 	Resources []T `json:"resources"`
 	Total     int `json:"total"`
+	Meta      any `json:"meta,omitempty"`
 }
 
 // Entities builds an EntitiesResult, normalizing a nil slice to empty.
@@ -332,42 +347,92 @@ func Entities[T any](resources []T) EntitiesResult[T] {
 	return EntitiesResult[T]{Resources: resources, Total: len(resources)}
 }
 
+// WithMeta returns r with the raw API meta object attached for verbatim
+// passthrough. A nil or nil-pointer meta leaves the field unset. See
+// normalizeMeta for the nil handling.
+func (r EntitiesResult[T]) WithMeta(meta any) EntitiesResult[T] {
+	r.Meta = normalizeMeta(meta)
+	return r
+}
+
 // ActionResult is the structured output envelope for mutating tools that do
 // not return entity records. Ok is always true on success; Hint carries an
 // optional advisory message (e.g. closing a detection without a resolution tag).
 type ActionResult struct {
 	Ok   bool   `json:"ok"`
 	Hint string `json:"hint,omitempty"`
+	Meta any    `json:"meta,omitempty"`
+}
+
+// WithMeta returns r with the raw API meta object attached for verbatim
+// passthrough. A nil or nil-pointer meta leaves the field unset. See
+// normalizeMeta for the nil handling.
+func (r ActionResult) WithMeta(meta any) ActionResult {
+	r.Meta = normalizeMeta(meta)
+	return r
+}
+
+// normalizeMeta returns v unless it is nil or a nil pointer, in which case it
+// returns untyped nil so a meta,omitempty field is omitted rather than
+// serializing as JSON null. An interface holding a typed nil pointer is itself
+// non-nil, so omitempty alone would emit "null" without this guard.
+func normalizeMeta(v any) any {
+	if v == nil {
+		return nil
+	}
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return nil
+	}
+	return v
 }
 
 // SearchResult is the structured output envelope returned by the FQL search
 // tools. It is generic over the resource type so each tool advertises an
 // accurate output schema, and it is a JSON object (required for a derived
 // output schema). A single shape covers three outcomes:
-//   - success: Resources populated, Total set, Errors nil.
-//   - empty:   Resources is an empty (non-nil) slice, Total 0.
+//   - success: Resources populated, Meta carrying the API pagination/counts.
+//   - empty:   Resources is an empty (non-nil) slice.
 //   - FQL error: Errors/FQLGuide/Hint populated (see FQLError); the tool still
 //     returns a normal result, matching the server's data-not-protocol-error
 //     contract for invalid filters.
+//
+// Match counts and the pagination cursor are not surfaced as dedicated fields;
+// clients read them from the verbatim Meta object. The shape varies by endpoint.
+// Most endpoints put total at meta.pagination.total, with
+// query_time/powered_by/trace_id at the meta top level.
+//
+// Some endpoints leave the total null, so clients must iterate until resources
+// comes back empty rather than relying on the count.
 //
 // The value is returned as the handler's typed Out, so the SDK marshals it once
 // into StructuredContent as native JSON — no stringify-then-reparse round trip.
 type SearchResult[T any] struct {
 	Resources  []T              `json:"resources"`
-	Total      int              `json:"total"`
 	FilterUsed string           `json:"filter_used,omitempty"`
 	Errors     []FQLErrorDetail `json:"errors,omitempty"`
 	FQLGuide   string           `json:"fql_guide,omitempty"`
 	Hint       string           `json:"hint,omitempty"`
+	Meta       any              `json:"meta,omitempty"`
 }
 
-// Found builds a success (or empty) SearchResult from fetched detail resources. A nil
-// slice is normalized to an empty slice so the output is always a JSON array.
+// WithMeta returns r with the raw API meta object attached for verbatim
+// passthrough, carrying every field the API returned (pagination, query_time,
+// powered_by, trace_id, and endpoint-specific extras such as spotlight's
+// quota). A nil or nil-pointer meta leaves the field unset. See normalizeMeta
+// for the nil handling.
+func (r SearchResult[T]) WithMeta(meta any) SearchResult[T] {
+	r.Meta = normalizeMeta(meta)
+	return r
+}
+
+// Found builds a success (or empty) SearchResult from fetched detail resources.
+// A nil slice is normalized to an empty slice so the output is always a JSON
+// array. Match counts and pagination are surfaced via WithMeta, not here.
 func Found[T any](resources []T, filter string) SearchResult[T] {
 	if resources == nil {
 		resources = []T{}
 	}
-	return SearchResult[T]{Resources: resources, Total: len(resources), FilterUsed: filter}
+	return SearchResult[T]{Resources: resources, FilterUsed: filter}
 }
 
 // FQLError builds a SearchResult describing an invalid FQL filter, carrying the

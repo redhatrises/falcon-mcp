@@ -265,13 +265,13 @@ func (m *Module) searchReconNotifications(ctx context.Context, req *mcp.CallTool
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_recon_notifications query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.DomainDetailedNotificationV1{}, in.Filter), nil
+		return nil, base.Found([]*models.DomainDetailedNotificationV1{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchNotifications(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(details, in.Filter), nil
+	return nil, base.Found(details, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // RulesInput is the input for falcon_search_recon_rules.
@@ -320,13 +320,13 @@ func (m *Module) searchReconRules(ctx context.Context, req *mcp.CallToolRequest,
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_recon_rules query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.SadomainRule{}, in.Filter), nil
+		return nil, base.Found([]*models.SadomainRule{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchRules(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(details, in.Filter), nil
+	return nil, base.Found(details, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // ExposedDataRecordsInput is the input for
@@ -376,13 +376,13 @@ func (m *Module) searchReconExposedDataRecords(ctx context.Context, req *mcp.Cal
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_recon_exposed_data_records query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.APINotificationExposedDataRecordV1{}, in.Filter), nil
+		return nil, base.Found([]*models.APINotificationExposedDataRecordV1{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchExposedDataRecords(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(details, in.Filter), nil
+	return nil, base.Found(details, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // fetchNotifications fetches full notification records for the given IDs,

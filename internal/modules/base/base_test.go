@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/go-openapi/strfmt"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -557,14 +558,215 @@ func TestFound(t *testing.T) {
 
 	// A nil slice must normalize to a non-nil empty slice for stable JSON arrays.
 	got := Found[string](nil, "status:'new'")
-	if got.Total != 0 || got.FilterUsed != "status:'new'" || got.Resources == nil {
+	if got.FilterUsed != "status:'new'" || got.Resources == nil {
 		t.Fatalf("unexpected empty result: %+v", got)
 	}
 
 	full := Found([]string{"a", "b"}, "")
-	if full.Total != 2 || len(full.Resources) != 2 {
+	if len(full.Resources) != 2 {
 		t.Fatalf("unexpected populated result: %+v", full)
 	}
+}
+
+func TestNormalizeMeta(t *testing.T) {
+	t.Parallel()
+
+	var typedNil *models.MsaMetaInfo
+	if got := normalizeMeta(nil); got != nil {
+		t.Fatalf("normalizeMeta(nil) = %v, want nil", got)
+	}
+	if got := normalizeMeta(typedNil); got != nil {
+		t.Fatalf("normalizeMeta(typed-nil pointer) = %v, want nil", got)
+	}
+	meta := &models.MsaMetaInfo{PoweredBy: "test"}
+	if got := normalizeMeta(meta); got != any(meta) {
+		t.Fatalf("normalizeMeta(populated) = %v, want the same value", got)
+	}
+}
+
+// TestWithMeta covers the meta passthrough on all three envelopes: a populated
+// meta is attached, and a typed-nil pointer is omitted from JSON rather than
+// serializing as "meta":null (which plain omitempty on a non-nil interface
+// would otherwise emit).
+func TestWithMeta(t *testing.T) {
+	t.Parallel()
+
+	var typedNil *models.MsaMetaInfo
+	n := int64(3)
+	meta := &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: &n}}
+
+	hasMetaKey := func(t *testing.T, v any) bool {
+		t.Helper()
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		_, ok := m["meta"]
+		return ok
+	}
+
+	t.Run("SearchResult", func(t *testing.T) {
+		t.Parallel()
+		if got := Found([]string{"a"}, "").WithMeta(meta); got.Meta != any(meta) {
+			t.Fatalf("Meta = %v, want the populated struct", got.Meta)
+		}
+		if hasMetaKey(t, Found([]string{"a"}, "").WithMeta(typedNil)) {
+			t.Fatal("typed-nil meta must be omitted from SearchResult JSON")
+		}
+	})
+	t.Run("EntitiesResult", func(t *testing.T) {
+		t.Parallel()
+		if got := Entities([]string{"a"}).WithMeta(meta); got.Meta != any(meta) {
+			t.Fatalf("Meta = %v, want the populated struct", got.Meta)
+		}
+		if hasMetaKey(t, Entities([]string{"a"}).WithMeta(typedNil)) {
+			t.Fatal("typed-nil meta must be omitted from EntitiesResult JSON")
+		}
+	})
+	t.Run("ActionResult", func(t *testing.T) {
+		t.Parallel()
+		if got := (ActionResult{Ok: true}).WithMeta(meta); got.Meta != any(meta) {
+			t.Fatalf("Meta = %v, want the populated struct", got.Meta)
+		}
+		if hasMetaKey(t, (ActionResult{Ok: true}).WithMeta(typedNil)) {
+			t.Fatal("typed-nil meta must be omitted from ActionResult JSON")
+		}
+	})
+}
+
+// TestInferOutputSchemaValidatesPopulatedMeta is the regression guard proving a
+// populated meta object validates against the resolved output schema over the
+// SDK path. The Meta field is typed any, which reflects to an accept-anything
+// schema; a json.RawMessage field would instead reflect to an array-of-bytes
+// schema and reject a meta object at runtime.
+func TestInferOutputSchemaValidatesPopulatedMeta(t *testing.T) {
+	t.Parallel()
+
+	schema := inferOutputSchema[SearchResult[policyDates]]()
+	if schema == nil {
+		t.Fatal("inferOutputSchema returned nil for SearchResult")
+	}
+	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{ValidateDefaults: true})
+	if err != nil {
+		t.Fatalf("resolve schema: %v", err)
+	}
+
+	n := int64(5)
+	q := 0.01
+	result := Found([]policyDates{}, "status:'open'").WithMeta(&models.MsaMetaInfo{
+		Pagination: &models.MsaPaging{Total: &n},
+		QueryTime:  &q,
+		PoweredBy:  "test",
+	})
+
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	var instance any
+	if err := json.Unmarshal(raw, &instance); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if err := resolved.Validate(instance); err != nil {
+		t.Fatalf("result with populated meta must validate, got: %v", err)
+	}
+}
+
+// TestWithMetaJSONShape pins the exact JSON paths clients read pagination from,
+// per the SearchResult and WithMeta docs. The three FQL meta shapes diverge:
+// the pagination-cursor endpoints (IOC, spotlight) expose
+// meta.pagination.{total,after}; the actor endpoint exposes meta.paging.total
+// with no cursor and nests query_time/powered_by/trace_id under
+// meta.MsaMetaInfo (which is null when the API omits it). It also proves the
+// documented null-total case survives marshaling as a JSON null rather than
+// being dropped, so a client can tell "no count" apart from "count zero".
+func TestWithMetaJSONShape(t *testing.T) {
+	t.Parallel()
+
+	// pathVal walks v by JSON keys and returns the terminal value, or ok=false
+	// if any key along the way is absent.
+	pathVal := func(t *testing.T, v any, keys ...string) (any, bool) {
+		t.Helper()
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var cur any
+		if err := json.Unmarshal(raw, &cur); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		for _, k := range keys {
+			m, ok := cur.(map[string]any)
+			if !ok {
+				return nil, false
+			}
+			cur, ok = m[k]
+			if !ok {
+				return nil, false
+			}
+		}
+		return cur, true
+	}
+
+	total := int64(120)
+
+	t.Run("pagination cursor endpoint (IOC/spotlight shape)", func(t *testing.T) {
+		t.Parallel()
+		meta := &models.APIIndicatorsQueryMeta{Pagination: &models.APIIndicatorsQueryPaging{
+			Total: &total,
+			After: "cursor-next",
+		}}
+		res := Found([]string{"a"}, "type:'domain'").WithMeta(meta)
+
+		if got, ok := pathVal(t, res, "meta", "pagination", "total"); !ok || got != float64(120) {
+			t.Fatalf("meta.pagination.total = %v (ok=%v), want 120", got, ok)
+		}
+		if got, ok := pathVal(t, res, "meta", "pagination", "after"); !ok || got != "cursor-next" {
+			t.Fatalf("meta.pagination.after = %v (ok=%v), want cursor-next", got, ok)
+		}
+	})
+
+	t.Run("actor endpoint (standard MsaMetaInfo shape)", func(t *testing.T) {
+		t.Parallel()
+		// The actor endpoint now returns the same MsaMetaInfo shape as every
+		// other MSA endpoint: pagination under meta.pagination and the standard
+		// query_time/powered_by/trace_id fields at the meta top level.
+		q := 0.02
+		meta := &models.MsaMetaInfo{
+			Pagination: &models.MsaPaging{Total: &total},
+			QueryTime:  &q,
+			PoweredBy:  "actor-api",
+		}
+		res := Found([]string{"a"}, "name:'FANCY BEAR'").WithMeta(meta)
+
+		if got, ok := pathVal(t, res, "meta", "pagination", "total"); !ok || got != float64(120) {
+			t.Fatalf("meta.pagination.total = %v (ok=%v), want 120", got, ok)
+		}
+		if got, ok := pathVal(t, res, "meta", "powered_by"); !ok || got != "actor-api" {
+			t.Fatalf("meta.powered_by = %v (ok=%v), want actor-api", got, ok)
+		}
+	})
+
+	t.Run("null total is preserved, not dropped", func(t *testing.T) {
+		t.Parallel()
+		// Total is a nil *int64, so the API's "always null" pagination.total
+		// must marshal as JSON null (the field has no omitempty), letting a
+		// client distinguish an absent count from a real zero.
+		meta := &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: nil}}
+		res := Found([]string{"a"}, "status:'new'").WithMeta(meta)
+
+		got, ok := pathVal(t, res, "meta", "pagination", "total")
+		if !ok {
+			t.Fatal("meta.pagination.total key must be present even when null")
+		}
+		if got != nil {
+			t.Fatalf("meta.pagination.total = %v, want JSON null", got)
+		}
+	})
 }
 
 func TestFQLError(t *testing.T) {

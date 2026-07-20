@@ -3,7 +3,7 @@ module github.com/crowdstrike/falcon-mcp
 go 1.26.4
 
 require (
-	github.com/crowdstrike/gofalcon v0.21.1-0.20260630210305-0f789201d49e
+	github.com/crowdstrike/gofalcon v0.21.2-0.20260720185150-542ced95b748
 	github.com/go-openapi/runtime v0.27.1
 	github.com/go-openapi/strfmt v0.22.2
 	github.com/go-viper/encoding/ini v0.1.1
@@ -55,7 +55,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	go.mongodb.org/mongo-driver v1.14.0 // indirect
+	go.mongodb.org/mongo-driver v1.17.7 // indirect
 	go.opentelemetry.io/otel v1.21.0 // indirect
 	go.opentelemetry.io/otel/metric v1.21.0 // indirect
 	go.opentelemetry.io/otel/trace v1.21.0 // indirect

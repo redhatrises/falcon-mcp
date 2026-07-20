@@ -102,6 +102,7 @@ func TestSearchFirewallRulesSuccess(t *testing.T) {
 	f := &fakeFirewall{
 		queryRulesResp: &firewall_management.QueryRulesOK{Payload: &models.FwmgrAPIQueryResponse{
 			Resources: []string{"r1", "r2"},
+			Meta:      &models.FwmgrAPIMetaInfo{},
 		}},
 		getRulesResp: &firewall_management.GetRulesOK{Payload: &models.FwmgrAPIRulesResponse{
 			Resources: []*models.FwmgrFirewallRuleV1{{ID: str("r1")}, {ID: str("r2")}},
@@ -113,11 +114,14 @@ func TestSearchFirewallRulesSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchFirewallRules: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 || out.FilterUsed != "enabled:true" {
+	if len(out.Resources) != 2 || out.FilterUsed != "enabled:true" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if f.getRulesCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.getRulesCalls)
+	}
+	if out.Meta != any(f.queryRulesResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -133,7 +137,7 @@ func TestSearchFirewallRulesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchFirewallRules: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 	if f.getRulesCalls != 0 {
@@ -257,6 +261,7 @@ func TestSearchFirewallRuleGroupsSuccess(t *testing.T) {
 	f := &fakeFirewall{
 		queryGroupsResp: &firewall_management.QueryRuleGroupsOK{Payload: &models.FwmgrAPIQueryResponse{
 			Resources: []string{"g1"},
+			Meta:      &models.FwmgrAPIMetaInfo{},
 		}},
 		getGroupsResp: &firewall_management.GetRuleGroupsOK{Payload: &models.FwmgrAPIRuleGroupsResponse{
 			Resources: []*models.FwmgrAPIRuleGroupV1{{ID: str("g1")}},
@@ -268,11 +273,14 @@ func TestSearchFirewallRuleGroupsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchFirewallRuleGroups: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 {
+	if len(out.Resources) != 1 {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if f.getGroupsCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.getGroupsCalls)
+	}
+	if out.Meta != any(f.queryGroupsResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -288,7 +296,7 @@ func TestSearchFirewallRuleGroupsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchFirewallRuleGroups: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 	if f.getGroupsCalls != 0 {
@@ -342,6 +350,7 @@ func TestSearchFirewallPolicyRulesSuccess(t *testing.T) {
 	f := &fakeFirewall{
 		queryPolicyResp: &firewall_management.QueryPolicyRulesOK{Payload: &models.FwmgrAPIQueryResponse{
 			Resources: []string{"r1"},
+			Meta:      &models.FwmgrAPIMetaInfo{},
 		}},
 		getRulesResp: &firewall_management.GetRulesOK{Payload: &models.FwmgrAPIRulesResponse{
 			Resources: []*models.FwmgrFirewallRuleV1{{ID: str("r1")}},
@@ -353,7 +362,7 @@ func TestSearchFirewallPolicyRulesSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchFirewallPolicyRules: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 {
+	if len(out.Resources) != 1 {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if f.lastQueryPolicy.ID == nil || *f.lastQueryPolicy.ID != "p1" {
@@ -361,6 +370,9 @@ func TestSearchFirewallPolicyRulesSuccess(t *testing.T) {
 	}
 	if f.getRulesCalls != 1 {
 		t.Fatalf("expected rule detail fetch via GetRules, got %d", f.getRulesCalls)
+	}
+	if out.Meta != any(f.queryPolicyResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -430,6 +442,7 @@ func TestCreateFirewallRuleGroupBody(t *testing.T) {
 
 	f := &fakeFirewall{createResp: &firewall_management.CreateRuleGroupCreated{Payload: &models.FwmgrAPIQueryResponse{
 		Resources: []string{"new-group"},
+		Meta:      &models.FwmgrAPIMetaInfo{},
 	}}}
 	m := newModule(f)
 
@@ -445,6 +458,9 @@ func TestCreateFirewallRuleGroupBody(t *testing.T) {
 	}
 	if out.Total != 1 || out.Resources[0] != "new-group" {
 		t.Fatalf("expected created id returned, got %+v", out)
+	}
+	if out.Meta != any(f.createResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	body := f.lastCreateParams.Body
 	if body.Name == nil || *body.Name != "Prod Outbound" {
@@ -529,6 +545,7 @@ func TestDeleteFirewallRuleGroupsSuccess(t *testing.T) {
 
 	f := &fakeFirewall{deleteResp: &firewall_management.DeleteRuleGroupsOK{Payload: &models.FwmgrAPIQueryResponse{
 		Resources: []string{"g1", "g2"},
+		Meta:      &models.FwmgrAPIMetaInfo{},
 	}}}
 	m := newModule(f)
 
@@ -538,6 +555,9 @@ func TestDeleteFirewallRuleGroupsSuccess(t *testing.T) {
 	}
 	if out.Total != 2 {
 		t.Fatalf("expected 2 deleted ids, got %+v", out)
+	}
+	if out.Meta != any(f.deleteResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	if len(f.lastDeleteParams.Ids) != 2 {
 		t.Fatalf("expected 2 ids passed, got %v", f.lastDeleteParams.Ids)

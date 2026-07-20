@@ -47,12 +47,14 @@ func (f *fakeIoc) IndicatorDeleteV1(p *ioc.IndicatorDeleteV1Params, _ ...ioc.Cli
 
 func str(s string) *string { return &s }
 func i32(v int32) *int32   { return &v }
+func i64(v int64) *int64   { return &v }
 
 func TestSearchIocsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeIoc{searchResp: &ioc.IndicatorCombinedV1OK{Payload: &models.APIIndicatorRespV1{
 		Resources: []*models.APIIndicatorV1{{ID: "i1", Value: "evil.example"}},
+		Meta:      &models.APIIndicatorsQueryMeta{Pagination: &models.APIIndicatorsQueryPaging{Total: i64(9), After: "cursor-next"}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -60,8 +62,11 @@ func TestSearchIocsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchIOCs: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "type:'domain'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "type:'domain'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.searchResp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
 
@@ -77,8 +82,11 @@ func TestSearchIocsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchIOCs: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
+	}
+	if out.Meta != nil {
+		t.Fatalf("Meta = %+v, want nil when the response carries no meta", out.Meta)
 	}
 }
 

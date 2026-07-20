@@ -242,6 +242,9 @@ func (m *Module) searchNGSIEM(ctx context.Context, _ *mcp.CallToolRequest, in Se
 			}
 			events := toEvents(payload.Events)
 			m.Logger.Debug("search_ngsiem job completed", "job_id", jobID, "events", len(events))
+			// No meta is attached: the job-results payload carries MetaData
+			// (quota/costs/event counts), not a pagination cursor, and this
+			// endpoint is not paginated.
 			return nil, base.Entities(events), nil
 		}
 	}

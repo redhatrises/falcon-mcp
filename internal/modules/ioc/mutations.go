@@ -63,7 +63,7 @@ func (m *Module) addIOC(ctx context.Context, _ *mcp.CallToolRequest, in AddInput
 	if e := base.APIError(err, resp, scopeIOCWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // body builds the IOC create request. The bulk Indicators array takes
@@ -148,7 +148,7 @@ func (m *Module) removeIOCs(ctx context.Context, _ *mcp.CallToolRequest, in Remo
 	if e := base.APIError(err, resp, scopeIOCWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // wrapInvalid builds an errInvalidInput-wrapped error for op with detail.

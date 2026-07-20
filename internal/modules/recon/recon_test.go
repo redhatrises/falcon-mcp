@@ -81,6 +81,7 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 	f := &fakeRecon{
 		notifQueryResp: &recon.QueryNotificationsV1OK{Payload: &models.DomainQueryResponse{
 			Resources: []string{"n1", "n2"},
+			Meta:      &models.DomainMsaMetaInfo{},
 		}},
 		notifGetResp: &recon.GetNotificationsDetailedV1OK{Payload: &models.DomainNotificationDetailsResponseV1{
 			// Returned out of query order to exercise reordering by id.
@@ -99,7 +100,7 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 	if f.notifGetCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.notifGetCalls)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 {
+	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 resources, got %+v", out)
 	}
 	// Reordered back to query order n1, n2.
@@ -108,6 +109,9 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 	}
 	if out.FilterUsed != "status:'new'" {
 		t.Errorf("FilterUsed = %q", out.FilterUsed)
+	}
+	if out.Meta != any(f.notifQueryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -123,7 +127,7 @@ func TestSearchNotificationsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchReconNotifications: %v", err)
 	}
-	if out.Total != 0 || len(out.Resources) != 0 {
+	if len(out.Resources) != 0 {
 		t.Fatalf("expected empty result, got %+v", out)
 	}
 	if out.Resources == nil {
@@ -186,6 +190,7 @@ func TestSearchRulesSuccess(t *testing.T) {
 	f := &fakeRecon{
 		rulesQueryResp: &recon.QueryRulesV1OK{Payload: &models.DomainRuleQueryResponseV1{
 			Resources: []string{"r1"},
+			Meta:      &models.DomainRuleMetaInfo{},
 		}},
 		rulesGetResp: &recon.GetRulesV1OK{Payload: &models.DomainRulesEntitiesResponseV1{
 			Resources: []*models.SadomainRule{{ID: str("r1")}},
@@ -200,8 +205,11 @@ func TestSearchRulesSuccess(t *testing.T) {
 	if f.rulesGetCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.rulesGetCalls)
 	}
-	if out.Total != 1 || *out.Resources[0].ID != "r1" {
+	if len(out.Resources) != 1 || *out.Resources[0].ID != "r1" {
 		t.Fatalf("unexpected result %+v", out)
+	}
+	if out.Meta != any(f.rulesQueryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -234,6 +242,7 @@ func TestSearchExposedDataRecordsSuccess(t *testing.T) {
 	f := &fakeRecon{
 		edrQueryResp: &recon.QueryNotificationsExposedDataRecordsV1OK{Payload: &models.DomainQueryResponse{
 			Resources: []string{"e1", "e2"},
+			Meta:      &models.DomainMsaMetaInfo{},
 		}},
 		edrGetResp: &recon.GetNotificationsExposedDataRecordsV1OK{Payload: &models.APINotificationExposedDataRecordEntitiesResponseV1{
 			Resources: []*models.APINotificationExposedDataRecordV1{
@@ -251,8 +260,11 @@ func TestSearchExposedDataRecordsSuccess(t *testing.T) {
 	if f.edrGetCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.edrGetCalls)
 	}
-	if out.Total != 2 {
+	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 resources, got %+v", out)
+	}
+	if out.Meta != any(f.edrQueryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 

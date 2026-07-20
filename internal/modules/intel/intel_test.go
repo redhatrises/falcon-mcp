@@ -67,6 +67,7 @@ func TestSearchActorsSuccess(t *testing.T) {
 
 	f := &fakeIntel{actorsResp: &intel.QueryIntelActorEntitiesOK{Payload: &models.ActorActorPaginatedResponse{
 		Resources: []*models.ActorActorDocument{{ID: i64(2583), Name: "FANCY BEAR"}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(31)}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -74,8 +75,11 @@ func TestSearchActorsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchActors: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "name:'FANCY BEAR'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "name:'FANCY BEAR'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.actorsResp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
 
@@ -117,6 +121,7 @@ func TestSearchIndicatorsSuccess(t *testing.T) {
 
 	f := &fakeIntel{indicatorsResp: &intel.QueryIntelIndicatorEntitiesOK{Payload: &models.DomainPublicIndicatorsV3Response{
 		Resources: []*models.DomainPublicIndicatorV3{{ID: str("domain_evil.example"), Indicator: str("evil.example")}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(88)}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -124,8 +129,11 @@ func TestSearchIndicatorsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchIndicators: %v", err)
 	}
-	if out.Total != 1 || out.FilterUsed != "type:'domain'" {
+	if out.FilterUsed != "type:'domain'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.indicatorsResp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
 
@@ -152,6 +160,7 @@ func TestSearchReportsSuccess(t *testing.T) {
 
 	f := &fakeIntel{reportsResp: &intel.QueryIntelReportEntitiesOK{Payload: &models.DomainNewsResponse{
 		Resources: []*models.DomainNewsDocument{{ID: i64(42), Name: str("CSA-1")}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(7)}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -159,8 +168,11 @@ func TestSearchReportsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchReports: %v", err)
 	}
-	if out.Total != 1 || out.FilterUsed != "type:'notice'" {
+	if out.FilterUsed != "type:'notice'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.reportsResp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
 

@@ -230,7 +230,7 @@ func (m *Module) searchApplications(ctx context.Context, _ *mcp.CallToolRequest,
 
 	applications := resp.Payload.Resources
 	m.Logger.Debug("search_applications query complete", "matched", len(applications))
-	return nil, base.Found(applications, in.Filter), nil
+	return nil, base.Found(applications, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // UnmanagedAssetsInput is the input for falcon_search_unmanaged_assets. The json
@@ -281,7 +281,7 @@ func (m *Module) searchUnmanagedAssets(ctx context.Context, _ *mcp.CallToolReque
 
 	assets := resp.Payload.Resources
 	m.Logger.Debug("search_unmanaged_assets query complete", "matched", len(assets))
-	return nil, base.Found(assets, filter), nil
+	return nil, base.Found(assets, filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // applicationsFQLBadRequest reports whether err is a 400-class combined
