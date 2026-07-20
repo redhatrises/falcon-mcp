@@ -59,6 +59,22 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 		expectSearchReturnsDetails(res, "id", "value")
 	})
 
+	It("surfaces the raw API meta object on a populated search", func() {
+		cs := newSession(ctx)
+		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+			"exclusion_type": "ml",
+			"limit":          3,
+		})
+		expectNoToolError(res)
+		skipIfEmpty(res, "tenant has no ML exclusions")
+		// The pagination passthrough attaches the query-step meta verbatim; a
+		// populated search must carry a meta object (e.g. pagination/query_time).
+		obj := structured(res)
+		meta, ok := obj["meta"].(map[string]any)
+		Expect(ok).To(BeTrue(), "expected a meta object on a populated search, got %v", obj["meta"])
+		Expect(meta).NotTo(BeEmpty(), "meta object should carry at least one field")
+	})
+
 	It("searches sensor visibility exclusions and returns full records", func() {
 		cs := newSession(ctx)
 		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{

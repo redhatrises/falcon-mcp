@@ -16,7 +16,8 @@ import (
 // is typed []*HostGroupsHostGroupV1, but the live API returns groups as a bare
 // []string of host-group IDs, so the generated reader hard-fails with
 // "cannot unmarshal string into ... groups" for every ML record that has host
-// groups (validated live 2026-07-19, still present in gofalcon b0365da5).
+// groups (validated live 2026-07-19; the model type is unchanged on gofalcon
+// 542ced95b748, so the mismatch persists).
 //
 // Rather than special-case ML with one faithful local model and use the typed
 // path for the other three, every record-returning operation is routed through a

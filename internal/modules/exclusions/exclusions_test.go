@@ -19,17 +19,19 @@ var testLogger = slog.New(slog.DiscardHandler)
 // records the last body/ids it received and returns canned raw bodies so handler
 // behavior can be exercised without the gofalcon transport.
 type fakeBackend struct {
-	queryIDs  []string
-	queryErr  error
-	getBody   []byte
-	getErr    error
-	createRes []byte
-	createErr error
-	updateRes []byte
-	updateErr error
-	deleteErr error
-	fqlDetail []base.FQLErrorDetail
-	fqlOK     bool
+	queryIDs   []string
+	queryMeta  any
+	queryErr   error
+	getBody    []byte
+	getErr     error
+	createRes  []byte
+	createErr  error
+	updateRes  []byte
+	updateErr  error
+	deleteMeta any
+	deleteErr  error
+	fqlDetail  []base.FQLErrorDetail
+	fqlOK      bool
 
 	lastCreateBody any
 	lastUpdateBody any
@@ -39,9 +41,9 @@ type fakeBackend struct {
 	lastGetIDs     []string
 }
 
-func (f *fakeBackend) query(_ context.Context, a queryArgs) ([]string, error) {
+func (f *fakeBackend) query(_ context.Context, a queryArgs) ([]string, any, error) {
 	f.lastQuery = a
-	return f.queryIDs, f.queryErr
+	return f.queryIDs, f.queryMeta, f.queryErr
 }
 func (f *fakeBackend) getRaw(_ context.Context, ids []string) ([]byte, error) {
 	f.lastGetIDs = ids
@@ -55,10 +57,10 @@ func (f *fakeBackend) updateRaw(_ context.Context, body any) ([]byte, error) {
 	f.lastUpdateBody = body
 	return f.updateRes, f.updateErr
 }
-func (f *fakeBackend) deleteByIDs(_ context.Context, ids []string, comment string) error {
+func (f *fakeBackend) deleteByIDs(_ context.Context, ids []string, comment string) (any, error) {
 	f.lastDeleteIDs = ids
 	f.lastComment = comment
-	return f.deleteErr
+	return f.deleteMeta, f.deleteErr
 }
 func (f *fakeBackend) classifyFQL(error) ([]base.FQLErrorDetail, bool) {
 	return f.fqlDetail, f.fqlOK
@@ -76,9 +78,11 @@ func moduleWith(exclusionType string, fb backend) *Module {
 
 func TestSearchExclusionsSuccess(t *testing.T) {
 	t.Parallel()
+	meta := &models.MsaMetaInfo{}
 	fb := &fakeBackend{
-		queryIDs: []string{"b", "a"},
-		getBody:  []byte(`{"resources":[{"id":"a","value":"/x"},{"id":"b","value":"/y"}]}`),
+		queryIDs:  []string{"b", "a"},
+		queryMeta: meta,
+		getBody:   []byte(`{"resources":[{"id":"a","value":"/x"},{"id":"b","value":"/y"}]}`),
 	}
 	m := moduleWith("ml", fb)
 
@@ -86,12 +90,16 @@ func TestSearchExclusionsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchExclusions: %v", err)
 	}
-	if out.Total != 2 || out.FilterUsed != "applied_globally:true" {
+	if len(out.Resources) != 2 || out.FilterUsed != "applied_globally:true" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	// reorderByID should restore the query order [b, a].
 	if out.Resources[0]["id"] != "b" || out.Resources[1]["id"] != "a" {
 		t.Fatalf("expected query-order [b,a], got %v / %v", out.Resources[0]["id"], out.Resources[1]["id"])
+	}
+	// Meta comes from the query step and is passed through verbatim.
+	if out.Meta != any(meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -104,8 +112,12 @@ func TestSearchExclusionsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchExclusions: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
+	}
+	// A nil query meta must leave the field unset (not a typed-nil pointer).
+	if out.Meta != nil {
+		t.Fatalf("expected nil meta on empty query, got %+v", out.Meta)
 	}
 	if len(fb.lastGetIDs) != 0 {
 		t.Fatalf("expected no detail fetch on empty query, got %v", fb.lastGetIDs)
@@ -205,7 +217,7 @@ func TestCreateExclusionInvalidType(t *testing.T) {
 
 func TestCreateExclusionSuccess(t *testing.T) {
 	t.Parallel()
-	fb := &fakeBackend{createRes: []byte(`{"resources":[{"id":"new","value":"/x"}]}`)}
+	fb := &fakeBackend{createRes: []byte(`{"resources":[{"id":"new","value":"/x"}],"meta":{"query_time":0.01}}`)}
 	m := moduleWith("ml", fb)
 	_, out, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", Value: "/x", HostGroups: []string{"g1"}})
 	if err != nil {
@@ -213,6 +225,11 @@ func TestCreateExclusionSuccess(t *testing.T) {
 	}
 	if out.Total != 1 || out.Resources[0]["id"] != "new" {
 		t.Fatalf("expected created record, got %+v", out)
+	}
+	// The raw response meta object is passed through from decodeResources.
+	gotMeta, ok := out.Meta.(map[string]any)
+	if !ok || gotMeta["query_time"] != 0.01 {
+		t.Fatalf("expected meta passthrough from raw body, got %+v", out.Meta)
 	}
 	body, ok := fb.lastCreateBody.(*models.DomainExclusionsCreateReqV2)
 	if !ok {
@@ -225,8 +242,8 @@ func TestCreateExclusionSuccess(t *testing.T) {
 
 // TestCreateMLExclusionForwardsFlags verifies the ML create body carries
 // applied_globally and is_descendant_process when the caller sets them (the
-// gofalcon ML item models gained these fields in 7ccbeaf1), and leaves them
-// false when the caller omits them.
+// gofalcon ML item models carry these fields as of 542ced95b748), and leaves
+// them false when the caller omits them.
 func TestCreateMLExclusionForwardsFlags(t *testing.T) {
 	t.Parallel()
 
@@ -301,14 +318,20 @@ func TestUpdateExclusionRequiresID(t *testing.T) {
 }
 
 // TestUpdateExclusionMLSingularBody verifies the ML update body is the singular
-// DomainExclusionUpdateReqV2 (not the wrapped create shape) and carries the id.
+// DomainExclusionUpdateReqV2 (not the wrapped create shape) and carries the id,
+// and that the raw response meta object is passed through on update.
 func TestUpdateExclusionMLSingularBody(t *testing.T) {
 	t.Parallel()
-	fb := &fakeBackend{updateRes: []byte(`{"resources":[{"id":"e1"}]}`)}
+	fb := &fakeBackend{updateRes: []byte(`{"resources":[{"id":"e1"}],"meta":{"query_time":0.02}}`)}
 	m := moduleWith("ml", fb)
-	_, _, err := m.updateExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", ID: "e1", Value: "/x"})
+	_, out, err := m.updateExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", ID: "e1", Value: "/x"})
 	if err != nil {
 		t.Fatalf("updateExclusion: %v", err)
+	}
+	// The raw response meta object is passed through from decodeResources.
+	gotMeta, ok := out.Meta.(map[string]any)
+	if !ok || gotMeta["query_time"] != 0.02 {
+		t.Fatalf("expected meta passthrough from raw body, got %+v", out.Meta)
 	}
 	body, ok := fb.lastUpdateBody.(*models.DomainExclusionUpdateReqV2)
 	if !ok {
@@ -460,7 +483,8 @@ func TestDeleteExclusions(t *testing.T) {
 
 	t.Run("success passes ids and comment", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{}
+		meta := &models.MsaMetaInfo{}
+		fb := &fakeBackend{deleteMeta: meta}
 		m := moduleWith("ml", fb)
 		_, out, err := m.deleteExclusions(context.Background(), nil, DeleteInput{ExclusionType: "ml", IDs: []string{"a", "b"}, Comment: "cleanup"})
 		if err != nil {
@@ -468,6 +492,9 @@ func TestDeleteExclusions(t *testing.T) {
 		}
 		if !out.Ok {
 			t.Fatalf("expected Ok, got %+v", out)
+		}
+		if out.Meta != any(meta) {
+			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 		if len(fb.lastDeleteIDs) != 2 || fb.lastComment != "cleanup" {
 			t.Fatalf("unexpected delete args: ids=%v comment=%q", fb.lastDeleteIDs, fb.lastComment)
@@ -501,18 +528,20 @@ func TestGetCertificateDetailsRequiresHash(t *testing.T) {
 func TestDecodeResources(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		body string
-		want int
+		name     string
+		body     string
+		want     int
+		wantMeta bool
 	}{
-		{"empty body", "", 0},
-		{"null resources", `{"resources":null}`, 0},
-		{"two records", `{"resources":[{"id":"a"},{"id":"b"}]}`, 2},
+		{"empty body", "", 0, false},
+		{"null resources", `{"resources":null}`, 0, false},
+		{"two records", `{"resources":[{"id":"a"},{"id":"b"}]}`, 2, false},
+		{"records with meta", `{"resources":[{"id":"a"}],"meta":{"query_time":0.02}}`, 1, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := decodeResources([]byte(tc.body))
+			got, meta, err := decodeResources([]byte(tc.body))
 			if err != nil {
 				t.Fatalf("decodeResources: %v", err)
 			}
@@ -521,6 +550,14 @@ func TestDecodeResources(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatalf("expected non-nil slice")
+			}
+			if tc.wantMeta {
+				m, ok := meta.(map[string]any)
+				if !ok || m["query_time"] != 0.02 {
+					t.Fatalf("expected meta object, got %+v", meta)
+				}
+			} else if meta != nil {
+				t.Fatalf("expected nil meta, got %+v", meta)
 			}
 		})
 	}

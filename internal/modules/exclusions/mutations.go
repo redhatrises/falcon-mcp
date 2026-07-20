@@ -71,11 +71,11 @@ func (m *Module) createExclusion(ctx context.Context, _ *mcp.CallToolRequest, in
 	if e := base.APIError(err, nil, writeScope(in.ExclusionType)); e != nil {
 		return nil, zero, e
 	}
-	records, err := decodeResources(raw)
+	records, meta, err := decodeResources(raw)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Entities(records), nil
+	return nil, base.Entities(records).WithMeta(meta), nil
 }
 
 func (m *Module) updateExclusion(ctx context.Context, _ *mcp.CallToolRequest, in MutateInput) (*mcp.CallToolResult, base.EntitiesResult[map[string]any], error) {
@@ -97,11 +97,11 @@ func (m *Module) updateExclusion(ctx context.Context, _ *mcp.CallToolRequest, in
 	if e := base.APIError(err, nil, writeScope(in.ExclusionType)); e != nil {
 		return nil, zero, e
 	}
-	records, err := decodeResources(raw)
+	records, meta, err := decodeResources(raw)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Entities(records), nil
+	return nil, base.Entities(records).WithMeta(meta), nil
 }
 
 // DeleteInput is the input for falcon_delete_exclusions.
@@ -121,11 +121,11 @@ func (m *Module) deleteExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 	m.Logger.Debug("delete_exclusions", "type", in.ExclusionType, "ids", len(in.IDs))
 
-	err := b.deleteByIDs(ctx, in.IDs, in.Comment)
+	meta, err := b.deleteByIDs(ctx, in.IDs, in.Comment)
 	if e := base.APIError(err, nil, writeScope(in.ExclusionType)); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(meta), nil
 }
 
 // buildBody dispatches to the per-type body builder, validating the fields that
@@ -192,7 +192,7 @@ func buildIOABody(in MutateInput, id string) (any, error) {
 }
 
 // buildMLBody builds the ML v2 request: create is wrapped, update is the SINGULAR
-// DomainExclusionUpdateReqV2. As of gofalcon 7ccbeaf1 the ML item models carry
+// DomainExclusionUpdateReqV2. As of gofalcon 542ced95b748 the ML item models carry
 // applied_globally and is_descendant_process, so those params are forwarded when
 // set (matching the Python module); a nil pointer leaves the omitempty field out.
 func buildMLBody(in MutateInput, id string) (any, error) {
