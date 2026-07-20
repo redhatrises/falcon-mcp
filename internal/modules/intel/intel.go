@@ -4,15 +4,16 @@
 // FQL guide resources, one per search tool.
 //
 // The three search tools are single-step typed gofalcon calls that return full
-// entities directly. get_mitre_report (see mitre.go) works around a gofalcon
-// reader bug via a Reader override. All four tools are read-only; this module
-// does no bulk detail fetch and ignores Deps.Concurrency.
+// entities directly. get_mitre_report (see mitre.go) streams the report body
+// into a buffer via the gofalcon client's io.Writer payload. All four tools are
+// read-only; this module does no bulk detail fetch and ignores Deps.Concurrency.
 package intel
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/intel"
@@ -26,11 +27,9 @@ import (
 
 // Factory builds the intel module from shared deps. The generated aggregator
 // (internal/mcpserver) collects it, so the module needs no init side effect.
-// All tools are single-call, so the module ignores Deps.Concurrency. The intel
-// client is wrapped by mitreClient so get_mitre_report can recover the report
-// body the generated reader discards (see mitre.go).
+// All tools are single-call, so the module ignores Deps.Concurrency.
 var Factory registry.Factory = func(d registry.Deps) base.Module {
-	return &Module{API: mitreClient{ClientService: d.API.Intel}, Logger: d.Logger}
+	return &Module{API: d.API.Intel, Logger: d.Logger}
 }
 
 // defaultLimit is the search page size applied when the caller omits limit.
@@ -46,14 +45,14 @@ var (
 
 // intelAPI is the minimal slice of the gofalcon intel client this module
 // consumes, declared next to its consumer so handlers can be tested against a
-// tiny fake rather than all of gofalcon. GetMitreReport accepts the variadic
-// ClientOption so the handler can swap in a Reader override (see mitre.go) and
-// a test fake can accept the same option.
+// tiny fake rather than all of gofalcon. GetMitreReport takes an io.Writer that
+// receives the report body and the variadic ClientOption, mirroring the
+// gofalcon client signature.
 type intelAPI interface {
 	QueryIntelActorEntities(params *intel.QueryIntelActorEntitiesParams, opts ...intel.ClientOption) (*intel.QueryIntelActorEntitiesOK, error)
 	QueryIntelIndicatorEntities(params *intel.QueryIntelIndicatorEntitiesParams, opts ...intel.ClientOption) (*intel.QueryIntelIndicatorEntitiesOK, error)
 	QueryIntelReportEntities(params *intel.QueryIntelReportEntitiesParams, opts ...intel.ClientOption) (*intel.QueryIntelReportEntitiesOK, error)
-	GetMitreReport(params *intel.GetMitreReportParams, opts ...intel.ClientOption) (any, error)
+	GetMitreReport(params *intel.GetMitreReportParams, writer io.Writer, opts ...intel.ClientOption) (*intel.GetMitreReportOK, error)
 }
 
 // Module registers the intel tools. It holds only the shared, concurrency-safe
