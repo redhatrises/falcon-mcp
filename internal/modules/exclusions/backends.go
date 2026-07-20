@@ -42,16 +42,18 @@ type queryArgs struct {
 // heterogeneous — see the note in rawclient.go. Shared handler code decodes the
 // body once via decodeResources.
 type backend interface {
-	// query returns the matching exclusion IDs for a search.
-	query(ctx context.Context, a queryArgs) ([]string, error)
+	// query returns the matching exclusion IDs for a search, plus the raw API
+	// meta object (pagination/query_time) for verbatim passthrough.
+	query(ctx context.Context, a queryArgs) ([]string, any, error)
 	// getRaw fetches full records for ids and returns the raw response body.
 	getRaw(ctx context.Context, ids []string) ([]byte, error)
 	// createRaw sends a prebuilt gofalcon body and returns the raw response body.
 	createRaw(ctx context.Context, body any) ([]byte, error)
 	// updateRaw sends a prebuilt gofalcon body and returns the raw response body.
 	updateRaw(ctx context.Context, body any) ([]byte, error)
-	// deleteByIDs deletes the given IDs with an optional audit comment.
-	deleteByIDs(ctx context.Context, ids []string, comment string) error
+	// deleteByIDs deletes the given IDs with an optional audit comment, returning
+	// the raw API meta object for verbatim passthrough.
+	deleteByIDs(ctx context.Context, ids []string, comment string) (any, error)
 	// classifyFQL reports whether err is a 400-class FQL error for this type and,
 	// if so, extracts the API error details for an FQL-error response.
 	classifyFQL(err error) ([]base.FQLErrorDetail, bool)
@@ -71,14 +73,14 @@ type ioaClient interface {
 
 type ioaBackend struct{ c ioaClient }
 
-func (b ioaBackend) query(ctx context.Context, a queryArgs) ([]string, error) {
+func (b ioaBackend) query(ctx context.Context, a queryArgs) ([]string, any, error) {
 	p := ioa_exclusions.NewSsIoaExclusionsSearchV2ParamsWithContext(ctx)
 	applyQuery(a, &p.Filter, &p.Sort, &p.Limit, &p.Offset)
 	resp, err := b.c.SsIoaExclusionsSearchV2(p)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return resp.Payload.Resources, nil
+	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
 func (b ioaBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
@@ -119,14 +121,20 @@ func (b ioaBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
 	return r.body, nil
 }
 
-func (b ioaBackend) deleteByIDs(ctx context.Context, ids []string, comment string) error {
+func (b ioaBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
 	p := ioa_exclusions.NewSsIoaExclusionsDeleteV2ParamsWithContext(ctx)
 	p.Ids = ids
 	if comment != "" {
 		p.Comment = &comment
 	}
-	_, err := b.c.SsIoaExclusionsDeleteV2(p)
-	return err
+	resp, err := b.c.SsIoaExclusionsDeleteV2(p)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Payload == nil {
+		return nil, nil
+	}
+	return resp.Payload.Meta, nil
 }
 
 // classifyFQL always reports false: the IOA search operation declares no typed
@@ -146,14 +154,14 @@ type mlClient interface {
 
 type mlBackend struct{ c mlClient }
 
-func (b mlBackend) query(ctx context.Context, a queryArgs) ([]string, error) {
+func (b mlBackend) query(ctx context.Context, a queryArgs) ([]string, any, error) {
 	p := ml_exclusions.NewExclusionsSearchV2ParamsWithContext(ctx)
 	applyQuery(a, &p.Filter, &p.Sort, &p.Limit, &p.Offset)
 	resp, err := b.c.ExclusionsSearchV2(p)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return resp.Payload.Resources, nil
+	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
 func (b mlBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
@@ -195,14 +203,20 @@ func (b mlBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
 	return r.body, nil
 }
 
-func (b mlBackend) deleteByIDs(ctx context.Context, ids []string, comment string) error {
+func (b mlBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
 	p := ml_exclusions.NewExclusionsDeleteV2ParamsWithContext(ctx)
 	p.Ids = ids
 	if comment != "" {
 		p.Comment = &comment
 	}
-	_, err := b.c.ExclusionsDeleteV2(p)
-	return err
+	resp, err := b.c.ExclusionsDeleteV2(p)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Payload == nil {
+		return nil, nil
+	}
+	return resp.Payload.Meta, nil
 }
 
 // classifyFQL always reports false: the ML search operation declares no typed 400
@@ -221,14 +235,14 @@ type svClient interface {
 
 type svBackend struct{ c svClient }
 
-func (b svBackend) query(ctx context.Context, a queryArgs) ([]string, error) {
+func (b svBackend) query(ctx context.Context, a queryArgs) ([]string, any, error) {
 	p := sensor_visibility_exclusions.NewQuerySensorVisibilityExclusionsV1ParamsWithContext(ctx)
 	applyQuery(a, &p.Filter, &p.Sort, &p.Limit, &p.Offset)
 	resp, err := b.c.QuerySensorVisibilityExclusionsV1(p)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return resp.Payload.Resources, nil
+	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
 func (b svBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
@@ -270,14 +284,20 @@ func (b svBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
 	return r.body, nil
 }
 
-func (b svBackend) deleteByIDs(ctx context.Context, ids []string, comment string) error {
+func (b svBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
 	p := sensor_visibility_exclusions.NewDeleteSensorVisibilityExclusionsV1ParamsWithContext(ctx)
 	p.Ids = ids
 	if comment != "" {
 		p.Comment = &comment
 	}
-	_, err := b.c.DeleteSensorVisibilityExclusionsV1(p)
-	return err
+	resp, err := b.c.DeleteSensorVisibilityExclusionsV1(p)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Payload == nil {
+		return nil, nil
+	}
+	return resp.Payload.Meta, nil
 }
 
 func (b svBackend) classifyFQL(err error) ([]base.FQLErrorDetail, bool) {
@@ -301,14 +321,14 @@ type cbClient interface {
 
 type cbBackend struct{ c cbClient }
 
-func (b cbBackend) query(ctx context.Context, a queryArgs) ([]string, error) {
+func (b cbBackend) query(ctx context.Context, a queryArgs) ([]string, any, error) {
 	p := certificate_based_exclusions.NewCbExclusionsQueryV1ParamsWithContext(ctx)
 	applyQuery(a, &p.Filter, &p.Sort, &p.Limit, &p.Offset)
 	resp, err := b.c.CbExclusionsQueryV1(p)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return resp.Payload.Resources, nil
+	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
 func (b cbBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
@@ -349,14 +369,20 @@ func (b cbBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
 	return r.body, nil
 }
 
-func (b cbBackend) deleteByIDs(ctx context.Context, ids []string, comment string) error {
+func (b cbBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
 	p := certificate_based_exclusions.NewCbExclusionsDeleteV1ParamsWithContext(ctx)
 	p.Ids = ids
 	if comment != "" {
 		p.Comment = &comment
 	}
-	_, err := b.c.CbExclusionsDeleteV1(p)
-	return err
+	resp, err := b.c.CbExclusionsDeleteV1(p)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Payload == nil {
+		return nil, nil
+	}
+	return resp.Payload.Meta, nil
 }
 
 func (b cbBackend) classifyFQL(err error) ([]base.FQLErrorDetail, bool) {
