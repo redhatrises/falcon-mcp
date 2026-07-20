@@ -26,6 +26,7 @@ type fakeHostGroups struct {
 	createErr   error
 	updateResp  *host_group.UpdateHostGroupsOK
 	updateErr   error
+	deleteResp  *host_group.DeleteHostGroupsOK
 	deleteErr   error
 	actionResp  *host_group.PerformGroupActionOK
 	actionErr   error
@@ -57,7 +58,10 @@ func (f *fakeHostGroups) UpdateHostGroups(p *host_group.UpdateHostGroupsParams, 
 
 func (f *fakeHostGroups) DeleteHostGroups(p *host_group.DeleteHostGroupsParams, _ ...host_group.ClientOption) (*host_group.DeleteHostGroupsOK, error) {
 	f.lastDeleteIDs = p.Ids
-	return &host_group.DeleteHostGroupsOK{}, f.deleteErr
+	if f.deleteResp != nil {
+		return f.deleteResp, f.deleteErr
+	}
+	return &host_group.DeleteHostGroupsOK{Payload: &models.MsaQueryResponse{}}, f.deleteErr
 }
 
 func (f *fakeHostGroups) PerformGroupAction(p *host_group.PerformGroupActionParams, _ ...host_group.ClientOption) (*host_group.PerformGroupActionOK, error) {
@@ -68,12 +72,14 @@ func (f *fakeHostGroups) PerformGroupAction(p *host_group.PerformGroupActionPara
 
 func str(s string) *string { return &s }
 func i32(v int32) *int32   { return &v }
+func i64(v int64) *int64   { return &v }
 
 func TestSearchHostGroupsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeHostGroups{searchResp: &host_group.QueryCombinedHostGroupsOK{Payload: &models.HostGroupsRespV1{
 		Resources: []*models.HostGroupsHostGroupV1{{ID: str("g1"), Name: str("Servers")}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(15)}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -81,8 +87,11 @@ func TestSearchHostGroupsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchHostGroups: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "group_type:'static'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "group_type:'static'" {
 		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Meta != any(f.searchResp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
 
@@ -98,7 +107,7 @@ func TestSearchHostGroupsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchHostGroups: %v", err)
 	}
-	if out.Total != 0 || out.Resources == nil {
+	if out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
 }
@@ -152,14 +161,18 @@ func TestSearchHostGroupMembers(t *testing.T) {
 		t.Parallel()
 		f := &fakeHostGroups{membersResp: &host_group.QueryCombinedGroupMembersOK{Payload: &models.HostGroupsMembersRespV1{
 			Resources: []*models.DeviceDevice{{DeviceID: str("d1")}},
+			Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(64)}},
 		}}}
 		m := &Module{API: f, Logger: testLogger}
 		_, out, err := m.searchHostGroupMembers(context.Background(), nil, MembersInput{ID: "g1", Filter: "platform_name:'Windows'"})
 		if err != nil {
 			t.Fatalf("searchHostGroupMembers: %v", err)
 		}
-		if out.Total != 1 || out.FilterUsed != "platform_name:'Windows'" {
+		if out.FilterUsed != "platform_name:'Windows'" {
 			t.Fatalf("unexpected result: %+v", out)
+		}
+		if out.Meta != any(f.membersResp.Payload.Meta) {
+			t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 		}
 	})
 }
@@ -278,7 +291,8 @@ func TestDeleteHostGroups(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		f := &fakeHostGroups{}
+		meta := &models.MsaMetaInfo{Writes: &models.MsaResources{ResourcesAffected: i32(2)}}
+		f := &fakeHostGroups{deleteResp: &host_group.DeleteHostGroupsOK{Payload: &models.MsaQueryResponse{Meta: meta}}}
 		m := &Module{API: f, Logger: testLogger}
 		_, out, err := m.deleteHostGroups(context.Background(), nil, DeleteInput{IDs: []string{"g1", "g2"}})
 		if err != nil {
@@ -289,6 +303,9 @@ func TestDeleteHostGroups(t *testing.T) {
 		}
 		if len(f.lastDeleteIDs) != 2 {
 			t.Fatalf("expected 2 ids passed, got %v", f.lastDeleteIDs)
+		}
+		if out.Meta != any(meta) {
+			t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 		}
 	})
 }

@@ -41,7 +41,7 @@ func TestSearchHostsEmptyReturnsList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchHosts: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
+	if out.Resources == nil || len(out.Resources) != 0 {
 		t.Fatalf("expected empty non-nil resources, got %+v", out)
 	}
 	if f.getCalls != 0 {
@@ -100,10 +100,16 @@ func TestSearchHostsFetchesDetails(t *testing.T) {
 	t.Parallel()
 
 	// PostDeviceDetailsV2 returns devices scrambled relative to the query order;
-	// the tool must reorder them back to the query step's sort (device_id).
+	// the tool must reorder them back to the query step's sort (device_id). The
+	// query meta reports a full match count larger than this page, which must
+	// surface as Total rather than the returned page size.
 	d1, d2 := "d1", "d2"
+	matchTotal := int64(42)
 	f := &fakeHosts{
-		queryResp: &hosts.QueryDevicesByFilterOK{Payload: &models.MsaQueryResponse{Resources: []string{"d1", "d2"}}},
+		queryResp: &hosts.QueryDevicesByFilterOK{Payload: &models.MsaQueryResponse{
+			Resources: []string{"d1", "d2"},
+			Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: &matchTotal}},
+		}},
 		getResp: &hosts.PostDeviceDetailsV2OK{Payload: &models.DeviceapiDeviceDetailsResponseSwagger{Resources: []*models.DeviceapiDeviceSwagger{
 			{DeviceID: &d2},
 			{DeviceID: &d1},
@@ -116,6 +122,9 @@ func TestSearchHostsFetchesDetails(t *testing.T) {
 	}
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 fetched resources, got %+v", out)
+	}
+	if out.Meta != any(f.queryResp.Payload.Meta) {
+		t.Fatalf("Meta = %+v, want verbatim passthrough of the query meta", out.Meta)
 	}
 	if got := *out.Resources[0].DeviceID; got != "d1" {
 		t.Fatalf("expected query order restored (d1 first), got %q", got)

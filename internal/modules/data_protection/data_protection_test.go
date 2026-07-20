@@ -83,7 +83,7 @@ func TestSearchClassificationsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchClassifications: %v", err)
 	}
-	if out.Total != 0 || len(out.Resources) != 0 || out.FilterUsed != "name:~'x'" {
+	if len(out.Resources) != 0 || out.FilterUsed != "name:~'x'" {
 		t.Fatalf("expected empty result, got %+v", out)
 	}
 	if out.Resources == nil {
@@ -98,7 +98,7 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{
-		classQueryResp: &dp.QueriesClassificationGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"c1", "c2"}}},
+		classQueryResp: &dp.QueriesClassificationGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"c1", "c2"}, Meta: &models.MsaMetaInfo{}}},
 		classGetResp: &dp.EntitiesClassificationGetV2OK{Payload: &models.PolicymanagerClassificationsResponse{
 			Resources: []*models.PolicymanagerExternalClassification{
 				{ID: str("c1"), Name: str("Credit Cards")},
@@ -112,7 +112,7 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchClassifications: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 {
+	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 full records, got %+v", out)
 	}
 	if f.classGetCalls != 1 {
@@ -120,6 +120,9 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 	}
 	if len(f.classGetIDs) != 2 || f.classGetIDs[0] != "c1" {
 		t.Fatalf("detail fetch did not receive the query IDs: %v", f.classGetIDs)
+	}
+	if out.Meta != any(f.classQueryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -165,7 +168,7 @@ func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{
-		policyQueryResp: &dp.QueriesPolicyGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"p1"}}},
+		policyQueryResp: &dp.QueriesPolicyGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"p1"}, Meta: &models.MsaMetaInfo{}}},
 		policyGetResp: &dp.EntitiesPolicyGetV2OK{Payload: &models.PolicymanagerPoliciesResponse{
 			Resources: []*models.PolicymanagerExternalPolicy{{ID: str("p1"), Name: str("Default")}},
 		}},
@@ -179,11 +182,14 @@ func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	if f.lastPlatformName != "win" {
 		t.Fatalf("expected platform_name 'win' forwarded to query, got %q", f.lastPlatformName)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 {
+	if len(out.Resources) != 1 {
 		t.Fatalf("expected 1 full record, got %+v", out)
 	}
 	if f.policyGetCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.policyGetCalls)
+	}
+	if out.Meta != any(f.policyQueryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -229,7 +235,7 @@ func TestSearchContentPatternsReturnsDetails(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{
-		patternQueryResp: &dp.QueriesContentPatternGetV2OK{Payload: &models.MsaspecQueryResponse{Resources: []string{"x1"}}},
+		patternQueryResp: &dp.QueriesContentPatternGetV2OK{Payload: &models.MsaspecQueryResponse{Resources: []string{"x1"}, Meta: &models.MsaMetaInfo{}}},
 		patternGetResp: &dp.EntitiesContentPatternGetOK{Payload: &models.APIContentPatternMSAResponseV1{
 			Resources: []*models.APIContentPatternV1{{ID: str("x1"), Name: "AWS Key", Type: str("custom")}},
 		}},
@@ -240,11 +246,14 @@ func TestSearchContentPatternsReturnsDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchContentPatterns: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 {
+	if len(out.Resources) != 1 {
 		t.Fatalf("expected 1 full record, got %+v", out)
 	}
 	if f.patternGetCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.patternGetCalls)
+	}
+	if out.Meta != any(f.patternQueryResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 

@@ -69,7 +69,7 @@ func (m *Module) createCase(ctx context.Context, _ *mcp.CallToolRequest, in Crea
 	if e := base.APIError(err, resp, scopeCasesWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // buildEvidence assembles the create-case evidence block from alert and event
@@ -164,7 +164,7 @@ func (m *Module) updateCase(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 	if e := base.APIError(err, resp, scopeCasesWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // AlertEvidenceInput is the input for falcon_add_case_alert_evidence.
@@ -195,7 +195,7 @@ func (m *Module) addCaseAlertEvidence(ctx context.Context, _ *mcp.CallToolReques
 	if e := base.APIError(err, resp, scopeCasesWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // EventEvidenceInput is the input for falcon_add_case_event_evidence.
@@ -226,7 +226,7 @@ func (m *Module) addCaseEventEvidence(ctx context.Context, _ *mcp.CallToolReques
 	if e := base.APIError(err, resp, scopeCasesWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // TagsInput is the input for falcon_manage_case_tags.
@@ -256,7 +256,7 @@ func (m *Module) manageCaseTags(ctx context.Context, _ *mcp.CallToolRequest, in 
 		if e := base.APIError(err, resp, scopeCasesWrite); e != nil {
 			return nil, zero, e
 		}
-		return nil, base.Entities(resp.Payload.Resources), nil
+		return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 	}
 
 	// remove
@@ -267,7 +267,7 @@ func (m *Module) manageCaseTags(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if e := base.APIError(err, resp, scopeCasesWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // wrapInvalid builds an errInvalidInput-wrapped error for op with detail.

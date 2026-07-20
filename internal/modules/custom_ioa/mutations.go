@@ -104,7 +104,7 @@ func (m *Module) createRuleGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 	if e := base.APIError(err, resp, scopeCustomIOAWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // UpdateGroupInput is the input for falcon_update_ioa_rule_group. Only the set
@@ -150,7 +150,7 @@ func (m *Module) updateRuleGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 	if e := base.APIError(err, resp, scopeCustomIOAWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // DeleteGroupsInput is the input for falcon_delete_ioa_rule_groups.
@@ -175,7 +175,7 @@ func (m *Module) deleteRuleGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 	if e := base.APIError(err, resp, scopeCustomIOAWrite); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }
 
 // CreateRuleInput is the input for falcon_create_ioa_rule.
@@ -219,7 +219,7 @@ func (m *Module) createRule(ctx context.Context, _ *mcp.CallToolRequest, in Crea
 	if e := base.APIError(err, resp, scopeCustomIOAWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // validate enforces the client-side constraints on a rule create request.
@@ -305,7 +305,7 @@ func (m *Module) updateRule(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 	if e := base.APIError(err, resp, scopeCustomIOAWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // validate enforces the client-side constraints on a rule update request.
@@ -349,7 +349,7 @@ func (m *Module) deleteRules(ctx context.Context, _ *mcp.CallToolRequest, in Del
 	if e := base.APIError(err, resp, scopeCustomIOAWrite); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }
 
 // wrapInvalid builds an errInvalidInput-wrapped error for op with detail.

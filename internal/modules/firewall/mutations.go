@@ -66,7 +66,7 @@ func (m *Module) createFirewallRuleGroup(ctx context.Context, _ *mcp.CallToolReq
 	if e := base.APIError(err, resp, scopeFirewallWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // validate enforces the client-side constraints on a create request, mirroring
@@ -105,7 +105,7 @@ func (m *Module) deleteFirewallRuleGroups(ctx context.Context, _ *mcp.CallToolRe
 	if e := base.APIError(err, resp, scopeFirewallWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // wrapInvalid builds an errInvalidInput-wrapped error for op with detail.

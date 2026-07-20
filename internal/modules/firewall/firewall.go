@@ -209,13 +209,13 @@ func (m *Module) searchFirewallRules(ctx context.Context, req *mcp.CallToolReque
 	ids := resp.Payload.Resources
 	m.Logger.Debug("search_firewall_rules query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.FwmgrFirewallRuleV1{}, in.Filter), nil
+		return nil, base.Found([]*models.FwmgrFirewallRuleV1{}, in.Filter).WithMeta(resp.Payload.Meta), nil
 	}
 	rules, err := m.fetchRuleDetails(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(rules, in.Filter), nil
+	return nil, base.Found(rules, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // SearchRuleGroupsInput is the input for falcon_search_firewall_rule_groups.
@@ -268,13 +268,13 @@ func (m *Module) searchFirewallRuleGroups(ctx context.Context, req *mcp.CallTool
 	ids := resp.Payload.Resources
 	m.Logger.Debug("search_firewall_rule_groups query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.FwmgrAPIRuleGroupV1{}, in.Filter), nil
+		return nil, base.Found([]*models.FwmgrAPIRuleGroupV1{}, in.Filter).WithMeta(resp.Payload.Meta), nil
 	}
 	groups, err := m.fetchRuleGroupDetails(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(groups, in.Filter), nil
+	return nil, base.Found(groups, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // SearchPolicyRulesInput is the input for falcon_search_firewall_policy_rules.
@@ -328,13 +328,13 @@ func (m *Module) searchFirewallPolicyRules(ctx context.Context, req *mcp.CallToo
 	ids := resp.Payload.Resources
 	m.Logger.Debug("search_firewall_policy_rules query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.FwmgrFirewallRuleV1{}, in.Filter), nil
+		return nil, base.Found([]*models.FwmgrFirewallRuleV1{}, in.Filter).WithMeta(resp.Payload.Meta), nil
 	}
 	rules, err := m.fetchRuleDetails(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(rules, in.Filter), nil
+	return nil, base.Found(rules, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // fetchRuleDetails fetches full firewall rule records for the given IDs,
