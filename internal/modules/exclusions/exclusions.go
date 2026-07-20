@@ -215,7 +215,7 @@ func (m *Module) searchExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 		args.offset = &off
 	}
 
-	ids, err := b.query(ctx, args)
+	ids, meta, err := b.query(ctx, args)
 	if err != nil {
 		if details, isFQL := b.classifyFQL(err); isFQL {
 			return nil, base.FQLError[map[string]any](details, in.Filter, fqlGuide), nil
@@ -225,7 +225,7 @@ func (m *Module) searchExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 		}
 	}
 	if len(ids) == 0 {
-		return nil, base.Found([]map[string]any{}, in.Filter), nil
+		return nil, base.Found([]map[string]any{}, in.Filter).WithMeta(meta), nil
 	}
 
 	body, err := b.getRaw(ctx, ids)
@@ -234,14 +234,14 @@ func (m *Module) searchExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 			return nil, zero, e
 		}
 	}
-	records, err := decodeResources(body)
+	records, _, err := decodeResources(body)
 	if err != nil {
 		return nil, zero, err
 	}
 	// Restore the query-step sort order in case the get endpoint reorders results.
 	records = reorderByID(ids, records)
 	m.Logger.Debug("search_exclusions complete", "type", in.ExclusionType, "matched", len(records))
-	return nil, base.Found(records, in.Filter), nil
+	return nil, base.Found(records, in.Filter).WithMeta(meta), nil
 }
 
 // getCertificateDetails looks up code-signing certificate metadata for a file by
@@ -269,26 +269,33 @@ func (m *Module) getCertificateDetails(ctx context.Context, _ *mcp.CallToolReque
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Entities(records), nil
+	return nil, base.Entities(records).WithMeta(resp.Payload.Meta), nil
 }
 
-// decodeResources extracts the "resources" array from a raw exclusion response
-// body into uniform map records. An empty body or absent resources yields an
-// empty (non-nil) slice, not an error.
-func decodeResources(body []byte) ([]map[string]any, error) {
+// decodeResources extracts the "resources" array and the raw "meta" object from
+// a raw exclusion response body. Records decode into uniform map records; meta is
+// returned verbatim (as map[string]any) for passthrough, or nil when absent so
+// base.*.WithMeta omits it. An empty body or absent resources yields an empty
+// (non-nil) slice, not an error.
+func decodeResources(body []byte) ([]map[string]any, any, error) {
 	if len(body) == 0 {
-		return []map[string]any{}, nil
+		return []map[string]any{}, nil, nil
 	}
 	var env struct {
 		Resources []map[string]any `json:"resources"`
+		Meta      map[string]any   `json:"meta"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, fmt.Errorf("decode exclusions response: %w", err)
+		return nil, nil, fmt.Errorf("decode exclusions response: %w", err)
+	}
+	var meta any
+	if env.Meta != nil {
+		meta = env.Meta
 	}
 	if env.Resources == nil {
-		return []map[string]any{}, nil
+		return []map[string]any{}, meta, nil
 	}
-	return env.Resources, nil
+	return env.Resources, meta, nil
 }
 
 // modelsToMaps marshals typed gofalcon records and unmarshals them back into
