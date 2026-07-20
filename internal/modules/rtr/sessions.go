@@ -69,13 +69,13 @@ func (m *Module) searchSessions(ctx context.Context, req *mcp.CallToolRequest, i
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_rtr_sessions query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.DomainSession{}, in.Filter), nil
+		return nil, base.Found([]*models.DomainSession{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	sessions, err := m.fetchSessionDetails(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(sessions, in.Filter), nil
+	return nil, base.Found(sessions, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // SearchAuditSessionsInput is the input for falcon_search_rtr_audit_sessions.
@@ -125,7 +125,7 @@ func (m *Module) searchAuditSessions(ctx context.Context, _ *mcp.CallToolRequest
 
 	sessions := resp.Payload.Resources
 	m.Logger.Debug("search_rtr_audit_sessions query complete", "matched", len(sessions))
-	return nil, base.Found(sessions, in.Filter), nil
+	return nil, base.Found(sessions, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // AggregateInput is the input for falcon_aggregate_rtr_sessions.
@@ -191,7 +191,7 @@ func (m *Module) aggregateSessions(ctx context.Context, _ *mcp.CallToolRequest, 
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // GetSessionDetailsInput is the input for falcon_get_rtr_session_details.
@@ -230,7 +230,7 @@ func (m *Module) listSessionFiles(ctx context.Context, _ *mcp.CallToolRequest, i
 	if e := base.APIError(err, resp, scopeRTRWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // fetchSessionDetails fetches full session records for the given session IDs,

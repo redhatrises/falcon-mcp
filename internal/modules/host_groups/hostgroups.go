@@ -193,7 +193,7 @@ func (m *Module) searchHostGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 
 	groups := resp.Payload.Resources
 	m.Logger.Debug("search_host_groups query complete", "matched", len(groups))
-	return nil, base.Found(groups, in.Filter), nil
+	return nil, base.Found(groups, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // MembersInput is the input for falcon_search_host_group_members.
@@ -242,7 +242,7 @@ func (m *Module) searchHostGroupMembers(ctx context.Context, _ *mcp.CallToolRequ
 
 	members := resp.Payload.Resources
 	m.Logger.Debug("search_host_group_members query complete", "matched", len(members))
-	return nil, base.Found(members, in.Filter), nil
+	return nil, base.Found(members, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // groupsFQLBadRequest reports whether err is a 400-class host-group query error

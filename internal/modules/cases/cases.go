@@ -275,13 +275,13 @@ func (m *Module) searchCases(ctx context.Context, req *mcp.CallToolRequest, in S
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_cases query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.SdkCaseVM{}, in.Filter), nil
+		return nil, base.Found([]*models.SdkCaseVM{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchCases(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(details, in.Filter), nil
+	return nil, base.Found(details, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // GetInput is the input for falcon_get_cases.
@@ -332,13 +332,13 @@ func (m *Module) listCaseTemplates(ctx context.Context, req *mcp.CallToolRequest
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("list_case_templates query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Entities([]*models.APITemplateV1{}), nil
+		return nil, base.Entities([]*models.APITemplateV1{}).WithMeta(queryResp.Payload.Meta), nil
 	}
 	details, err := m.fetchTemplates(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Entities(details), nil
+	return nil, base.Entities(details).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // fetchCases fetches full case records for the given IDs. EntitiesCasesPostV2
