@@ -163,7 +163,7 @@ func (m *Module) searchIOCs(ctx context.Context, _ *mcp.CallToolRequest, in Sear
 
 	indicators := resp.Payload.Resources
 	m.Logger.Debug("search_iocs query complete", "matched", len(indicators))
-	return nil, base.Found(indicators, in.Filter), nil
+	return nil, base.Found(indicators, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // fqlBadRequest reports whether err is a 400-class IOC query error and, if so,

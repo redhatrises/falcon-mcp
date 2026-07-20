@@ -81,17 +81,21 @@ func TestSearchApplicationsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeDiscover{appsResp: appsOK(&models.DomainDiscoverAPIApplication{ID: str("app-1"), Name: "Chrome"})}
+	f.appsResp.Payload.Meta = &models.DomainDiscoverAPIMetaInfo{}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchApplications(context.Background(), nil, ApplicationsInput{Filter: "name:'Chrome'"})
 	if err != nil {
 		t.Fatalf("searchApplications: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "name:'Chrome'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "name:'Chrome'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if out.Resources[0].Name != "Chrome" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
+	}
+	if out.Meta != any(f.appsResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -151,7 +155,7 @@ func TestSearchApplicationsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchApplications: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
+	if out.Resources == nil || len(out.Resources) != 0 {
 		t.Fatalf("expected empty non-nil resources, got %+v", out)
 	}
 }
@@ -202,17 +206,21 @@ func TestSearchUnmanagedAssetsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeDiscover{hostsResp: hostsOK(&models.DomainDiscoverAPIHost{ID: str("host-1"), Hostname: "PC-001"})}
+	f.hostsResp.Payload.Meta = &models.DomainDiscoverAPIMetaInfo{}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchUnmanagedAssets(context.Background(), nil, UnmanagedAssetsInput{Filter: "platform_name:'Windows'"})
 	if err != nil {
 		t.Fatalf("searchUnmanagedAssets: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 {
+	if len(out.Resources) != 1 {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if out.Resources[0].Hostname != "PC-001" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
+	}
+	if out.Meta != any(f.hostsResp.Payload.Meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 }
 
@@ -279,7 +287,7 @@ func TestSearchUnmanagedAssetsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchUnmanagedAssets: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
+	if out.Resources == nil || len(out.Resources) != 0 {
 		t.Fatalf("expected empty non-nil resources, got %+v", out)
 	}
 }

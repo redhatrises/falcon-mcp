@@ -187,14 +187,14 @@ func (m *Module) searchQuarantinedFiles(ctx context.Context, req *mcp.CallToolRe
 	ids := queryResp.Payload.Resources
 	m.Logger.Debug("search_quarantined_files query complete", "matched_ids", len(ids))
 	if len(ids) == 0 {
-		return nil, base.Found([]*models.QuarantineQuarantinedFile{}, in.Filter), nil
+		return nil, base.Found([]*models.QuarantineQuarantinedFile{}, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 	}
 
 	files, err := m.fetchDetails(ctx, req, ids)
 	if err != nil {
 		return nil, zero, err
 	}
-	return nil, base.Found(files, in.Filter), nil
+	return nil, base.Found(files, in.Filter).WithMeta(queryResp.Payload.Meta), nil
 }
 
 // fetchDetails fetches full quarantine records for the given IDs, chunking and
@@ -242,7 +242,7 @@ func (m *Module) previewQuarantineActions(ctx context.Context, _ *mcp.CallToolRe
 	if e := base.APIError(err, resp, scopeQuarantineRead); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // PreviewInput is the input for falcon_preview_quarantine_actions.
