@@ -58,7 +58,7 @@ func (m *Module) initSession(ctx context.Context, _ *mcp.CallToolRequest, in Ini
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // PulseInput is the input for falcon_pulse_rtr_session.
@@ -90,7 +90,7 @@ func (m *Module) pulseSession(ctx context.Context, _ *mcp.CallToolRequest, in Pu
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // DeleteInput is the input for falcon_delete_rtr_session.
@@ -111,7 +111,7 @@ func (m *Module) deleteSession(ctx context.Context, _ *mcp.CallToolRequest, in D
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, base.ActionResult{}, e
 	}
-	return nil, base.ActionResult{Ok: true}, nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
 }
 
 // wrapInvalid builds an errInvalidInput-wrapped error for op with detail.

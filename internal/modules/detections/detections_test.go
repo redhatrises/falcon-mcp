@@ -18,11 +18,12 @@ var testLogger = slog.New(slog.DiscardHandler)
 
 // fakeAlerts is a configurable test double for the alertsAPI interface.
 type fakeAlerts struct {
-	queryResp *alerts.QueryV2OK
-	queryErr  error
-	getResp   *alerts.GetV2OK
-	getErr    error
-	updateErr error
+	queryResp  *alerts.QueryV2OK
+	queryErr   error
+	getResp    *alerts.GetV2OK
+	getErr     error
+	updateResp *alerts.UpdateV3OK
+	updateErr  error
 
 	lastUpdateBody *models.DetectsapiPatchEntitiesAlertsV3Request
 	getCalls       int
@@ -39,7 +40,10 @@ func (f *fakeAlerts) GetV2(p *alerts.GetV2Params, _ ...alerts.ClientOption) (*al
 
 func (f *fakeAlerts) UpdateV3(p *alerts.UpdateV3Params, _ ...alerts.ClientOption) (*alerts.UpdateV3OK, error) {
 	f.lastUpdateBody = p.Body
-	return &alerts.UpdateV3OK{}, f.updateErr
+	if f.updateResp != nil {
+		return f.updateResp, f.updateErr
+	}
+	return &alerts.UpdateV3OK{Payload: &models.DetectsapiResponseFields{}}, f.updateErr
 }
 
 func str(s string) *string { return &s }
@@ -55,7 +59,7 @@ func TestSearchDetectionsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchDetections: %v", err)
 	}
-	if out.Total != 0 || len(out.Resources) != 0 || out.FilterUsed != "status:'new'" {
+	if len(out.Resources) != 0 || out.FilterUsed != "status:'new'" {
 		t.Fatalf("expected empty result, got %+v", out)
 	}
 	if out.Resources == nil {
@@ -91,9 +95,15 @@ func TestSearchDetectionsFetchesDetails(t *testing.T) {
 	t.Parallel()
 
 	// GetV2 returns alerts scrambled relative to the query order; the tool must
-	// reorder them back to the query step's sort (composite_id).
+	// reorder them back to the query step's sort (composite_id). The query meta
+	// reports a full match count larger than this page, which must pass through
+	// verbatim on Meta.
+	matchTotal := int64(2048)
 	f := &fakeAlerts{
-		queryResp: &alerts.QueryV2OK{Payload: &models.DetectsapiAlertQueryResponse{Resources: []string{"id1", "id2"}}},
+		queryResp: &alerts.QueryV2OK{Payload: &models.DetectsapiAlertQueryResponse{
+			Resources: []string{"id1", "id2"},
+			Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: &matchTotal}},
+		}},
 		getResp: &alerts.GetV2OK{Payload: &models.DetectsapiPostEntitiesAlertsV2Response{Resources: []*models.DetectsAlert{
 			{CompositeID: str("id2")},
 			{CompositeID: str("id1")},
@@ -105,8 +115,11 @@ func TestSearchDetectionsFetchesDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchDetections: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 {
-		t.Fatalf("expected 2 fetched resources, got %+v", out)
+	if len(out.Resources) != 2 {
+		t.Fatalf("expected 2 resources, got %+v", out)
+	}
+	if out.Meta != any(f.queryResp.Payload.Meta) {
+		t.Fatalf("expected query meta passed through verbatim, got %+v", out.Meta)
 	}
 	if got := *out.Resources[0].CompositeID; got != "id1" {
 		t.Fatalf("expected query order restored (id1 first), got %q", got)
@@ -189,6 +202,21 @@ func TestUpdateDetectionsCloseWithoutResolutionHint(t *testing.T) {
 	}
 	if !out.Ok || out.Hint == "" {
 		t.Fatalf("expected close-without-resolution hint, got %+v", out)
+	}
+}
+
+func TestUpdateDetectionsMetaPassthrough(t *testing.T) {
+	t.Parallel()
+
+	meta := &models.MsaMetaInfo{Writes: &models.MsaResources{ResourcesAffected: i32(1)}}
+	f := &fakeAlerts{updateResp: &alerts.UpdateV3OK{Payload: &models.DetectsapiResponseFields{Meta: meta}}}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+	_, out, err := m.updateDetections(context.Background(), nil, UpdateInput{IDs: []string{"x"}, Status: "in_progress"})
+	if err != nil {
+		t.Fatalf("updateDetections: %v", err)
+	}
+	if out.Meta != any(meta) {
+		t.Fatalf("expected meta passthrough, got %+v", out.Meta)
 	}
 }
 

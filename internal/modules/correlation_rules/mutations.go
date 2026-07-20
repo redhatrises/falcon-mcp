@@ -140,7 +140,7 @@ func (m *Module) createCorrelationRule(ctx context.Context, _ *mcp.CallToolReque
 	if e := base.APIError(err, resp, scopeCorrelationWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // UpdateInput is the input for falcon_update_correlation_rule.
@@ -199,7 +199,7 @@ func (m *Module) updateCorrelationRule(ctx context.Context, _ *mcp.CallToolReque
 	if e := base.APIError(err, resp, scopeCorrelationWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
 
 // patchBody builds the correlation-rules PATCH request object as a map holding
@@ -275,5 +275,5 @@ func (m *Module) deleteCorrelationRules(ctx context.Context, _ *mcp.CallToolRequ
 	if e := base.APIError(err, resp, scopeCorrelationWrite); e != nil {
 		return nil, zero, e
 	}
-	return nil, base.Entities(resp.Payload.Resources), nil
+	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }

@@ -135,7 +135,7 @@ func (m *Module) searchSensorUsage(ctx context.Context, _ *mcp.CallToolRequest, 
 
 	usage := resp.Payload.Resources
 	m.Logger.Debug("search_sensor_usage query complete", "matched", len(usage))
-	return nil, base.Found(usage, in.Filter), nil
+	return nil, base.Found(usage, in.Filter).WithMeta(resp.Payload.Meta), nil
 }
 
 // fqlBadRequest reports whether err is a 400-class weekly usage query error and,

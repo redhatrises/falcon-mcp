@@ -83,7 +83,7 @@ func TestSearchServerlessVulnerabilitiesSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchServerlessVulnerabilities: %v", err)
 	}
-	if out.Total != 1 || len(out.Resources) != 1 || out.FilterUsed != "cloud_provider:'aws'" {
+	if len(out.Resources) != 1 || out.FilterUsed != "cloud_provider:'aws'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
 	if out.Resources[0] == nil {
@@ -131,7 +131,7 @@ func TestSearchServerlessVulnerabilitiesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchServerlessVulnerabilities: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
+	if out.Resources == nil || len(out.Resources) != 0 {
 		t.Fatalf("expected empty non-nil resources, got %+v", out)
 	}
 }
