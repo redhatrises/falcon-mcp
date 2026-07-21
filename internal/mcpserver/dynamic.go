@@ -162,10 +162,50 @@ func summarize(ce catalogEntry) ToolSummary {
 		Name:        ce.tool.Name,
 		Description: ce.tool.Description,
 		Module:      ce.module,
-		Parameters:  ce.params,
+		Parameters:  enrichFilterHints(ce.tool.Name, ce.params),
 		ReadOnly:    readOnly,
 		Destructive: destructive,
 	}
+}
+
+// enrichFilterHints returns params with the tool's curated FQL field hint (when
+// one exists) and the universal FQL syntax suffix appended to the "filter"
+// parameter's description, mirroring upstream falcon-mcp's dynamic.py. Tools
+// without a filter parameter are returned unchanged. The input slice is copied
+// before mutation so the shared catalog entry stays pristine across repeated
+// searches (otherwise the hint would compound on every call).
+func enrichFilterHints(toolName string, params []paramSummary) []paramSummary {
+	idx := -1
+	for i, p := range params {
+		if p.Name == "filter" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return params
+	}
+
+	out := make([]paramSummary, len(params))
+	copy(out, params)
+
+	desc := out[idx].Description
+	if hint := filterHints[toolName]; hint != "" {
+		desc = appendHint(desc, hint)
+	}
+	desc = appendHint(desc, fqlFilterHintSuffix)
+	out[idx].Description = desc
+	return out
+}
+
+// appendHint joins desc and hint with the same separator upstream falcon-mcp
+// uses: a single space when desc already ends with a period, otherwise ". ".
+func appendHint(desc, hint string) string {
+	sep := ". "
+	if strings.HasSuffix(desc, ".") {
+		sep = " "
+	}
+	return desc + sep + hint
 }
 
 // ExecuteToolInput is the input for falcon_execute_tool. Parameters is a JSON

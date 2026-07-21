@@ -262,6 +262,106 @@ func TestSearchToolsParameterSummaries(t *testing.T) {
 	}
 }
 
+// --- filter hint injection ---------------------------------------------------
+
+// filterDesc returns the "filter" parameter description for the named tool in a
+// search result, failing the test if the tool or its filter param is absent.
+func filterDesc(t *testing.T, res SearchToolsResult, tool string) string {
+	t.Helper()
+	for _, s := range res.Tools {
+		if s.Name != tool {
+			continue
+		}
+		for _, p := range s.Parameters {
+			if p.Name == "filter" {
+				return p.Description
+			}
+		}
+		t.Fatalf("tool %q has no filter parameter: %+v", tool, s.Parameters)
+	}
+	t.Fatalf("tool %q missing from results", tool)
+	return ""
+}
+
+// TestSearchToolsInjectsCuratedFilterHint verifies that a tool with a curated
+// entry in filterHints gets both the curated field list and the universal FQL
+// suffix appended to its filter description — the dynamic-mode enrichment ported
+// from upstream falcon-mcp. The "detections" fixture registers as
+// falcon_search_detections, which has a curated hint.
+func TestSearchToolsInjectsCuratedFilterHint(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t, fakeToolModule{name: "detections"})
+	desc := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_detections")
+
+	// Original schema description is preserved.
+	if !strings.Contains(desc, "FQL filter") {
+		t.Errorf("filter desc %q dropped the original description", desc)
+	}
+	// Curated hint content is present.
+	if !strings.Contains(desc, filterHints["falcon_search_detections"]) {
+		t.Errorf("filter desc %q missing curated hint", desc)
+	}
+	// A representative curated field survives verbatim.
+	if !strings.Contains(desc, "severity_name (Critical|High|Medium|Low|Informational)") {
+		t.Errorf("filter desc %q missing a curated field", desc)
+	}
+	// Universal suffix is present.
+	if !strings.Contains(desc, fqlFilterHintSuffix) {
+		t.Errorf("filter desc %q missing universal FQL suffix", desc)
+	}
+}
+
+// TestSearchToolsInjectsSuffixWithoutCuratedHint verifies that a tool WITHOUT a
+// curated hint entry still gets the universal FQL suffix appended (but no
+// curated block). The "widgets" fixture registers as falcon_search_widgets,
+// which has no curated entry.
+func TestSearchToolsInjectsSuffixWithoutCuratedHint(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t, fakeToolModule{name: "widgets"})
+	desc := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_widgets")
+
+	if _, ok := filterHints["falcon_search_widgets"]; ok {
+		t.Fatal("test precondition broken: falcon_search_widgets unexpectedly has a curated hint")
+	}
+	if !strings.Contains(desc, fqlFilterHintSuffix) {
+		t.Errorf("filter desc %q missing universal FQL suffix", desc)
+	}
+}
+
+// TestSearchToolsHintInjectionIsIdempotent guards against the catalog entry's
+// shared params slice being mutated in place: repeated searches must not
+// compound the appended hints.
+func TestSearchToolsHintInjectionIsIdempotent(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t, fakeToolModule{name: "detections"})
+	first := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_detections")
+	second := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_detections")
+	if first != second {
+		t.Errorf("hint injection not idempotent:\n first  = %q\n second = %q", first, second)
+	}
+	if n := strings.Count(second, fqlFilterHintSuffix); n != 1 {
+		t.Errorf("suffix appears %d times, want 1 (compounding mutation): %q", n, second)
+	}
+}
+
+// TestSearchToolsNoFilterParamUnchanged verifies that a tool with no filter
+// parameter (the mutating update_* fixture takes only "id") is left untouched.
+func TestSearchToolsNoFilterParamUnchanged(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t, fakeToolModule{name: "detections", withMutator: true})
+	res := callSearch(t, m, SearchToolsInput{})
+	for _, s := range res.Tools {
+		if s.Name != "falcon_update_detections" {
+			continue
+		}
+		for _, p := range s.Parameters {
+			if strings.Contains(p.Description, fqlFilterHintSuffix) {
+				t.Errorf("param %q on a filterless tool got a hint appended: %q", p.Name, p.Description)
+			}
+		}
+	}
+}
+
 // --- execute -----------------------------------------------------------------
 
 func callExecute(t *testing.T, m *MetaModule, in ExecuteToolInput) *mcp.CallToolResult {
