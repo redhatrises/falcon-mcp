@@ -13,9 +13,10 @@ import (
 // The mutating tools (create/update/delete) are intentionally not exercised here
 // to avoid changing tenant state. Label("exclusions") selects just this module.
 //
-// The ml search doubly validates the raw-capture detail path: the gofalcon ML
-// get model types groups as objects while the live API returns []string, so a
-// typed get would hard-fail — a passing ml search here confirms the workaround.
+// The ml search validates the typed detail path: gofalcon types the ML get
+// response groups field as []string (PR #683), so a real ML record with host
+// groups decodes cleanly through the typed model + modelsToMaps round-trip. A
+// passing ml search here confirms that path with no raw-capture workaround.
 var _ = Describe("exclusions module", Label("integration", "exclusions"), func() {
 	var ctx context.Context
 
@@ -46,7 +47,7 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 		expectSearchReturnsDetails(res, "id")
 	})
 
-	It("searches ML exclusions and returns full records via the raw-capture path", func() {
+	It("searches ML exclusions and returns full records via the typed path", func() {
 		cs := newSession(ctx)
 		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ml",
@@ -55,7 +56,7 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no ML exclusions")
 		// value is present on every ML exclusion record; its presence confirms the
-		// detail fetch returned full objects despite the gofalcon groups model bug.
+		// detail fetch returned full objects decoded through the typed groups model.
 		expectSearchReturnsDetails(res, "id", "value")
 	})
 
@@ -95,6 +96,31 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no certificate-based exclusions")
 		expectSearchReturnsDetails(res, "id")
+	})
+
+	It("preserves applied_globally on IOA records (nullable-field fidelity)", func() {
+		// gofalcon PR #686 retyped IOA/CB applied_globally as *bool so a present
+		// false round-trips instead of being dropped by omitempty — the fix that
+		// let the module drop its raw-capture reader. Assert at least one IOA
+		// record carries the applied_globally key (present, regardless of value).
+		cs := newSession(ctx)
+		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+			"exclusion_type": "ioa",
+			"limit":          10,
+		})
+		expectNoToolError(res)
+		skipIfEmpty(res, "tenant has no IOA exclusions")
+		found := false
+		for _, r := range resources(res) {
+			obj, ok := r.(map[string]any)
+			Expect(ok).To(BeTrue(), "IOA resource should be a full object, got %T", r)
+			if _, present := obj["applied_globally"]; present {
+				found = true
+				break
+			}
+		}
+		Expect(found).To(BeTrue(),
+			"expected at least one IOA record to carry applied_globally; the nullable-field fix should surface it verbatim")
 	})
 
 	It("applies a boolean FQL filter supported by every type", func() {
