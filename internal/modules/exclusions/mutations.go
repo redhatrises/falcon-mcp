@@ -67,11 +67,7 @@ func (m *Module) createExclusion(ctx context.Context, _ *mcp.CallToolRequest, in
 	}
 	m.Logger.Debug("create_exclusion", "type", in.ExclusionType)
 
-	raw, err := b.createRaw(ctx, body)
-	if e := base.APIError(err, nil, writeScope(in.ExclusionType)); e != nil {
-		return nil, zero, e
-	}
-	records, meta, err := decodeResources(raw)
+	records, meta, err := b.createRecords(ctx, body, writeScope(in.ExclusionType))
 	if err != nil {
 		return nil, zero, err
 	}
@@ -93,11 +89,7 @@ func (m *Module) updateExclusion(ctx context.Context, _ *mcp.CallToolRequest, in
 	}
 	m.Logger.Debug("update_exclusion", "type", in.ExclusionType, "id", in.ID)
 
-	raw, err := b.updateRaw(ctx, body)
-	if e := base.APIError(err, nil, writeScope(in.ExclusionType)); e != nil {
-		return nil, zero, e
-	}
-	records, meta, err := decodeResources(raw)
+	records, meta, err := b.updateRecords(ctx, body, writeScope(in.ExclusionType))
 	if err != nil {
 		return nil, zero, err
 	}

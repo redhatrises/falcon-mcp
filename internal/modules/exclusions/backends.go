@@ -37,20 +37,25 @@ type queryArgs struct {
 
 // backend abstracts the per-type exclusion operations behind the unified tool
 // surface. Each concrete backend wraps one gofalcon sub-client. Record-returning
-// operations (get/create/update) return the raw 2xx JSON body rather than a typed
-// model, because the ML models carry a codegen bug and the four types' models are
-// heterogeneous — see the note in rawclient.go. Shared handler code decodes the
-// body once via decodeResources.
+// operations (get/create/update) call the typed gofalcon op and convert
+// resp.Payload.Resources into uniform map records via modelsToMaps, returning the
+// response meta for verbatim passthrough. The four types' response models are
+// heterogeneous but all expose Resources/Meta, so the JSON round-trip keeps the
+// tool's record shape uniform and 1:1 with the raw API without depending on any
+// single model's field layout.
 type backend interface {
 	// query returns the matching exclusion IDs for a search, plus the raw API
 	// meta object (pagination/query_time) for verbatim passthrough.
 	query(ctx context.Context, a queryArgs) ([]string, any, error)
-	// getRaw fetches full records for ids and returns the raw response body.
-	getRaw(ctx context.Context, ids []string) ([]byte, error)
-	// createRaw sends a prebuilt gofalcon body and returns the raw response body.
-	createRaw(ctx context.Context, body any) ([]byte, error)
-	// updateRaw sends a prebuilt gofalcon body and returns the raw response body.
-	updateRaw(ctx context.Context, body any) ([]byte, error)
+	// getRecords fetches full records for ids, returning the decoded map records
+	// and the response meta. scope is attached to a 403 error.
+	getRecords(ctx context.Context, ids []string, scope base.Scope) ([]map[string]any, any, error)
+	// createRecords sends a prebuilt gofalcon body, returning the created records
+	// and the response meta. scope is attached to a 403 error.
+	createRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error)
+	// updateRecords sends a prebuilt gofalcon body, returning the updated records
+	// and the response meta. scope is attached to a 403 error.
+	updateRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error)
 	// deleteByIDs deletes the given IDs with an optional audit comment, returning
 	// the raw API meta object for verbatim passthrough.
 	deleteByIDs(ctx context.Context, ids []string, comment string) (any, error)
@@ -83,42 +88,42 @@ func (b ioaBackend) query(ctx context.Context, a queryArgs) ([]string, any, erro
 	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
-func (b ioaBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
+func (b ioaBackend) getRecords(ctx context.Context, ids []string, scope base.Scope) ([]map[string]any, any, error) {
 	p := ioa_exclusions.NewSsIoaExclusionsGetV2ParamsWithContext(ctx)
 	p.Ids = ids
-	r, opt := capture(okIOAGet)
-	if _, err := b.c.SsIoaExclusionsGetV2(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.SsIoaExclusionsGetV2(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b ioaBackend) createRaw(ctx context.Context, body any) ([]byte, error) {
+func (b ioaBackend) createRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	typed, err := bodyAs[*models.DomainSsIoaExclusionsCreateReqV2](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := ioa_exclusions.NewSsIoaExclusionsCreateV2ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okIOACreate)
-	if _, err := b.c.SsIoaExclusionsCreateV2(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.SsIoaExclusionsCreateV2(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b ioaBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
+func (b ioaBackend) updateRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	typed, err := bodyAs[*models.DomainSsIoaExclusionsUpdateReqV2](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := ioa_exclusions.NewSsIoaExclusionsUpdateV2ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okIOAUpdate)
-	if _, err := b.c.SsIoaExclusionsUpdateV2(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.SsIoaExclusionsUpdateV2(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
 func (b ioaBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
@@ -164,43 +169,43 @@ func (b mlBackend) query(ctx context.Context, a queryArgs) ([]string, any, error
 	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
-func (b mlBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
+func (b mlBackend) getRecords(ctx context.Context, ids []string, scope base.Scope) ([]map[string]any, any, error) {
 	p := ml_exclusions.NewExclusionsGetV2ParamsWithContext(ctx)
 	p.Ids = ids
-	r, opt := capture(okMLGet)
-	if _, err := b.c.ExclusionsGetV2(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.ExclusionsGetV2(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b mlBackend) createRaw(ctx context.Context, body any) ([]byte, error) {
+func (b mlBackend) createRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	typed, err := bodyAs[*models.DomainExclusionsCreateReqV2](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := ml_exclusions.NewExclusionsCreateV2ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okMLCreate)
-	if _, err := b.c.ExclusionsCreateV2(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.ExclusionsCreateV2(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b mlBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
+func (b mlBackend) updateRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	// ML update body is the SINGULAR DomainExclusionUpdateReqV2, not a wrapper.
 	typed, err := bodyAs[*models.DomainExclusionUpdateReqV2](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := ml_exclusions.NewExclusionsUpdateV2ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okMLUpdate)
-	if _, err := b.c.ExclusionsUpdateV2(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.ExclusionsUpdateV2(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
 func (b mlBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
@@ -245,43 +250,43 @@ func (b svBackend) query(ctx context.Context, a queryArgs) ([]string, any, error
 	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
-func (b svBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
+func (b svBackend) getRecords(ctx context.Context, ids []string, scope base.Scope) ([]map[string]any, any, error) {
 	p := sensor_visibility_exclusions.NewGetSensorVisibilityExclusionsV1ParamsWithContext(ctx)
 	p.Ids = ids
-	r, opt := capture(okSVGet)
-	if _, err := b.c.GetSensorVisibilityExclusionsV1(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.GetSensorVisibilityExclusionsV1(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b svBackend) createRaw(ctx context.Context, body any) ([]byte, error) {
+func (b svBackend) createRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	// SV create body is the FLAT SvExclusionsCreateReqV1 (single object, no wrapper).
 	typed, err := bodyAs[*models.SvExclusionsCreateReqV1](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := sensor_visibility_exclusions.NewCreateSVExclusionsV1ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okSVCreate)
-	if _, err := b.c.CreateSVExclusionsV1(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.CreateSVExclusionsV1(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b svBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
+func (b svBackend) updateRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	typed, err := bodyAs[*models.SvExclusionsUpdateReqV1](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := sensor_visibility_exclusions.NewUpdateSensorVisibilityExclusionsV1ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okSVUpdate)
-	if _, err := b.c.UpdateSensorVisibilityExclusionsV1(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.UpdateSensorVisibilityExclusionsV1(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
 func (b svBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
@@ -331,42 +336,42 @@ func (b cbBackend) query(ctx context.Context, a queryArgs) ([]string, any, error
 	return resp.Payload.Resources, resp.Payload.Meta, nil
 }
 
-func (b cbBackend) getRaw(ctx context.Context, ids []string) ([]byte, error) {
+func (b cbBackend) getRecords(ctx context.Context, ids []string, scope base.Scope) ([]map[string]any, any, error) {
 	p := certificate_based_exclusions.NewCbExclusionsGetV1ParamsWithContext(ctx)
 	p.Ids = ids
-	r, opt := capture(okCBGet)
-	if _, err := b.c.CbExclusionsGetV1(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.CbExclusionsGetV1(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b cbBackend) createRaw(ctx context.Context, body any) ([]byte, error) {
+func (b cbBackend) createRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	typed, err := bodyAs[*models.APICertBasedExclusionsCreateReqV1](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := certificate_based_exclusions.NewCbExclusionsCreateV1ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okCBCreate)
-	if _, err := b.c.CbExclusionsCreateV1(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.CbExclusionsCreateV1(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
-func (b cbBackend) updateRaw(ctx context.Context, body any) ([]byte, error) {
+func (b cbBackend) updateRecords(ctx context.Context, body any, scope base.Scope) ([]map[string]any, any, error) {
 	typed, err := bodyAs[*models.APICertBasedExclusionsUpdateReqV1](body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p := certificate_based_exclusions.NewCbExclusionsUpdateV1ParamsWithContext(ctx)
 	p.Body = typed
-	r, opt := capture(okCBUpdate)
-	if _, err := b.c.CbExclusionsUpdateV1(p, opt); err != nil {
-		return nil, err
+	resp, err := b.c.CbExclusionsUpdateV1(p)
+	if e := base.APIError(err, resp, scope); e != nil {
+		return nil, nil, e
 	}
-	return r.body, nil
+	return recordsAndMeta(resp.Payload.Resources, resp.Payload.Meta)
 }
 
 func (b cbBackend) deleteByIDs(ctx context.Context, ids []string, comment string) (any, error) {
@@ -406,4 +411,16 @@ func applyQuery(a queryArgs, filter **string, sort **string, limit **int64, offs
 	if a.offset != nil {
 		*offset = a.offset
 	}
+}
+
+// recordsAndMeta converts a typed gofalcon record slice into uniform map records
+// via modelsToMaps and returns the response meta for verbatim passthrough. meta
+// is the operation's *MsaMetaInfo; it is returned as-is (WithMeta normalizes a
+// typed-nil pointer so it is omitted rather than serialized as null).
+func recordsAndMeta[T any](resources []T, meta any) ([]map[string]any, any, error) {
+	records, err := modelsToMaps(resources)
+	if err != nil {
+		return nil, nil, err
+	}
+	return records, meta, nil
 }

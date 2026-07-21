@@ -4,11 +4,14 @@
 // backends absorb the body, field, sort, and limit differences so the tool
 // surface stays clean for the calling agent.
 //
-// Record-returning operations return the raw API JSON decoded to
-// []map[string]any rather than typed gofalcon models: the four types' models are
-// heterogeneous, and the ML model carries a codegen bug that hard-fails decoding
-// of live responses (see rawclient.go). This also keeps the returned records 1:1
-// with the Python falcon-mcp module, which returns raw API dictionaries.
+// Record-returning operations call the typed gofalcon op and convert
+// resp.Payload.Resources into a uniform []map[string]any via modelsToMaps (a JSON
+// round-trip). This keeps one record shape across the four heterogeneous types
+// and reproduces the raw API body faithfully, matching the Python falcon-mcp
+// module, which returns raw API dictionaries. Faithful round-tripping relies on
+// the gofalcon response models tagging optional value fields as nullable pointers
+// (ML groups as []string; IOA/CB applied_globally/comment/description as
+// *bool/*string) so false/"" survive rather than being dropped by omitempty.
 package exclusions
 
 import (
@@ -228,19 +231,14 @@ func (m *Module) searchExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, base.Found([]map[string]any{}, in.Filter).WithMeta(meta), nil
 	}
 
-	body, err := b.getRaw(ctx, ids)
-	if err != nil {
-		if e := base.APIError(err, nil, readScope(in.ExclusionType)); e != nil {
-			return nil, zero, e
-		}
-	}
-	records, _, err := decodeResources(body)
+	records, _, err := b.getRecords(ctx, ids, readScope(in.ExclusionType))
 	if err != nil {
 		return nil, zero, err
 	}
 	// Restore the query-step sort order in case the get endpoint reorders results.
 	records = reorderByID(ids, records)
 	m.Logger.Debug("search_exclusions complete", "type", in.ExclusionType, "matched", len(records))
+	// Pagination lives on the query-step meta; the get-step meta is discarded.
 	return nil, base.Found(records, in.Filter).WithMeta(meta), nil
 }
 
@@ -272,45 +270,25 @@ func (m *Module) getCertificateDetails(ctx context.Context, _ *mcp.CallToolReque
 	return nil, base.Entities(records).WithMeta(resp.Payload.Meta), nil
 }
 
-// decodeResources extracts the "resources" array and the raw "meta" object from
-// a raw exclusion response body. Records decode into uniform map records; meta is
-// returned verbatim (as map[string]any) for passthrough, or nil when absent so
-// base.*.WithMeta omits it. An empty body or absent resources yields an empty
-// (non-nil) slice, not an error.
-func decodeResources(body []byte) ([]map[string]any, any, error) {
-	if len(body) == 0 {
-		return []map[string]any{}, nil, nil
-	}
-	var env struct {
-		Resources []map[string]any `json:"resources"`
-		Meta      map[string]any   `json:"meta"`
-	}
-	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, nil, fmt.Errorf("decode exclusions response: %w", err)
-	}
-	var meta any
-	if env.Meta != nil {
-		meta = env.Meta
-	}
-	if env.Resources == nil {
-		return []map[string]any{}, meta, nil
-	}
-	return env.Resources, meta, nil
-}
-
 // modelsToMaps marshals typed gofalcon records and unmarshals them back into
-// uniform map records, so get_certificate_details returns the same shape as the
-// raw-capture paths without depending on the certificate model's field layout.
+// uniform map records, giving every record-returning path (search, create,
+// update, and get_certificate_details) one map[string]any shape regardless of
+// the four types' heterogeneous models. The JSON round-trip reproduces the raw
+// API body faithfully — a field the API sent is preserved and a field it omitted
+// stays absent — which matches the Python module's raw-dict output. This depends
+// on the response models tagging optional value fields as nullable pointers so
+// false/"" round-trip rather than being dropped by omitempty (see gofalcon
+// ExclusionV1.groups and the IOA/CB applied_globally/comment/description fixes).
 func modelsToMaps[T any](in []T) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(in))
 	for _, rec := range in {
 		b, err := json.Marshal(rec)
 		if err != nil {
-			return nil, fmt.Errorf("encode certificate record: %w", err)
+			return nil, fmt.Errorf("encode exclusion record: %w", err)
 		}
 		var m map[string]any
 		if err := json.Unmarshal(b, &m); err != nil {
-			return nil, fmt.Errorf("decode certificate record: %w", err)
+			return nil, fmt.Errorf("decode exclusion record: %w", err)
 		}
 		out = append(out, m)
 	}

@@ -16,17 +16,20 @@ import (
 var testLogger = slog.New(slog.DiscardHandler)
 
 // fakeBackend is a configurable test double for the backend interface. It
-// records the last body/ids it received and returns canned raw bodies so handler
-// behavior can be exercised without the gofalcon transport.
+// records the last body/ids it received and returns canned record slices + meta
+// so handler behavior can be exercised without the gofalcon transport.
 type fakeBackend struct {
 	queryIDs   []string
 	queryMeta  any
 	queryErr   error
-	getBody    []byte
+	getRecs    []map[string]any
+	getMeta    any
 	getErr     error
-	createRes  []byte
+	createRecs []map[string]any
+	createMeta any
 	createErr  error
-	updateRes  []byte
+	updateRecs []map[string]any
+	updateMeta any
 	updateErr  error
 	deleteMeta any
 	deleteErr  error
@@ -45,17 +48,17 @@ func (f *fakeBackend) query(_ context.Context, a queryArgs) ([]string, any, erro
 	f.lastQuery = a
 	return f.queryIDs, f.queryMeta, f.queryErr
 }
-func (f *fakeBackend) getRaw(_ context.Context, ids []string) ([]byte, error) {
+func (f *fakeBackend) getRecords(_ context.Context, ids []string, _ base.Scope) ([]map[string]any, any, error) {
 	f.lastGetIDs = ids
-	return f.getBody, f.getErr
+	return f.getRecs, f.getMeta, f.getErr
 }
-func (f *fakeBackend) createRaw(_ context.Context, body any) ([]byte, error) {
+func (f *fakeBackend) createRecords(_ context.Context, body any, _ base.Scope) ([]map[string]any, any, error) {
 	f.lastCreateBody = body
-	return f.createRes, f.createErr
+	return f.createRecs, f.createMeta, f.createErr
 }
-func (f *fakeBackend) updateRaw(_ context.Context, body any) ([]byte, error) {
+func (f *fakeBackend) updateRecords(_ context.Context, body any, _ base.Scope) ([]map[string]any, any, error) {
 	f.lastUpdateBody = body
-	return f.updateRes, f.updateErr
+	return f.updateRecs, f.updateMeta, f.updateErr
 }
 func (f *fakeBackend) deleteByIDs(_ context.Context, ids []string, comment string) (any, error) {
 	f.lastDeleteIDs = ids
@@ -82,7 +85,7 @@ func TestSearchExclusionsSuccess(t *testing.T) {
 	fb := &fakeBackend{
 		queryIDs:  []string{"b", "a"},
 		queryMeta: meta,
-		getBody:   []byte(`{"resources":[{"id":"a","value":"/x"},{"id":"b","value":"/y"}]}`),
+		getRecs:   []map[string]any{{"id": "a", "value": "/x"}, {"id": "b", "value": "/y"}},
 	}
 	m := moduleWith("ml", fb)
 
@@ -217,7 +220,11 @@ func TestCreateExclusionInvalidType(t *testing.T) {
 
 func TestCreateExclusionSuccess(t *testing.T) {
 	t.Parallel()
-	fb := &fakeBackend{createRes: []byte(`{"resources":[{"id":"new","value":"/x"}],"meta":{"query_time":0.01}}`)}
+	meta := &models.MsaMetaInfo{}
+	fb := &fakeBackend{
+		createRecs: []map[string]any{{"id": "new", "value": "/x"}},
+		createMeta: meta,
+	}
 	m := moduleWith("ml", fb)
 	_, out, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", Value: "/x", HostGroups: []string{"g1"}})
 	if err != nil {
@@ -226,10 +233,9 @@ func TestCreateExclusionSuccess(t *testing.T) {
 	if out.Total != 1 || out.Resources[0]["id"] != "new" {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	// The raw response meta object is passed through from decodeResources.
-	gotMeta, ok := out.Meta.(map[string]any)
-	if !ok || gotMeta["query_time"] != 0.01 {
-		t.Fatalf("expected meta passthrough from raw body, got %+v", out.Meta)
+	// The response meta object is passed through verbatim from the backend.
+	if out.Meta != any(meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	body, ok := fb.lastCreateBody.(*models.DomainExclusionsCreateReqV2)
 	if !ok {
@@ -250,7 +256,7 @@ func TestCreateMLExclusionForwardsFlags(t *testing.T) {
 	tru := true
 	t.Run("forwards when set", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		fb := &fakeBackend{}
 		m := moduleWith("ml", fb)
 		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{
 			ExclusionType: "ml", Value: "/x",
@@ -271,7 +277,7 @@ func TestCreateMLExclusionForwardsFlags(t *testing.T) {
 
 	t.Run("false when unset", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		fb := &fakeBackend{}
 		m := moduleWith("ml", fb)
 		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", Value: "/x"})
 		if err != nil {
@@ -289,7 +295,7 @@ func TestCreateMLExclusionForwardsFlags(t *testing.T) {
 
 	t.Run("update forwards flags on singular body", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{updateRes: []byte(`{"resources":[]}`)}
+		fb := &fakeBackend{}
 		m := moduleWith("ml", fb)
 		_, _, err := m.updateExclusion(context.Background(), nil, MutateInput{
 			ExclusionType: "ml", ID: "e1", Value: "/x",
@@ -319,19 +325,22 @@ func TestUpdateExclusionRequiresID(t *testing.T) {
 
 // TestUpdateExclusionMLSingularBody verifies the ML update body is the singular
 // DomainExclusionUpdateReqV2 (not the wrapped create shape) and carries the id,
-// and that the raw response meta object is passed through on update.
+// and that the response meta object is passed through on update.
 func TestUpdateExclusionMLSingularBody(t *testing.T) {
 	t.Parallel()
-	fb := &fakeBackend{updateRes: []byte(`{"resources":[{"id":"e1"}],"meta":{"query_time":0.02}}`)}
+	meta := &models.MsaMetaInfo{}
+	fb := &fakeBackend{
+		updateRecs: []map[string]any{{"id": "e1"}},
+		updateMeta: meta,
+	}
 	m := moduleWith("ml", fb)
 	_, out, err := m.updateExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", ID: "e1", Value: "/x"})
 	if err != nil {
 		t.Fatalf("updateExclusion: %v", err)
 	}
-	// The raw response meta object is passed through from decodeResources.
-	gotMeta, ok := out.Meta.(map[string]any)
-	if !ok || gotMeta["query_time"] != 0.02 {
-		t.Fatalf("expected meta passthrough from raw body, got %+v", out.Meta)
+	// The response meta object is passed through verbatim from the backend.
+	if out.Meta != any(meta) {
+		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 	}
 	body, ok := fb.lastUpdateBody.(*models.DomainExclusionUpdateReqV2)
 	if !ok {
@@ -372,7 +381,7 @@ func TestCreateExclusionValidation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+			fb := &fakeBackend{}
 			m := moduleWith(tc.in.ExclusionType, fb)
 			_, _, err := m.createExclusion(context.Background(), nil, tc.in)
 			if tc.wantErr && !errors.Is(err, errInvalidInput) {
@@ -392,7 +401,7 @@ func TestCreateExclusionBodyShapes(t *testing.T) {
 
 	t.Run("ioa wrapped", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		fb := &fakeBackend{}
 		m := moduleWith("ioa", fb)
 		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", HostGroups: []string{"g1"}})
 		if err != nil {
@@ -409,7 +418,7 @@ func TestCreateExclusionBodyShapes(t *testing.T) {
 
 	t.Run("sv flat", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		fb := &fakeBackend{}
 		m := moduleWith("sensor_visibility", fb)
 		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "sensor_visibility", Value: "/x", HostGroups: []string{"g1"}})
 		if err != nil {
@@ -426,7 +435,7 @@ func TestCreateExclusionBodyShapes(t *testing.T) {
 
 	t.Run("certificate wrapped with timestamps", func(t *testing.T) {
 		t.Parallel()
-		fb := &fakeBackend{createRes: []byte(`{"resources":[]}`)}
+		fb := &fakeBackend{}
 		m := moduleWith("certificate", fb)
 		_, _, err := m.createExclusion(context.Background(), nil, MutateInput{
 			ExclusionType: "certificate", Name: "n", Status: "enabled",
@@ -525,42 +534,128 @@ func TestGetCertificateDetailsRequiresHash(t *testing.T) {
 
 // ---- helpers -------------------------------------------------------------------
 
-func TestDecodeResources(t *testing.T) {
+// TestModelsToMaps covers the JSON round-trip that gives every record path a
+// uniform map shape.
+func TestModelsToMaps(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		body     string
-		want     int
-		wantMeta bool
-	}{
-		{"empty body", "", 0, false},
-		{"null resources", `{"resources":null}`, 0, false},
-		{"two records", `{"resources":[{"id":"a"},{"id":"b"}]}`, 2, false},
-		{"records with meta", `{"resources":[{"id":"a"}],"meta":{"query_time":0.02}}`, 1, true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got, meta, err := decodeResources([]byte(tc.body))
-			if err != nil {
-				t.Fatalf("decodeResources: %v", err)
-			}
-			if len(got) != tc.want {
-				t.Fatalf("got %d records, want %d", len(got), tc.want)
-			}
-			if got == nil {
-				t.Fatalf("expected non-nil slice")
-			}
-			if tc.wantMeta {
-				m, ok := meta.(map[string]any)
-				if !ok || m["query_time"] != 0.02 {
-					t.Fatalf("expected meta object, got %+v", meta)
-				}
-			} else if meta != nil {
-				t.Fatalf("expected nil meta, got %+v", meta)
-			}
-		})
-	}
+
+	t.Run("empty slice yields non-nil empty", func(t *testing.T) {
+		t.Parallel()
+		got, err := modelsToMaps([]*models.DomainSsIoaExclusionsV2{})
+		if err != nil {
+			t.Fatalf("modelsToMaps: %v", err)
+		}
+		if got == nil || len(got) != 0 {
+			t.Fatalf("expected non-nil empty slice, got %+v", got)
+		}
+	})
+
+	t.Run("marshals record fields", func(t *testing.T) {
+		t.Parallel()
+		id := "e1"
+		val := "/x"
+		got, err := modelsToMaps([]*models.SvExclusionsSVExclusionV1{{ID: &id, Value: &val}})
+		if err != nil {
+			t.Fatalf("modelsToMaps: %v", err)
+		}
+		if len(got) != 1 || got[0]["id"] != "e1" || got[0]["value"] != "/x" {
+			t.Fatalf("unexpected record: %+v", got)
+		}
+	})
+}
+
+// TestModelsToMapsPreservesNullableFalse is the regression the gofalcon exclusion
+// nullable-field fixes (PR #686 for applied_globally/comment/description, PR #688
+// for every other optional response field) guard: a record whose optional scalar
+// is a present-but-zero value (false / "") must survive the typed round-trip with
+// that key present, while a nil pointer omits the key. Before the fixes these were
+// value types with omitempty, so false/"" were silently dropped — the reason the
+// module previously needed a raw-capture reader. Pointer fields (*bool/*string)
+// serialize the present-but-zero values, so the keys remain.
+func TestModelsToMapsPreservesNullableFalse(t *testing.T) {
+	t.Parallel()
+
+	falseVal := false
+	empty := ""
+	desc := "d"
+
+	t.Run("ioa applied_globally:false and empty parent regex survive", func(t *testing.T) {
+		t.Parallel()
+		rec := &models.DomainSsIoaExclusionsV2{
+			AppliedGlobally: &falseVal,
+			Comment:         &empty,
+			Description:     &desc,
+			ParentIfnRegex:  &empty, // PR #688: present-as-"" must survive
+		}
+		got, err := modelsToMaps([]*models.DomainSsIoaExclusionsV2{rec})
+		if err != nil {
+			t.Fatalf("modelsToMaps: %v", err)
+		}
+		m := got[0]
+		if v, ok := m["applied_globally"]; !ok || v != false {
+			t.Fatalf("expected applied_globally:false present, got %v (present=%v)", v, ok)
+		}
+		if v, ok := m["comment"]; !ok || v != "" {
+			t.Fatalf("expected empty comment present, got %v (present=%v)", v, ok)
+		}
+		if v, ok := m["description"]; !ok || v != "d" {
+			t.Fatalf("expected description present, got %v (present=%v)", v, ok)
+		}
+		if v, ok := m["parent_ifn_regex"]; !ok || v != "" {
+			t.Fatalf("expected empty parent_ifn_regex present, got %v (present=%v)", v, ok)
+		}
+	})
+
+	t.Run("ioa nil fields (incl host_groups) are omitted", func(t *testing.T) {
+		t.Parallel()
+		got, err := modelsToMaps([]*models.DomainSsIoaExclusionsV2{{}})
+		if err != nil {
+			t.Fatalf("modelsToMaps: %v", err)
+		}
+		m := got[0]
+		if _, ok := m["applied_globally"]; ok {
+			t.Fatalf("expected nil applied_globally omitted, got present")
+		}
+		if _, ok := m["comment"]; ok {
+			t.Fatalf("expected nil comment omitted, got present")
+		}
+		// PR #688: host_groups gained omitempty so a nil slice omits rather than
+		// serializing as null (the API omits it on globally-applied exclusions).
+		if _, ok := m["host_groups"]; ok {
+			t.Fatalf("expected nil host_groups omitted, got present")
+		}
+	})
+
+	t.Run("ml is_descendant_process:false survives", func(t *testing.T) {
+		t.Parallel()
+		rec := &models.ExclusionsExclusionV1{IsDescendantProcess: &falseVal}
+		got, err := modelsToMaps([]*models.ExclusionsExclusionV1{rec})
+		if err != nil {
+			t.Fatalf("modelsToMaps: %v", err)
+		}
+		if v, ok := got[0]["is_descendant_process"]; !ok || v != false {
+			t.Fatalf("expected is_descendant_process:false present, got %v (present=%v)", v, ok)
+		}
+	})
+
+	t.Run("certificate applied_globally:false survives", func(t *testing.T) {
+		t.Parallel()
+		rec := &models.APICertBasedExclusionV1{
+			AppliedGlobally: &falseVal,
+			Comment:         &empty,
+		}
+		got, err := modelsToMaps([]*models.APICertBasedExclusionV1{rec})
+		if err != nil {
+			t.Fatalf("modelsToMaps: %v", err)
+		}
+		m := got[0]
+		if v, ok := m["applied_globally"]; !ok || v != false {
+			t.Fatalf("expected applied_globally:false present, got %v (present=%v)", v, ok)
+		}
+		if v, ok := m["comment"]; !ok || v != "" {
+			t.Fatalf("expected empty comment present, got %v (present=%v)", v, ok)
+		}
+	})
 }
 
 func TestReorderByID(t *testing.T) {
