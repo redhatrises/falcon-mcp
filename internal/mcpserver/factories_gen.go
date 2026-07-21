@@ -17,6 +17,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/intel"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/ioc"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/ngsiem"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/policies"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/quarantine"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/recon"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
@@ -46,6 +47,7 @@ func moduleFactories() []registry.Factory {
 		intel.Factory,
 		ioc.Factory,
 		ngsiem.Factory,
+		policies.Factory,
 		quarantine.Factory,
 		recon.Factory,
 		rtr.Factory,
