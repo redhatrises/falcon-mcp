@@ -2,6 +2,7 @@ package quarantine
 
 import (
 	"context"
+	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/quarantine"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -12,11 +13,12 @@ import (
 
 // UpdateInput is the input for falcon_update_quarantined_files. Provide either
 // IDs or Filter (not both). Action must be a reversible action (release or
-// unrelease).
+// unrelease). Prefer falcon_preview_quarantine_actions before filter-based
+// updates to understand blast radius; preview is recommended, not enforced.
 type UpdateInput struct {
 	Action  string   `json:"action" jsonschema:"reversible action to apply: release or unrelease"`
 	IDs     []string `json:"ids,omitempty" jsonschema:"quarantine file ID(s) to update; provide ids OR filter"`
-	Filter  string   `json:"filter,omitempty" jsonschema:"FQL filter expression selecting records to update; provide ids OR filter. See falcon://quarantine/files/search/fql-guide for syntax."`
+	Filter  string   `json:"filter,omitempty" jsonschema:"specific FQL filter selecting records to update (not empty or bare *); provide ids OR filter. Prefer falcon_preview_quarantine_actions first. See falcon://quarantine/files/search/fql-guide."`
 	Comment string   `json:"comment,omitempty" jsonschema:"optional audit comment describing why the action is being taken"`
 }
 
@@ -25,7 +27,7 @@ func (m *Module) updateQuarantinedFiles(ctx context.Context, _ *mcp.CallToolRequ
 	if err != nil {
 		return nil, base.ActionResult{}, err
 	}
-	if len(in.IDs) == 0 && in.Filter == "" {
+	if len(in.IDs) == 0 && strings.TrimSpace(in.Filter) == "" {
 		return nil, base.ActionResult{}, wrapInvalid("update quarantined files", "provide either ids or filter")
 	}
 	m.Logger.Debug("update_quarantined_files", "action", action, "ids", len(in.IDs), "filter", in.Filter)
@@ -33,19 +35,24 @@ func (m *Module) updateQuarantinedFiles(ctx context.Context, _ *mcp.CallToolRequ
 	if len(in.IDs) > 0 {
 		return m.applyActionByIDs(ctx, in.IDs, action, in.Comment)
 	}
-	return m.applyActionByQuery(ctx, action, in.Filter, in.Comment)
+	filter, err := validateMutationFilter("update quarantined files", in.Filter)
+	if err != nil {
+		return nil, base.ActionResult{}, err
+	}
+	return m.applyActionByQuery(ctx, action, filter, in.Comment)
 }
 
 // DeleteInput is the input for falcon_delete_quarantined_files. Provide either
-// IDs or Filter (not both).
+// IDs or Filter (not both). Prefer falcon_preview_quarantine_actions before
+// filter-based deletes; preview is recommended, not enforced.
 type DeleteInput struct {
 	IDs     []string `json:"ids,omitempty" jsonschema:"quarantine file ID(s) to delete; provide ids OR filter"`
-	Filter  string   `json:"filter,omitempty" jsonschema:"FQL filter expression selecting records to delete; provide ids OR filter. See falcon://quarantine/files/search/fql-guide for syntax."`
+	Filter  string   `json:"filter,omitempty" jsonschema:"specific FQL filter selecting records to delete (not empty or bare *); provide ids OR filter. Prefer falcon_preview_quarantine_actions first. See falcon://quarantine/files/search/fql-guide."`
 	Comment string   `json:"comment,omitempty" jsonschema:"optional audit comment describing why the records are being deleted"`
 }
 
 func (m *Module) deleteQuarantinedFiles(ctx context.Context, _ *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, base.ActionResult, error) {
-	if len(in.IDs) == 0 && in.Filter == "" {
+	if len(in.IDs) == 0 && strings.TrimSpace(in.Filter) == "" {
 		return nil, base.ActionResult{}, wrapInvalid("delete quarantined files", "provide either ids or filter")
 	}
 	m.Logger.Debug("delete_quarantined_files", "ids", len(in.IDs), "filter", in.Filter)
@@ -53,7 +60,28 @@ func (m *Module) deleteQuarantinedFiles(ctx context.Context, _ *mcp.CallToolRequ
 	if len(in.IDs) > 0 {
 		return m.applyActionByIDs(ctx, in.IDs, "delete", in.Comment)
 	}
-	return m.applyActionByQuery(ctx, "delete", in.Filter, in.Comment)
+	filter, err := validateMutationFilter("delete quarantined files", in.Filter)
+	if err != nil {
+		return nil, base.ActionResult{}, err
+	}
+	return m.applyActionByQuery(ctx, "delete", filter, in.Comment)
+}
+
+// validateMutationFilter rejects empty, whitespace-only, and bare-wildcard
+// filters on filter-based quarantine mutations so mass actions require a
+// specific FQL expression. Preview is still optional (agent-guided), not a hard
+// gate — requiring it would be a larger product change.
+func validateMutationFilter(op, filter string) (string, error) {
+	f := strings.TrimSpace(filter)
+	if f == "" {
+		return "", wrapInvalid(op, "filter must not be empty; use a specific FQL expression or pass ids")
+	}
+	// Bare wildcards and empty quoted values match essentially everything.
+	switch f {
+	case "*", "''", `""`:
+		return "", wrapInvalid(op, "filter is too broad; use a specific FQL expression (e.g. hostname:'HOST' or id:'...') or pass ids, and prefer falcon_preview_quarantine_actions first")
+	}
+	return f, nil
 }
 
 // applyActionByIDs applies a quarantine action to a specific set of record IDs.

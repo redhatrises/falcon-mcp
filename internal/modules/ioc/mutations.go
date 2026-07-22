@@ -3,6 +3,7 @@ package ioc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/ioc"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -116,26 +117,36 @@ func (in AddInput) body() (*models.APIIndicatorCreateReqsV1, error) {
 
 // RemoveInput is the input for falcon_remove_iocs. At least one of IDs or
 // Filter must be provided; when both are given, Filter takes precedence.
+// Prefer explicit IDs; filter-based bulk removal requires a non-empty specific
+// FQL expression (empty and bare-wildcard filters are rejected).
 type RemoveInput struct {
 	IDs        []string `json:"ids,omitempty" jsonschema:"IOC IDs to remove"`
-	Filter     string   `json:"filter,omitempty" jsonschema:"IOC FQL expression for bulk removal; takes precedence over ids when both are set"`
+	Filter     string   `json:"filter,omitempty" jsonschema:"specific IOC FQL for bulk removal (not empty or bare *); takes precedence over ids when both are set"`
 	Comment    string   `json:"comment,omitempty" jsonschema:"audit comment describing why these IOCs are removed"`
 	FromParent *bool    `json:"from_parent,omitempty" jsonschema:"limit the action to IOCs originating from the MSSP parent"`
 }
 
 func (m *Module) removeIOCs(ctx context.Context, _ *mcp.CallToolRequest, in RemoveInput) (*mcp.CallToolResult, base.EntitiesResult[string], error) {
 	var zero base.EntitiesResult[string]
-	if len(in.IDs) == 0 && in.Filter == "" {
+	filter := strings.TrimSpace(in.Filter)
+	if len(in.IDs) == 0 && filter == "" {
 		return nil, zero, wrapInvalid("remove iocs", "either ids or filter must be provided")
 	}
-	m.Logger.Debug("remove_iocs", "ids", len(in.IDs), "filter", in.Filter)
+	// Filter takes API precedence when set; reject empty/whitespace and bare
+	// wildcards so mass deletes cannot be issued accidentally.
+	if filter != "" {
+		if err := validateMutationFilter("remove iocs", filter); err != nil {
+			return nil, zero, err
+		}
+	}
+	m.Logger.Debug("remove_iocs", "ids", len(in.IDs), "filter", filter)
 
 	params := ioc.NewIndicatorDeleteV1ParamsWithContext(ctx)
 	if len(in.IDs) > 0 {
 		params.Ids = in.IDs
 	}
-	if in.Filter != "" {
-		params.Filter = &in.Filter
+	if filter != "" {
+		params.Filter = &filter
 	}
 	if in.Comment != "" {
 		params.Comment = &in.Comment
@@ -149,6 +160,21 @@ func (m *Module) removeIOCs(ctx context.Context, _ *mcp.CallToolRequest, in Remo
 		return nil, zero, e
 	}
 	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
+}
+
+// validateMutationFilter rejects empty, whitespace-only, and bare-wildcard
+// filters on filter-based IOC removal so bulk deletes require a specific FQL
+// expression.
+func validateMutationFilter(op, filter string) error {
+	f := strings.TrimSpace(filter)
+	if f == "" {
+		return wrapInvalid(op, "filter must not be empty; use a specific FQL expression or pass ids")
+	}
+	switch f {
+	case "*", "''", `""`:
+		return wrapInvalid(op, "filter is too broad; use a specific FQL expression (e.g. value:'evil.example' or id:'...') or pass ids")
+	}
+	return nil
 }
 
 // wrapInvalid builds an errInvalidInput-wrapped error for op with detail.

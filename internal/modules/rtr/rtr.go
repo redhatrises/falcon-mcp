@@ -14,14 +14,18 @@
 // in shape — run_rtr_read_only_command_and_wait — runs an in-call poll loop
 // whose state is local to the single invocation, not persisted.
 //
-// # Read-only enforcement is architectural
+// # Read-only enforcement is layered
 //
-// Safety comes from endpoint selection, not a command allowlist: this module
-// wires only the RealTimeResponse and RealTimeResponseAudit sub-clients and only
-// ever calls RTRExecuteCommand (the read-only command endpoint). It deliberately
-// does NOT hold a RealTimeResponseAdmin field, so escalation to active-responder
-// or admin commands is impossible without a code change that is obvious in
-// review. The Falcon API rejects non-read-only base commands on this endpoint.
+// Safety comes from (1) endpoint selection and (2) a client-side base_command
+// allowlist. This module wires only the RealTimeResponse and
+// RealTimeResponseAudit sub-clients and only ever calls RTRExecuteCommand (the
+// read-only command endpoint). It deliberately does NOT hold a
+// RealTimeResponseAdmin field, so escalation to active-responder or admin
+// endpoints is impossible without a code change that is obvious in review.
+// Execute/wait tools also reject any base_command outside the Falcon read-only
+// set (ls, ps, cat, filehash, reg, netstat, eventlog, …) before making a
+// network call. The Falcon API additionally rejects non-read-only base commands
+// on this endpoint.
 package rtr
 
 import (
@@ -207,8 +211,10 @@ func (m *Module) RegisterTools(r base.Registrar) {
 
 	base.AddTool(r, &mcp.Tool{
 		Name: "execute_rtr_read_only_command",
-		Description: "Execute a read-only RTR command on a single host, limited to hunt-and-triage " +
-			"commands (ls, ps, cat, filehash, reg). Does not expose admin or remediation commands. " +
+		Description: "Execute a read-only RTR command on a single host. Client-side allowlist " +
+			"enforces the Falcon read-only base_command set (ls, ps, cat, filehash, reg, netstat, " +
+			"eventlog, and other read-only commands). Admin or remediation base commands are " +
+			"rejected before any API call. " +
 			"Returns command records containing a cloud_request_id for polling output via " +
 			"falcon_check_rtr_command_status.",
 		Annotations: base.MutatingAnnotations(),
@@ -218,8 +224,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Name: "run_rtr_read_only_command_and_wait",
 		Description: "Execute a read-only RTR command and poll until completion, accumulating output " +
 			"chunks into one result. Use this for simple, focused evidence collection when you want " +
-			"the command output directly and do not need to manage a cloud_request_id. Limited to " +
-			"read-only commands; it does not expose RTR admin or remediation APIs.",
+			"the command output directly and do not need to manage a cloud_request_id. Client-side " +
+			"allowlist enforces Falcon read-only base commands; admin/remediation base commands are " +
+			"rejected before any API call.",
 		InputSchema: waitSchema,
 		Annotations: base.MutatingAnnotations(),
 	}, m.runReadOnlyCommandAndWait)

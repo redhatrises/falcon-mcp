@@ -414,6 +414,38 @@ func TestDeleteQuarantinedFilesRequiresSelector(t *testing.T) {
 	}
 }
 
+func TestDeleteQuarantinedFilesRejectsBroadFilter(t *testing.T) {
+	t.Parallel()
+
+	for _, filter := range []string{"*", "   ", "''", `""`} {
+		f := &fakeQuarantine{}
+		m := &Module{API: f, Logger: testLogger}
+		_, _, err := m.deleteQuarantinedFiles(context.Background(), nil, DeleteInput{Filter: filter})
+		if !errors.Is(err, errInvalidInput) {
+			t.Fatalf("filter %q: expected errInvalidInput, got %v", filter, err)
+		}
+		if f.lastByQryBody != nil {
+			t.Fatalf("filter %q: expected no API call", filter)
+		}
+	}
+}
+
+func TestUpdateQuarantinedFilesRejectsBroadFilter(t *testing.T) {
+	t.Parallel()
+
+	for _, filter := range []string{"*", "  \t  ", "''"} {
+		f := &fakeQuarantine{}
+		m := &Module{API: f, Logger: testLogger}
+		_, _, err := m.updateQuarantinedFiles(context.Background(), nil, UpdateInput{Action: "release", Filter: filter})
+		if !errors.Is(err, errInvalidInput) {
+			t.Fatalf("filter %q: expected errInvalidInput, got %v", filter, err)
+		}
+		if f.lastByQryBody != nil {
+			t.Fatalf("filter %q: expected no API call", filter)
+		}
+	}
+}
+
 func TestDeleteQuarantinedFilesAPIError(t *testing.T) {
 	t.Parallel()
 

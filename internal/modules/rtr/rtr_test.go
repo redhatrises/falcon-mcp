@@ -521,6 +521,38 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects admin-ish base_commands client-side", func(t *testing.T) {
+		t.Parallel()
+		// Active-responder / admin base commands must never reach the API.
+		for _, cmd := range []string{"rm", "kill", "runscript", "put", "get", "cp", "mv", "restart", "shutdown", "memdump", "xmemdump", "mkdir", "encrypt", "zip", "update", "map", "unmap"} {
+			f := &fakeRTR{}
+			m := newModule(f, nil)
+			_, _, err := m.executeReadOnlyCommand(context.Background(), nil, ExecuteInput{SessionID: "s1", BaseCommand: cmd})
+			if !errors.Is(err, errInvalidInput) {
+				t.Fatalf("base_command %q: expected errInvalidInput, got %v", cmd, err)
+			}
+			if f.lastExec != nil {
+				t.Fatalf("base_command %q: expected no API call on allowlist reject", cmd)
+			}
+		}
+	})
+
+	t.Run("normalizes base_command case", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeRTR{execResp: &real_time_response.RTRExecuteCommandCreated{Payload: &models.DomainCommandExecuteResponseWrapper{
+			Resources: []*models.DomainCommandExecuteResponse{{CloudRequestID: str("crid1")}},
+			Meta:      &models.MsaMetaInfo{},
+		}}}
+		m := newModule(f, nil)
+		_, _, err := m.executeReadOnlyCommand(context.Background(), nil, ExecuteInput{SessionID: "s1", BaseCommand: "PS"})
+		if err != nil {
+			t.Fatalf("executeReadOnlyCommand: %v", err)
+		}
+		if f.lastExec == nil || f.lastExec.BaseCommand == nil || *f.lastExec.BaseCommand != "ps" {
+			t.Fatalf("expected lowercased base_command ps, got %+v", f.lastExec)
+		}
+	})
+
 	t.Run("sends body and returns records", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{execResp: &real_time_response.RTRExecuteCommandCreated{Payload: &models.DomainCommandExecuteResponseWrapper{
@@ -546,6 +578,19 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
 		}
 	})
+}
+
+func TestWaitRejectsNonReadOnlyBaseCommand(t *testing.T) {
+	t.Parallel()
+	f := &fakeRTR{}
+	m := newModule(f, nil)
+	_, _, err := m.runReadOnlyCommandAndWait(context.Background(), nil, WaitInput{SessionID: "s1", BaseCommand: "runscript"})
+	if !errors.Is(err, errInvalidInput) {
+		t.Fatalf("expected errInvalidInput for runscript, got %v", err)
+	}
+	if f.lastExec != nil {
+		t.Fatal("expected no execute API call for rejected base_command")
+	}
 }
 
 func TestCheckCommandStatus(t *testing.T) {
