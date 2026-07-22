@@ -7,8 +7,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,6 +58,10 @@ var (
 	// (response-header timeout, idle timeout, or max idle connections per host)
 	// is negative. Zero is accepted and replaced by the built-in default.
 	ErrInvalidHTTPTuning = errors.New("config: invalid http tuning value")
+	// ErrInvalidDebugAddr is returned when an ops endpoint address (health,
+	// metrics, or pprof) is non-empty but not a valid host:port. The wrapped
+	// message names which flag failed.
+	ErrInvalidDebugAddr = errors.New("config: invalid ops endpoint address")
 )
 
 // Validation patterns, compiled once at package scope.
@@ -82,6 +88,18 @@ type Config struct {
 	Proxy     string
 	Transport string
 	HTTPAddr  string
+	// HealthAddr is the listen address for the /healthz liveness endpoint. Empty
+	// disables it. It is independent of HTTPAddr and works under any transport,
+	// including stdio.
+	HealthAddr string
+	// MetricsAddr is the listen address for the /metrics endpoint (stdlib expvar).
+	// Empty disables it. It is independent of HTTPAddr and works under any
+	// transport, including stdio.
+	MetricsAddr string
+	// PprofAddr is the listen address for the /debug/pprof profiling endpoints.
+	// Empty disables it. It is independent of HTTPAddr and works under any
+	// transport, including stdio; bind it to a local-only address.
+	PprofAddr string
 	Hosted    bool
 	// UserAgent is an optional caller-supplied string appended to the API
 	// User-Agent header. Load composes the final value; see composeUserAgent.
@@ -179,6 +197,10 @@ func Load(cfg Config) (*Config, error) {
 		return nil, err
 	}
 
+	if err := validateOpsAddrs(&cfg); err != nil {
+		return nil, err
+	}
+
 	cfg.Modules = normalizeModules(cfg.Modules)
 
 	cfg.HostOverride = normalizeHostOverride(cfg.HostOverride)
@@ -202,6 +224,32 @@ func validateHTTPTuning(cfg *Config) error {
 	}
 	if cfg.MaxIdleConnsPerHost < 0 {
 		return fmt.Errorf("%w: max idle connections per host %d must not be negative", ErrInvalidHTTPTuning, cfg.MaxIdleConnsPerHost)
+	}
+	return nil
+}
+
+// validateOpsAddrs rejects an ops endpoint address that is not a bindable
+// host:port (fail fast). Each address is optional; an empty value disables that
+// endpoint. A non-empty value must split into host:port and carry a numeric
+// port in the 0-65535 range, so a value that passes here cannot fail to bind
+// merely because it was malformed. The error names the flag that failed.
+func validateOpsAddrs(cfg *Config) error {
+	for _, a := range []struct{ flag, addr string }{
+		{"health-addr", cfg.HealthAddr},
+		{"metrics-addr", cfg.MetricsAddr},
+		{"pprof-addr", cfg.PprofAddr},
+	} {
+		if a.addr == "" {
+			continue
+		}
+		_, port, err := net.SplitHostPort(a.addr)
+		if err != nil {
+			return fmt.Errorf("%w: %s %q: %w", ErrInvalidDebugAddr, a.flag, a.addr, err)
+		}
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 0 || n > 65535 {
+			return fmt.Errorf("%w: %s %q: port must be a number in 0-65535", ErrInvalidDebugAddr, a.flag, a.addr)
+		}
 	}
 	return nil
 }
