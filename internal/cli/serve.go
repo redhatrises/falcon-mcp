@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strings"
 	"os/signal"
 	"time"
 
@@ -20,6 +21,11 @@ import (
 	falconapi "github.com/crowdstrike/falcon-mcp/internal/falcon"
 	"github.com/crowdstrike/falcon-mcp/internal/mcpserver"
 )
+
+// jsonRPCMediaType is an alternate Content-Type some MCP clients send on POST
+// bodies. The Go MCP SDK only accepts application/json; middleware rewrites this
+// to application/json while preserving parameters (e.g. charset).
+const jsonRPCMediaType = "application/json-rpc"
 
 // serve builds the Falcon client and MCP server, then serves over the
 // configured transport (stdio, streamable-http, or sse) until ctx is cancelled.
@@ -85,7 +91,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "streamable-http",
 			addr:        cfg.HTTPAddr,
-			handler:     withAPIKey(cfg.APIKey, h),
+			handler:     withAPIKey(cfg.APIKey, withHTTPMiddleware(h)),
 			idleTimeout: cfg.IdleTimeout,
 		})
 	case "sse":
@@ -95,7 +101,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "sse",
 			addr:        cfg.HTTPAddr,
-			handler:     withAPIKey(cfg.APIKey, h),
+			handler:     withAPIKey(cfg.APIKey, withHTTPMiddleware(h)),
 			idleTimeout: cfg.IdleTimeout,
 		})
 	default:
@@ -216,6 +222,75 @@ func pprofHandler() http.Handler {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	return mux
+}
+
+
+// withHTTPMiddleware applies the HTTP transport compatibility middlewares that
+// mirror the Python falcon-mcp ASGI stack (strip trailing slashes, normalize
+// application/json-rpc Content-Type). Request order matches Python: auth wraps
+// this stack, then Content-Type normalization, then trailing-slash strip, then
+// the MCP handler.
+func withHTTPMiddleware(next http.Handler) http.Handler {
+	next = stripTrailingSlash(next)
+	next = normalizeContentType(next)
+	return next
+}
+
+
+// stripTrailingSlashPath removes trailing slashes from path, leaving "/" alone.
+// Multiple trailing slashes are all stripped (e.g. "/mcp///" -> "/mcp").
+func stripTrailingSlashPath(path string) string {
+	if path == "/" || !strings.HasSuffix(path, "/") {
+		return path
+	}
+	stripped := strings.TrimRight(path, "/")
+	if stripped == "" {
+		return "/"
+	}
+	return stripped
+}
+
+
+// stripTrailingSlash rewrites r.URL.Path (and RawPath when set) so handlers
+// that match exact paths do not 404/redirect when clients append a trailing
+// slash. Mirrors falcon_mcp.common.auth.strip_trailing_slash_middleware.
+func stripTrailingSlash(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if stripped := stripTrailingSlashPath(r.URL.Path); stripped != r.URL.Path {
+			r.URL.Path = stripped
+			if r.URL.RawPath != "" {
+				r.URL.RawPath = stripTrailingSlashPath(r.URL.RawPath)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+
+// normalizeJSONRPCContentType rewrites application/json-rpc to application/json,
+// preserving parameters (e.g. "; charset=utf-8"). Matching is case-insensitive
+// on the media type. Returns the (possibly rewritten) value and whether a
+// rewrite occurred. Mirrors falcon_mcp.common.auth.normalize_content_type_middleware.
+func normalizeJSONRPCContentType(ct string) (string, bool) {
+	if !strings.HasPrefix(strings.ToLower(ct), jsonRPCMediaType) {
+		return ct, false
+	}
+	// Media-type length is case-invariant; keep any parameters from the original.
+	rest := ct[len(jsonRPCMediaType):]
+	return "application/json" + rest, true
+}
+
+
+// normalizeContentType rewrites request Content-Type application/json-rpc to
+// application/json so the go-sdk's strict media-type check accepts clients that
+// send the JSON-RPC media type. Mirrors the Python ASGI middleware.
+func normalizeContentType(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rewritten, ok := normalizeJSONRPCContentType(r.Header.Get("Content-Type")); ok {
+			r.Header.Set("Content-Type", rewritten)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // withAPIKey guards next with a static-secret check when key is non-empty; an
