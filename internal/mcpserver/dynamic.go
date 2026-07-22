@@ -26,16 +26,18 @@ const (
 // error), matching the server's data-not-protocol-error contract.
 var ErrUnknownTool = errors.New("dynamic: unknown tool")
 
-// MetaModule is the base.Module that exposes the three dynamic-mode meta-tools
-// over a pre-built Catalog. It registers no resources of its own.
+// MetaModule is the base.Module that exposes the dynamic-mode discovery/
+// execution meta-tools (falcon_search_tools, falcon_execute_tool) over a
+// pre-built Catalog. falcon_list_enabled_modules is registered separately by
+// registerModules so it is present in both modes. MetaModule registers no
+// resources of its own.
 type MetaModule struct {
 	catalog *Catalog
-	modules []base.Module
+	modules []base.Module // retained for catalog context; not listed here
 }
 
 // NewMetaModule returns a MetaModule over cat. modules is the set of enabled
-// modules that contributed tools; falcon_list_enabled_modules reports each
-// module's name and description from it.
+// modules that contributed tools to the catalog (kept for future use).
 func NewMetaModule(cat *Catalog, modules []base.Module) *MetaModule {
 	return &MetaModule{catalog: cat, modules: modules}
 }
@@ -64,12 +66,12 @@ var searchToolsSchema = base.SchemaFor[SearchToolsInput](func(s *jsonschema.Sche
 	s.Properties["limit"].Default = json.RawMessage(strconv.Itoa(defaultSearchLimit))
 })
 
-// RegisterTools registers the three meta-tools into r (the live server, in
-// dynamic mode). They flow through base.AddTool so they get the "falcon_"
-// prefix. search_tools and list_enabled_modules keep the default read-only
-// annotations; execute_tool is a general dispatcher that can invoke mutating
-// tools, so it must not advertise readOnlyHint (see
-// docs/usage/dynamic-mode.md).
+// RegisterTools registers the dynamic-mode discovery/execution meta-tools into
+// r (the live server). They flow through base.AddTool so they get the "falcon_"
+// prefix. search_tools keeps the default read-only annotations; execute_tool is
+// a general dispatcher that can invoke mutating tools, so it must not advertise
+// readOnlyHint (see docs/usage/dynamic-mode.md). falcon_list_enabled_modules is
+// registered by coreTools.registerAlwaysOn, not here.
 func (m *MetaModule) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_tools",
@@ -85,11 +87,6 @@ func (m *MetaModule) RegisterTools(r base.Registrar) {
 		// fields to assess risk per target tool.
 		Annotations: base.MutatingAnnotations(),
 	}, m.executeTool)
-
-	base.AddTool(r, &mcp.Tool{
-		Name:        "list_enabled_modules",
-		Description: "List the Falcon modules enabled on this server.",
-	}, m.listEnabledModules)
 }
 
 // SearchToolsInput is the input for falcon_search_tools.
@@ -288,16 +285,4 @@ type ModuleInfo struct {
 type EnabledModulesResult struct {
 	Modules []ModuleInfo `json:"modules"`
 	Total   int          `json:"total"`
-}
-
-// listEnabledModules implements falcon_list_enabled_modules. It reports the
-// enabled modules that contributed tools to the catalog (honoring --modules),
-// each with its name and description, excluding the synthetic meta-module
-// itself.
-func (m *MetaModule) listEnabledModules(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, EnabledModulesResult, error) {
-	mods := make([]ModuleInfo, len(m.modules))
-	for i, mod := range m.modules {
-		mods[i] = ModuleInfo{Name: mod.Name(), Description: mod.Description()}
-	}
-	return nil, EnabledModulesResult{Modules: mods, Total: len(mods)}, nil
 }
