@@ -959,3 +959,37 @@ func TestExecuteEnvBeatsDotEnv(t *testing.T) {
 		t.Fatalf("env should beat .env: got %+v", cfg)
 	}
 }
+
+func TestExecuteHostedFlagRejected(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_HOSTED", "")
+
+	cfg, err := resolveArgs(t, []string{"--hosted"})
+	if err == nil {
+		t.Fatal("expected error for --hosted (not yet implemented)")
+	}
+	if !errors.Is(err, config.ErrHostedNotImplemented) {
+		t.Fatalf("err = %v, want %v", err, config.ErrHostedNotImplemented)
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when hosted is rejected")
+	}
+}
+
+func TestExecuteHostedEnvRejected(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_HOSTED", "true")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err == nil {
+		t.Fatal("expected error for FALCON_MCP_HOSTED=true (not yet implemented)")
+	}
+	if !errors.Is(err, config.ErrHostedNotImplemented) {
+		t.Fatalf("err = %v, want %v", err, config.ErrHostedNotImplemented)
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when hosted is rejected")
+	}
+}

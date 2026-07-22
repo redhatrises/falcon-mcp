@@ -175,13 +175,9 @@ func TestLoad(t *testing.T) {
 			errSubstr: "member",
 		},
 		{
-			name: "hosted is inert",
-			in:   Config{ClientID: validID, ClientSecret: validSecret, Hosted: true},
-			check: func(t *testing.T, c *Config) {
-				if !c.Hosted {
-					t.Errorf("hosted = false, want true")
-				}
-			},
+			name:    "hosted is rejected until implemented",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Hosted: true},
+			wantErr: ErrHostedNotImplemented,
 		},
 		{
 			name: "dynamic passes through",
@@ -469,5 +465,12 @@ func TestLoad(t *testing.T) {
 				tt.check(t, c)
 			}
 		})
+	}
+}
+
+func TestLoadHostedRejected(t *testing.T) {
+	_, err := Load(Config{ClientID: validID, ClientSecret: validSecret, Hosted: true})
+	if !errors.Is(err, ErrHostedNotImplemented) {
+		t.Fatalf("err = %v, want ErrHostedNotImplemented", err)
 	}
 }
