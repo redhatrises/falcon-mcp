@@ -30,6 +30,34 @@ func jsonString(s string) string {
 	return string(b)
 }
 
+// allowedTimelineCategories is the documented set of GraphQL enum values for
+// timeline categories (see InvestigateInput.TimelineEventTypes). Values outside
+// this set are dropped so unquoted enum interpolation cannot inject GraphQL.
+var allowedTimelineCategories = map[string]struct{}{
+	"ACTIVITY":     {},
+	"NOTIFICATION": {},
+	"THREAT":       {},
+	"ENTITY":       {},
+	"AUDIT":        {},
+	"POLICY":       {},
+	"SYSTEM":       {},
+}
+
+// filterTimelineCategories keeps only allowlisted timeline category enums in
+// the order supplied, dropping unknown or injection-shaped values.
+func filterTimelineCategories(eventTypes []string) []string {
+	if len(eventTypes) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(eventTypes))
+	for _, et := range eventTypes {
+		if _, ok := allowedTimelineCategories[et]; ok {
+			out = append(out, et)
+		}
+	}
+	return out
+}
+
 // buildEntityDetailsQuery mirrors _build_entity_details_query.
 func buildEntityDetailsQuery(entityIDs []string, includeRiskFactors, includeAssociations, includeIncidents, includeAccounts bool) string {
 	fields := []string{
@@ -153,19 +181,23 @@ func buildEntityDetailsQuery(entityIDs []string, includeRiskFactors, includeAsso
 }
 
 // buildTimelineQuery mirrors _build_timeline_query.
+//
+// String values (entity ID, start/end times) are embedded via jsonString /
+// jsonList so quotes, backslashes, and control characters cannot break out of
+// GraphQL string context. Timeline categories are GraphQL enums and must remain
+// unquoted identifiers; they are restricted to allowedTimelineCategories.
 func buildTimelineQuery(entityID, startTime, endTime string, eventTypes []string, limit int) string {
-	filters := []string{fmt.Sprintf(`sourceEntityQuery: {entityIds: ["%s"]}`, entityID)}
+	filters := []string{fmt.Sprintf(`sourceEntityQuery: {entityIds: %s}`, jsonList([]string{entityID}))}
 
 	if startTime != "" {
-		filters = append(filters, fmt.Sprintf(`startTime: "%s"`, startTime))
+		filters = append(filters, fmt.Sprintf(`startTime: %s`, jsonString(startTime)))
 	}
 	if endTime != "" {
-		filters = append(filters, fmt.Sprintf(`endTime: "%s"`, endTime))
+		filters = append(filters, fmt.Sprintf(`endTime: %s`, jsonString(endTime)))
 	}
-	if len(eventTypes) > 0 {
-		// Format event types as unquoted GraphQL enums.
-		categories := "[" + strings.Join(eventTypes, ", ") + "]"
-		filters = append(filters, fmt.Sprintf("categories: %s", categories))
+	if categories := filterTimelineCategories(eventTypes); len(categories) > 0 {
+		// Format allowlisted event types as unquoted GraphQL enums.
+		filters = append(filters, fmt.Sprintf("categories: [%s]", strings.Join(categories, ", ")))
 	}
 
 	filterString := strings.Join(filters, ", ")
@@ -402,6 +434,9 @@ func buildTimelineQuery(entityID, startTime, endTime string, eventTypes []string
 
 // buildRelationshipQuery mirrors _build_relationship_analysis_query, including
 // its recursive association nesting driven by relationshipDepth.
+//
+// The entity ID is embedded via jsonList so user-supplied IDs cannot break out
+// of the GraphQL string list (same approach as buildEntityDetailsQuery).
 func buildRelationshipQuery(entityID string, relationshipDepth int, includeRiskContext bool, limit int) string {
 	riskFields := ""
 	if includeRiskContext {
@@ -419,7 +454,7 @@ func buildRelationshipQuery(entityID string, relationshipDepth int, includeRiskC
 
 	return fmt.Sprintf(`
         query {
-            entities(entityIds: ["%s"], first: %d) {
+            entities(entityIds: %s, first: %d) {
                 nodes {
                     entityId
                     primaryDisplayName
@@ -430,7 +465,7 @@ func buildRelationshipQuery(entityID string, relationshipDepth int, includeRiskC
                 }
             }
         }
-        `, entityID, limit, riskFields, associationFields)
+        `, jsonList([]string{entityID}), limit, riskFields, associationFields)
 }
 
 // buildAssociationFields recursively builds nested association selections to the
