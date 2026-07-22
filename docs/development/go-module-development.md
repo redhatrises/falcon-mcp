@@ -78,7 +78,7 @@ We use [`github.com/modelcontextprotocol/go-sdk`](https://pkg.go.dev/github.com/
 | Soft FQL failure | `return nil, base.FQLError[T](…), nil` (data result) | Turn bad filters into protocol/`error` unless intentional |
 | Hard failure | Return Go `error` / `*base.Error` | Success payloads shaped like `{"error": …}` |
 | Input schema | Struct + `json` / `jsonschema` tags; `base.SchemaFor[In](mutate)` for bounds | Giant hand-written JSON schema blobs |
-| Output schema | Let `base.AddTool` infer from `Out` (opaque gofalcon records) | Reflect full polymorphic gofalcon models |
+| Output schema | Let `base.AddTool` infer from `Out` (opaque records); list omits it (#376) | Reflect full polymorphic models / publish schemas on tools/list |
 | Annotations | Omit for read-only; **use helpers for mutators** | Partial annotation structs (see below) |
 | Names | Register unprefixed (`search_hosts`); base adds `falcon_` | Prefix at call sites |
 | Resources | `base.TextResource` with `falcon://…` URI | FastMCP-specific types |
