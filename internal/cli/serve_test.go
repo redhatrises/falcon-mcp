@@ -351,3 +351,144 @@ func TestIsLoopbackAddr(t *testing.T) {
 		})
 	}
 }
+func TestStripTrailingSlashPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in, want string
+	}{
+		{in: "/", want: "/"},
+		{in: "/mcp", want: "/mcp"},
+		{in: "/mcp/", want: "/mcp"},
+		{in: "/mcp///", want: "/mcp"},
+		{in: "///", want: "/"},
+		{in: "", want: ""},
+		{in: "/a/b/", want: "/a/b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			if got := stripTrailingSlashPath(tt.in); got != tt.want {
+				t.Errorf("stripTrailingSlashPath(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeJSONRPCContentType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		in         string
+		want       string
+		wantChange bool
+	}{
+		{name: "json-rpc plain", in: "application/json-rpc", want: "application/json", wantChange: true},
+		{name: "json-rpc with charset", in: "application/json-rpc; charset=utf-8", want: "application/json; charset=utf-8", wantChange: true},
+		{name: "json-rpc case insensitive", in: "Application/JSON-RPC; charset=UTF-8", want: "application/json; charset=UTF-8", wantChange: true},
+		{name: "plain json untouched", in: "application/json", want: "application/json", wantChange: false},
+		{name: "json with charset untouched", in: "application/json; charset=utf-8", want: "application/json; charset=utf-8", wantChange: false},
+		{name: "empty untouched", in: "", want: "", wantChange: false},
+		{name: "unrelated media type", in: "text/plain", want: "text/plain", wantChange: false},
+		// Prefix must not rewrite application/json-rpc-extra as a different type without the boundary —
+		// the Python middleware uses startswith, so "application/json-rpcfoo" would rewrite; match that.
+		{name: "startswith prefix match", in: "application/json-rpcfoo", want: "application/jsonfoo", wantChange: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, changed := normalizeJSONRPCContentType(tt.in)
+			if got != tt.want || changed != tt.wantChange {
+				t.Errorf("normalizeJSONRPCContentType(%q) = (%q, %v), want (%q, %v)",
+					tt.in, got, changed, tt.want, tt.wantChange)
+			}
+		})
+	}
+}
+
+// TestStripTrailingSlashMiddleware verifies the handler rewrites the path
+// before the inner handler sees it, and leaves root "/" alone.
+
+func TestStripTrailingSlashMiddleware(t *testing.T) {
+	t.Parallel()
+	var sawPath string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	})
+	h := stripTrailingSlash(inner)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp/?q=1", nil)
+	// httptest normalizes trailing-slash URLs; set Path explicitly after construction.
+	req.URL.Path = "/mcp/"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if sawPath != "/mcp" {
+		t.Errorf("inner path = %q, want /mcp", sawPath)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+
+	// Root must not be stripped to empty.
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if sawPath != "/" {
+		t.Errorf("root path = %q, want /", sawPath)
+	}
+}
+
+// TestNormalizeContentTypeMiddleware verifies application/json-rpc is rewritten
+// on the request the inner handler observes.
+
+func TestNormalizeContentTypeMiddleware(t *testing.T) {
+	t.Parallel()
+	var sawCT string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawCT = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	})
+	h := normalizeContentType(inner)
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json-rpc; charset=utf-8")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if sawCT != "application/json; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want application/json; charset=utf-8", sawCT)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if sawCT != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", sawCT)
+	}
+}
+
+// TestWithHTTPMiddlewareOrder checks Content-Type normalization and path strip
+// both apply when composed, matching Python request order.
+
+func TestWithHTTPMiddlewareOrder(t *testing.T) {
+	t.Parallel()
+	var sawPath, sawCT string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawPath = r.URL.Path
+		sawCT = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	})
+	h := withHTTPMiddleware(inner)
+
+	req := httptest.NewRequest(http.MethodPost, "/mcp/", strings.NewReader(`{}`))
+	req.URL.Path = "/mcp/"
+	req.Header.Set("Content-Type", "application/json-rpc")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if sawPath != "/mcp" {
+		t.Errorf("path = %q, want /mcp", sawPath)
+	}
+	if sawCT != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", sawCT)
+	}
+}
