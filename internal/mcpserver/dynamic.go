@@ -66,7 +66,10 @@ var searchToolsSchema = base.SchemaFor[SearchToolsInput](func(s *jsonschema.Sche
 
 // RegisterTools registers the three meta-tools into r (the live server, in
 // dynamic mode). They flow through base.AddTool so they get the "falcon_"
-// prefix and default annotations too.
+// prefix. search_tools and list_enabled_modules keep the default read-only
+// annotations; execute_tool is a general dispatcher that can invoke mutating
+// tools, so it must not advertise readOnlyHint (matches Python's
+// annotations=None and docs/usage/dynamic-mode.md).
 func (m *MetaModule) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_tools",
@@ -77,6 +80,10 @@ func (m *MetaModule) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "execute_tool",
 		Description: "Execute a Falcon tool by name with the given parameters. Use falcon_search_tools to discover tool names and parameters first.",
+		// Not read-only: this meta-tool can dispatch to mutating/destructive
+		// tools. Agents must use falcon_search_tools' read_only/destructive
+		// fields to assess risk per target tool.
+		Annotations: base.MutatingAnnotations(),
 	}, m.executeTool)
 
 	base.AddTool(r, &mcp.Tool{
