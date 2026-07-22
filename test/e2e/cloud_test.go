@@ -35,6 +35,26 @@ var _ = Describe("cloud module", Label("integration", "cloud"), func() {
 		Expect(obj).To(HaveKey("count"), "count result should carry a count field")
 	})
 
+	It("counts kubernetes containers with a filter", func() {
+		cs := newSession(ctx)
+		res := callTool(ctx, cs, "falcon_count_kubernetes_containers", map[string]any{
+			"filter": "running_status:true",
+		})
+		expectNoToolError(res)
+		Expect(structured(res)).To(HaveKey("count"))
+	})
+
+	It("searches kubernetes containers sorted by last_seen", func() {
+		cs := newSession(ctx)
+		res := callTool(ctx, cs, "falcon_search_kubernetes_containers", map[string]any{
+			"sort":  "last_seen.desc",
+			"limit": 3,
+		})
+		expectNoToolError(res)
+		skipIfEmpty(res, "tenant has no kubernetes containers to sort")
+		expectSearchReturnsDetails(res, "container_id")
+	})
+
 	It("searches image vulnerabilities and returns full records", func() {
 		cs := newSession(ctx)
 		res := callTool(ctx, cs, "falcon_search_images_vulnerabilities", map[string]any{"limit": 3})
@@ -51,11 +71,33 @@ var _ = Describe("cloud module", Label("integration", "cloud"), func() {
 		expectSearchReturnsDetails(res, "id")
 	})
 
+	It("searches CSPM assets sorted by updated_at", func() {
+		cs := newSession(ctx)
+		res := callTool(ctx, cs, "falcon_search_cspm_assets", map[string]any{
+			"sort":  "updated_at.desc",
+			"limit": 3,
+		})
+		expectNoToolError(res)
+		skipIfEmpty(res, "tenant has no CSPM assets to sort")
+		expectSearchReturnsDetails(res, "id")
+	})
+
 	It("searches IOM findings and returns full records", func() {
 		cs := newSession(ctx)
 		res := callTool(ctx, cs, "falcon_search_iom_findings", map[string]any{"limit": 3})
 		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no IOM findings")
+		expectSearchReturnsDetails(res, "id")
+	})
+
+	It("searches IOM findings sorted by severity", func() {
+		cs := newSession(ctx)
+		res := callTool(ctx, cs, "falcon_search_iom_findings", map[string]any{
+			"sort":  "severity|desc",
+			"limit": 3,
+		})
+		expectNoToolError(res)
+		skipIfEmpty(res, "tenant has no IOM findings to sort")
 		expectSearchReturnsDetails(res, "id")
 	})
 
@@ -107,5 +149,34 @@ var _ = Describe("cloud module", Label("integration", "cloud"), func() {
 		expectNoToolError(res)
 		obj := structured(res)
 		Expect(obj).To(HaveKey("errors"), "expected FQL error details in the result")
+	})
+
+	It("creates, finds, and deletes a CSPM suppression rule", Label("mutating"), func() {
+		cs := newSession(ctx)
+		name := uniqueTestName("suppression")
+
+		create := callTool(ctx, cs, "falcon_create_cspm_suppression_rule", map[string]any{
+			"name":               name,
+			"suppression_reason": "false-positive",
+			// Scope by a severity that need not match any live finding; the rule
+			// is created regardless and cleaned up below.
+			"rule_severities": []any{"informational"},
+		})
+		skipIfToolError(create, "create suppression rule (CSPM write scope required)")
+		_, id := createdObject(create, "id")
+
+		deferToolCleanup("falcon_delete_cspm_suppression_rules", map[string]any{
+			"ids": []string{id},
+		})
+
+		// Round-trip: the created rule must appear in the suppression-rule list.
+		// The list endpoint has no name/id filter, so scan the first 500; a tenant
+		// with more than 500 suppression rules could hide the new one. Poll
+		// because the list is eventually consistent after a create.
+		Eventually(func() []string {
+			found := callTool(ctx, cs, "falcon_search_cspm_suppression_rules", map[string]any{"limit": 500})
+			expectNoToolError(found)
+			return idsOf(found, "id")
+		}).Should(ContainElement(id), "created suppression rule not found in search")
 	})
 })

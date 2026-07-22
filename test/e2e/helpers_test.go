@@ -12,6 +12,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/crowdstrike/falcon-mcp/internal/mcpserver"
 )
 
 // defaultSpecTimeout bounds a single spec's live API interaction when TIMEOUT is
@@ -53,9 +55,18 @@ func newSpecContext() context.Context {
 func newSession(ctx context.Context) *mcp.ClientSession {
 	GinkgoHelper()
 	Expect(srv).NotTo(BeNil(), "suite server not initialized")
+	return newSessionFor(ctx, srv)
+}
+
+// newSessionFor opens an in-memory MCP client session against the given server.
+// It backs newSession (shared suite server) and lets specs that build their own
+// server — such as the member-scoped MSSP spec — reuse the same session wiring.
+func newSessionFor(ctx context.Context, server *mcpserver.Server) *mcp.ClientSession {
+	GinkgoHelper()
+	Expect(server).NotTo(BeNil(), "server not initialized")
 
 	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
+	ss, err := server.MCP().Connect(ctx, serverT, nil)
 	Expect(err).NotTo(HaveOccurred(), "server connect")
 	DeferCleanup(func() { _ = ss.Wait() })
 
@@ -221,4 +232,107 @@ func toolNames(ctx context.Context, cs *mcp.ClientSession) []string {
 		names = append(names, t.Name)
 	}
 	return names
+}
+
+// uniqueTestName builds a collision-resistant, obviously-disposable name for a
+// resource a mutating spec creates. The falcon-mcp-e2e prefix makes leaked
+// artifacts easy to spot and purge; the nanosecond suffix keeps parallel
+// processes and reruns from colliding. It is used only by write specs.
+func uniqueTestName(prefix string) string {
+	return fmt.Sprintf("falcon-mcp-e2e-%s-%d", prefix, time.Now().UnixNano())
+}
+
+// skipIfToolError skips the current spec when a mutating tool reported an
+// in-band error, surfacing the error text as the skip reason. A live tenant may
+// lack the write scope for a create/delete flow; skipping there keeps the suite
+// green rather than failing on a permission gap, mirroring how read specs
+// tolerate missing data. The SDK carries a handler-returned error in Content as
+// text (not StructuredContent), so the message is read from there.
+func skipIfToolError(res *mcp.CallToolResult, context string) {
+	GinkgoHelper()
+	if !res.IsError {
+		return
+	}
+	Skip(context + ": " + toolErrorText(res))
+}
+
+// toolErrorText extracts a human-readable message from an error result's
+// Content, joining any text blocks. It is used only for skip/failure messages.
+func toolErrorText(res *mcp.CallToolResult) string {
+	var msg string
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			if msg != "" {
+				msg += "; "
+			}
+			msg += tc.Text
+		}
+	}
+	if msg == "" {
+		return "tool returned an error result"
+	}
+	return msg
+}
+
+// createdObject asserts a create tool returned exactly one resource and returns
+// it as an object along with its idField value. It centralizes the shape checks
+// every mutating create round-trip otherwise repeats.
+func createdObject(res *mcp.CallToolResult, idField string) (map[string]any, string) {
+	GinkgoHelper()
+	created := resources(res)
+	Expect(created).To(HaveLen(1), "expected exactly one created resource")
+	obj, ok := created[0].(map[string]any)
+	Expect(ok).To(BeTrue(), "created resource should be an object, got %T", created[0])
+	id, ok := obj[idField].(string)
+	Expect(ok).To(BeTrue(), "created resource should carry a string %s", idField)
+	Expect(id).NotTo(BeEmpty())
+	return obj, id
+}
+
+// deferToolCleanup registers DeferCleanup that invokes a teardown tool (a delete
+// or a compensating update) on a fresh session and context and asserts it
+// reports no error. A fresh context is used because the spec's own context may
+// already be cancelled by the time cleanup runs. Registering it immediately
+// after a create ensures teardown runs even if a later assertion fails.
+func deferToolCleanup(tool string, args map[string]any) {
+	GinkgoHelper()
+	DeferCleanup(func() {
+		cctx := newSpecContext()
+		ccs := newSession(cctx)
+		res := callTool(cctx, ccs, tool, args)
+		expectNoToolError(res)
+	})
+}
+
+// idsOf collects the idField value from every resource in a search result. It
+// supports round-trip assertions that a created entity appears in a search.
+func idsOf(res *mcp.CallToolResult, idField string) []string {
+	GinkgoHelper()
+	arr := resources(res)
+	ids := make([]string, 0, len(arr))
+	for _, r := range arr {
+		if obj, ok := r.(map[string]any); ok {
+			if id, ok := obj[idField].(string); ok {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
+}
+
+// tagsOf extracts the string tags from a detection detail object, tolerating a
+// missing or differently typed tags field (returns an empty slice). It supports
+// the detection update round-trip's read-back assertion.
+func tagsOf(obj map[string]any) []string {
+	raw, ok := obj["tags"].([]any)
+	if !ok {
+		return nil
+	}
+	tags := make([]string, 0, len(raw))
+	for _, t := range raw {
+		if s, ok := t.(string); ok {
+			tags = append(tags, s)
+		}
+	}
+	return tags
 }

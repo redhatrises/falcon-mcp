@@ -85,4 +85,34 @@ var _ = Describe("custom_ioa module", Label("integration", "custom_ioa"), func()
 		// full rule-type records, not bare IDs.
 		expectSearchReturnsDetails(res, "id", "platform")
 	})
+
+	It("creates, finds, and deletes an IOA rule group", Label("mutating"), func() {
+		cs := newSession(ctx)
+		name := uniqueTestName("ioagroup")
+
+		create := callTool(ctx, cs, "falcon_create_ioa_rule_group", map[string]any{
+			"name":        name,
+			"platform":    "windows",
+			"description": "disposable rule group created by falcon-mcp e2e",
+		})
+		skipIfToolError(create, "create IOA rule group (Custom IOA write scope required)")
+		obj, id := createdObject(create, "id")
+
+		deferToolCleanup("falcon_delete_ioa_rule_groups", map[string]any{
+			"ids": []string{id},
+		})
+
+		Expect(obj).To(HaveKeyWithValue("name", name))
+
+		// Round-trip: the created group must be findable by name. The rule-group
+		// index is eventually consistent, so poll rather than searching once.
+		Eventually(func() []string {
+			found := callTool(ctx, cs, "falcon_search_ioa_rule_groups", map[string]any{
+				"filter": "name:'" + name + "'",
+				"limit":  5,
+			})
+			expectNoToolError(found)
+			return idsOf(found, "id")
+		}).Should(ContainElement(id), "created rule group not found in search")
+	})
 })

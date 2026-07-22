@@ -20,7 +20,12 @@ var _ = Describe("detections module", Label("integration", "detections"), func()
 
 	It("advertises its tools with the falcon_ prefix", func() {
 		cs := newSession(ctx)
-		Expect(toolNames(ctx, cs)).To(ContainElement("falcon_search_detections"))
+		names := toolNames(ctx, cs)
+		Expect(names).To(ContainElements(
+			"falcon_search_detections",
+			"falcon_get_detection_details",
+			"falcon_update_detections",
+		))
 	})
 
 	It("searches detections and returns full alert records", func() {
@@ -54,5 +59,58 @@ var _ = Describe("detections module", Label("integration", "detections"), func()
 		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no detections to sort")
 		expectSearchReturnsDetails(res, "composite_id", "severity", "status")
+	})
+
+	It("gets detection details for an id found by search", func() {
+		cs := newSession(ctx)
+		search := callTool(ctx, cs, "falcon_search_detections", map[string]any{"limit": 1})
+		expectNoToolError(search)
+		id := firstResourceID(search, "composite_id") // skips when the tenant is empty
+
+		details := callTool(ctx, cs, "falcon_get_detection_details", map[string]any{
+			"ids": []string{id},
+		})
+		expectNoToolError(details)
+		got := resources(details)
+		Expect(got).To(HaveLen(1), "expected exactly one detection for one id")
+		obj, ok := got[0].(map[string]any)
+		Expect(ok).To(BeTrue(), "detection detail should be an object, got %T", got[0])
+		Expect(obj).To(HaveKeyWithValue("composite_id", id))
+	})
+
+	It("adds and removes a tag on a detection found by search", Label("mutating"), func() {
+		cs := newSession(ctx)
+		search := callTool(ctx, cs, "falcon_search_detections", map[string]any{"limit": 1})
+		expectNoToolError(search)
+		id := firstResourceID(search, "composite_id") // skips when the tenant is empty
+		tag := uniqueTestName("tag")
+
+		add := callTool(ctx, cs, "falcon_update_detections", map[string]any{
+			"ids":      []string{id},
+			"add_tags": []any{tag},
+		})
+		skipIfToolError(add, "update detection (Alerts write scope required)")
+		Expect(structured(add)).To(HaveKeyWithValue("ok", true))
+
+		// Remove the tag regardless of later assertions, restoring the original
+		// state.
+		deferToolCleanup("falcon_update_detections", map[string]any{
+			"ids":         []string{id},
+			"remove_tags": []any{tag},
+		})
+
+		// Read back: the tag must be present on the detection. The update index
+		// is eventually consistent, so poll rather than reading once.
+		Eventually(func() []string {
+			details := callTool(ctx, cs, "falcon_get_detection_details", map[string]any{
+				"ids": []string{id},
+			})
+			expectNoToolError(details)
+			got := resources(details)
+			Expect(got).To(HaveLen(1))
+			obj, ok := got[0].(map[string]any)
+			Expect(ok).To(BeTrue(), "detection detail should be an object, got %T", got[0])
+			return tagsOf(obj)
+		}).Should(ContainElement(tag), "added tag not present after update")
 	})
 })

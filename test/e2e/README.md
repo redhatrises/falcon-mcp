@@ -42,9 +42,42 @@ make test-e2e GINKGO_LABEL_FILTER="detections"      # only detections
 make test-e2e GINKGO_LABEL_FILTER="hosts || detections"
 ```
 
-The current specs are all read-only and carry the `integration` label plus a
-per-module label (`hosts`, `detections`). See the Ginkgo docs for the full
-label-filter grammar (`&&`, `||`, `!`, parentheses).
+The current specs are labeled with `integration` plus a per-module label
+(`hosts`, `detections`, `intel`, …). Most specs are read-only, but some drive
+live **mutations** (create → find → delete round-trips) and carry an extra
+`mutating` label. The MSSP routing spec carries an `mssp` label. Exclude the
+mutating specs to keep a run non-destructive:
+
+```sh
+make test-e2e GINKGO_LABEL_FILTER="!mutating"       # read-only run
+make test-e2e GINKGO_LABEL_FILTER="ioc && !mutating"
+```
+
+See the Ginkgo docs for the full label-filter grammar (`&&`, `||`, `!`,
+parentheses).
+
+### Mutating specs
+
+Specs labeled `mutating` create a disposable resource (named
+`falcon-mcp-e2e-*`), assert it is findable, and delete it. Cleanup is registered
+with `DeferCleanup` the moment the resource is created, so it runs even if a
+later assertion fails. Each mutating spec **skips** cleanly when the tenant's
+credentials lack the required write scope, so a read-only tenant is safe. To run
+them you need the write scopes listed below; to avoid any writes, filter with
+`!mutating`.
+
+### MSSP / Flight Control routing
+
+The `mssp` spec verifies that a member CID routes calls to a child tenant. The
+Go client bakes the member CID into the gofalcon client at build time (there is
+no per-call `member_cid` argument), so the spec builds its own member-scoped
+server and runs a read through it. It requires `FALCON_MEMBER_CID` set to a
+valid child CID and skips when it is unset:
+
+```sh
+export FALCON_MEMBER_CID=...     # a valid child CID
+make test-e2e GINKGO_LABEL_FILTER="mssp"
+```
 
 ### Logging returned records
 
@@ -74,15 +107,29 @@ An unset, empty, unparseable, or non-positive value falls back to the default.
 ## Required API scopes
 
 The credentials must have at least read access to the resources each module
-touches:
-
-| Module     | Scope        |
-|------------|--------------|
-| detections | Alerts: Read  |
-| hosts      | Hosts: Read   |
-
-A spec that hits a missing scope or a tenant with no matching data **skips** with
+touches. Specs labeled `mutating` additionally require the write scope shown; a
+spec that hits a missing scope or a tenant with no matching data **skips** with
 a visible reason rather than failing.
+
+| Module          | Scope                                        |
+|-----------------|----------------------------------------------|
+| detections      | Alerts: Read (+ Write for the tag round-trip)|
+| hosts           | Hosts: Read                                  |
+| intel           | Actors / Indicators / Reports (Falcon Intelligence): Read |
+| spotlight       | Vulnerabilities: Read                        |
+| quarantine      | Quarantined Files: Read                      |
+| sensor_usage    | Sensor Usage: Read                           |
+| recon           | Monitoring rules (Falcon Intelligence Recon): Read |
+| data_protection | Data Protection: Read                        |
+| host_groups     | Host Group: Read (+ Write for the round-trip)|
+| ioc             | IOC Management: Read (+ Write for the round-trip) |
+| custom_ioa      | Custom IOA: Read (+ Write for the round-trip)|
+| correlation_rules | Correlation Rules: Read (+ Write for the round-trip) |
+| cloud           | CSPM/Falcon Cloud Security: Read (+ Write for the suppression round-trip) |
+
+The other module suites (cases, discover, firewall, idp, ngsiem, policies,
+scheduled_reports, serverless, shield) require read access to their respective
+resources; see each `<module>_test.go` for the tools it calls.
 
 ## Adding a module suite
 
@@ -94,3 +141,10 @@ Copy `hosts_test.go` as a template:
    `expectSearchReturnsDetails`, `skipIfEmpty`, …). No new production code and no
    per-suite setup — the shared server and one-time auth live in
    `e2e_suite_test.go`.
+
+For a **mutating** round-trip, add `Label("mutating")` to the spec, generate a
+disposable name with `uniqueTestName`, gate the create with `skipIfToolError`
+(so a missing write scope skips), and register the delete in `DeferCleanup`
+immediately after the create so it runs even on a later failure. Use `idsOf` to
+assert the created resource appears in a search. See `ioc_test.go` or
+`host_groups_test.go` as templates.

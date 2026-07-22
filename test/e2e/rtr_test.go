@@ -113,4 +113,38 @@ var _ = Describe("rtr module", Label("integration", "rtr"), func() {
 		Expect(ok).To(BeTrue(), "session detail should be an object, got %T", got[0])
 		Expect(obj).To(HaveKeyWithValue("id", id))
 	})
+
+	// The FQL-field matrix asserts each documented filter field is accepted by
+	// the API rather than rejected as an unknown key. A rejected field surfaces
+	// as an FQL data result (errors + fql_guide populated); an accepted field
+	// with no matching data simply returns an empty resources array. So
+	// "accepted" is the absence of the errors key. Values are chosen not to
+	// match real data (a nonexistent string, a far-future timestamp) so the
+	// check is about field acceptance, not data presence.
+	DescribeTable("accepts documented FQL filter fields",
+		func(filter string) {
+			cs := newSession(ctx)
+			res := callTool(ctx, cs, "falcon_search_rtr_sessions", map[string]any{
+				"filter": filter,
+				"limit":  1,
+			})
+			expectNoToolError(res)
+			Expect(structured(res)).NotTo(HaveKey("errors"), "FQL field rejected: %s", filter)
+		},
+		Entry("string field id", "id:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field aid", "aid:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field hostname", "hostname:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field user_id", "user_id:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field origin", "origin:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field cloud_request_id", "cloud_request_id:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field command_string", "command_string:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("string field base_command", "base_command:'NONEXISTENT_VALUE_XYZZY12345'"),
+		Entry("boolean field offline_queued", "offline_queued:true"),
+		Entry("boolean field commands_queued", "commands_queued:true"),
+		Entry("timestamp field created_at", "created_at:>'2099-01-01T00:00:00Z'"),
+		Entry("timestamp field updated_at", "updated_at:>'2099-01-01T00:00:00Z'"),
+		Entry("timestamp field deleted_at", "deleted_at:>'2099-01-01T00:00:00Z'"),
+		Entry("user_id @me special token", "user_id:'@me'"),
+		Entry("compound AND filter with wildcard", "offline_queued:true+hostname:'NONEXISTENT_XYZZY12345*'"),
+	)
 })
