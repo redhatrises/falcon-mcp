@@ -13,7 +13,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
-	falconapi "github.com/crowdstrike/falcon-mcp/internal/falcon"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 	"github.com/crowdstrike/falcon-mcp/internal/version"
@@ -67,15 +66,7 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 		return nil, err
 	}
 
-	// Probe uses cfg credentials for a non-stateful OAuth token request so
-	// falcon_check_connectivity does not mutate the shared gofalcon client.
-	// Capture cfg by value into the closure.
-	probeCfg := cfg
-	check := func(ctx context.Context) bool {
-		return falconapi.ProbeConnectivity(ctx, probeCfg)
-	}
-
-	cat, err := registerModules(s, enabled, allModules, check, cfg.Dynamic)
+	cat, err := registerModules(s, enabled, allModules, cfg.Dynamic)
 	if err != nil {
 		return nil, err
 	}
@@ -94,11 +85,10 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 // the returned catalog owns the in-process session and must be closed by the
 // caller. Module resources (FQL guides) and prompts are exposed on s in both
 // modes.
-func registerModules(s *mcp.Server, enabled, all []base.Module, check ConnectivityChecker, dynamicMode bool) (*Catalog, error) {
+func registerModules(s *mcp.Server, enabled, all []base.Module, dynamicMode bool) (*Catalog, error) {
 	core := &coreTools{
 		enabled:   enabled,
 		available: moduleNames(all),
-		check:     check,
 	}
 	reg := base.ServerRegistrar(s)
 	// falcon_list_enabled_modules is always registered — dynamic mode's
