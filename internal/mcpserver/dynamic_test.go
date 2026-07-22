@@ -452,8 +452,9 @@ func TestExecuteToolBadParamsEnriched(t *testing.T) {
 
 func TestListEnabledModules(t *testing.T) {
 	t.Parallel()
-	m := buildCatalog(t, fakeToolModule{name: "hosts"}, fakeToolModule{name: "detections"})
-	_, out, err := m.listEnabledModules(context.Background(), nil, struct{}{})
+	enabled := []base.Module{fakeToolModule{name: "hosts"}, fakeToolModule{name: "detections"}}
+	c := &coreTools{enabled: enabled}
+	_, out, err := c.listEnabledModules(context.Background(), nil, struct{}{})
 	if err != nil {
 		t.Fatalf("listEnabledModules: %v", err)
 	}

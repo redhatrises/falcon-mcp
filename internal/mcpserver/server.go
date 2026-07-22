@@ -13,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
+	falconapi "github.com/crowdstrike/falcon-mcp/internal/falcon"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 	"github.com/crowdstrike/falcon-mcp/internal/version"
@@ -66,7 +67,15 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 		return nil, err
 	}
 
-	cat, err := registerModules(s, enabled, cfg.Dynamic)
+	// Probe uses cfg credentials for a non-stateful OAuth token request so
+	// falcon_check_connectivity matches Python semantics without mutating the
+	// shared gofalcon client. Capture cfg by value into the closure.
+	probeCfg := cfg
+	check := func(ctx context.Context) bool {
+		return falconapi.ProbeConnectivity(ctx, probeCfg)
+	}
+
+	cat, err := registerModules(s, enabled, allModules, check, cfg.Dynamic)
 	if err != nil {
 		return nil, err
 	}
@@ -75,16 +84,29 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 	return &Server{mcp: s, modules: enabled, catalog: cat}, nil
 }
 
-// registerModules registers the enabled modules on s. In normal mode each
-// module registers its tools directly on the server and the returned catalog is
-// nil. In dynamic mode the real tools are registered on the catalog's internal
-// server and only the three meta-tools are registered on s; the returned
-// catalog owns the in-process session (already connected) and must be closed by
-// the caller. Module resources (FQL guides) and prompts are exposed on s in both
+// registerModules registers core tools and the enabled modules on s.
+//
+// Always (both modes): falcon_list_enabled_modules.
+// Normal mode: also falcon_check_connectivity, falcon_list_modules, and each
+// module's tools directly on s; the returned catalog is nil.
+// Dynamic mode: real tools go on the catalog's internal server and only the
+// meta-tools (search_tools, execute_tool) plus list_enabled_modules are on s;
+// the returned catalog owns the in-process session and must be closed by the
+// caller. Module resources (FQL guides) and prompts are exposed on s in both
 // modes.
-func registerModules(s *mcp.Server, enabled []base.Module, dynamicMode bool) (*Catalog, error) {
+func registerModules(s *mcp.Server, enabled, all []base.Module, check ConnectivityChecker, dynamicMode bool) (*Catalog, error) {
+	core := &coreTools{
+		enabled:   enabled,
+		available: moduleNames(all),
+		check:     check,
+	}
+	reg := base.ServerRegistrar(s)
+	// falcon_list_enabled_modules is always registered — dynamic mode's
+	// no-results hint references it by name, and it's useful in both modes.
+	core.registerAlwaysOn(reg)
+
 	if !dynamicMode {
-		reg := base.ServerRegistrar(s)
+		core.registerNormalOnly(reg)
 		for _, m := range enabled {
 			m.RegisterTools(reg)
 			m.RegisterResources(s)
@@ -105,7 +127,8 @@ func registerModules(s *mcp.Server, enabled []base.Module, dynamicMode bool) (*C
 	if err := cat.Connect(context.Background()); err != nil {
 		return nil, err
 	}
-	NewMetaModule(cat, enabled).RegisterTools(base.ServerRegistrar(s))
+	// Meta-tools only: list_enabled_modules is already on the served server.
+	NewMetaModule(cat, enabled).RegisterTools(reg)
 	return cat, nil
 }
 
