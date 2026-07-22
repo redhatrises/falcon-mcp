@@ -140,10 +140,6 @@ func preRunE(cmd *cobra.Command) (*config.Config, error) {
 		return nil, err
 	}
 
-	if cfg.Hosted {
-		slog.Warn("hosted mode not yet implemented; serving with single credential set",
-			"transport", cfg.Transport)
-	}
 	return cfg, nil
 }
 
@@ -172,7 +168,7 @@ func registerFlags(cmd *cobra.Command) {
 	f.String("metrics-addr", "", "address for the /metrics endpoint; empty disables; loopback only unless --allow-insecure-ops-bind")
 	f.String("pprof-addr", "", "address for /debug/pprof profiling; empty disables; loopback only unless --allow-insecure-ops-bind")
 	f.Bool("allow-insecure-ops-bind", false, "allow metrics/pprof to bind non-loopback addresses (unauthenticated; pprof can dump process memory)")
-	f.Bool("hosted", false, "reserved; logs a warning and proceeds as single-credential (not yet implemented)")
+	f.Bool("hosted", false, "reserved; not yet implemented; exits with an error if set")
 	f.String("user-agent", "", "Custom user agent appended to API requests")
 	f.Bool("dynamic", false, "expose only the 3 meta-tools (falcon_search_tools/execute_tool/list_enabled_modules) instead of all tools")
 	f.Bool("stateless-http", false, "run the streamable-http transport in stateless mode")

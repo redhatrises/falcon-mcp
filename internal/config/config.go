@@ -67,6 +67,10 @@ var (
 	// metrics, or pprof) is non-empty but not a valid host:port. The wrapped
 	// message names which flag failed.
 	ErrInvalidDebugAddr = errors.New("config: invalid ops endpoint address")
+	// ErrHostedNotImplemented is returned when --hosted / FALCON_MCP_HOSTED is
+	// set. Multi-tenant hosted mode is not implemented; fail closed so operators
+	// do not believe tenant isolation exists.
+	ErrHostedNotImplemented = errors.New("config: hosted mode is not yet implemented")
 )
 
 // Validation patterns, compiled once at package scope.
@@ -189,6 +193,9 @@ func Load(cfg Config) (*Config, error) {
 	}
 	if cfg.APIKey != "" && cfg.Transport == "stdio" {
 		return nil, fmt.Errorf("%w, got %q", ErrAPIKeyRequiresHTTP, cfg.Transport)
+	}
+	if cfg.Hosted {
+		return nil, ErrHostedNotImplemented
 	}
 	// Fail closed: an unauthenticated network transport on a non-loopback bind
 	// would expose Falcon tools to the network. Loopback (default 127.0.0.1) is

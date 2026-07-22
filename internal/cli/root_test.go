@@ -1047,3 +1047,41 @@ func TestExecuteAllowInsecureOpsBindDefaultFalse(t *testing.T) {
 		t.Error("AllowInsecureOpsBind = true, want false by default")
 	}
 }
+
+func TestExecuteHostedFlagRejected(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_HOSTED", "")
+
+	cfg, err := resolveArgs(t, []string{"--hosted"})
+	if err == nil {
+		t.Fatal("expected error for --hosted (not yet implemented)")
+	}
+	if !errors.Is(err, config.ErrHostedNotImplemented) {
+		t.Fatalf("err = %v, want %v", err, config.ErrHostedNotImplemented)
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when hosted is rejected")
+	}
+}
+
+// TestExecuteHostedEnvRejected fails closed when FALCON_MCP_HOSTED is set.
+
+func TestExecuteHostedEnvRejected(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_HOSTED", "true")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err == nil {
+		t.Fatal("expected error for FALCON_MCP_HOSTED=true (not yet implemented)")
+	}
+	if !errors.Is(err, config.ErrHostedNotImplemented) {
+		t.Fatalf("err = %v, want %v", err, config.ErrHostedNotImplemented)
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when hosted is rejected")
+	}
+}
+
+// cfgAPIKey safely reads APIKey for failure messages when cfg may be nil.
