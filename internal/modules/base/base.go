@@ -146,7 +146,14 @@ func DestructiveAnnotations(idempotent bool) *mcp.ToolAnnotations {
 // mutating tools must pass MutatingAnnotations or DestructiveAnnotations so
 // DestructiveHint is never left nil (MCP default true). The output schema is
 // inferred from Out via inferOutputSchema so gofalcon's strfmt date types
-// resolve correctly.
+// resolve correctly and polymorphic records stay opaque open objects.
+//
+// That inferred schema is kept for call-time StructuredContent validation (the
+// SDK captures a resolved copy in the handler). It is deliberately omitted from
+// tools/list responses by ServerRegistrar / ToolEntry.Register middleware, so
+// clients do not pay the per-tool schema tax that blew context budgets in
+// issues #325 / #376. Python achieves the same list-side omission via
+// structured_output=False.
 //
 // AddTool resolves the In/Out generics up front and hands the Registrar a
 // ToolEntry carrying an SDK-registration closure (mcp.AddTool, the SDK's own

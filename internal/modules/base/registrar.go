@@ -49,13 +49,25 @@ type ToolEntry struct {
 // Register registers this entry's tool on s via the SDK's mcp.AddTool. Normal
 // mode registers on the served server; dynamic mode registers on its internal
 // server. Either way the SDK owns type erasure, schema validation, and result
-// packing.
-func (e ToolEntry) Register(s *mcp.Server) { e.register(s) }
+// packing. Register also installs the tools/list outputSchema-omission
+// middleware (see ensureOmitOutputSchemaFromToolsList) so every registration
+// path — ServerRegistrar and the dynamic catalog's internal server — inherits
+// the same client-facing policy.
+func (e ToolEntry) Register(s *mcp.Server) {
+	ensureOmitOutputSchemaFromToolsList(s)
+	e.register(s)
+}
 
 // ServerRegistrar returns a Registrar that registers each tool directly on s
-// via the SDK's mcp.AddTool.
+// via the SDK's mcp.AddTool. The first Add also installs middleware that omits
+// OutputSchema from tools/list responses (Python structured_output=False
+// parity; issues #325 / #376) while leaving call-time structured validation
+// intact.
 func ServerRegistrar(s *mcp.Server) Registrar { return serverRegistrar{s: s} }
 
 type serverRegistrar struct{ s *mcp.Server }
 
-func (r serverRegistrar) Add(e ToolEntry) { e.register(r.s) }
+func (r serverRegistrar) Add(e ToolEntry) {
+	ensureOmitOutputSchemaFromToolsList(r.s)
+	e.register(r.s)
+}
