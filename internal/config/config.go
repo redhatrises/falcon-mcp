@@ -51,6 +51,11 @@ var (
 	// not streamable-http or sse. A static endpoint secret only guards a network
 	// transport; it is meaningless for stdio.
 	ErrAPIKeyRequiresHTTP = errors.New("config: api-key requires the streamable-http or sse transport")
+	// ErrUnauthenticatedNonLoopback is returned when a network transport is
+	// bound to a non-loopback address without an api-key and without an explicit
+	// --allow-insecure-http opt-in. Leaving MCP open on a network-facing bind
+	// would expose Falcon tools to any client that can reach the host.
+	ErrUnauthenticatedNonLoopback = errors.New("config: api-key is required when binding streamable-http/sse to a non-loopback address (set --api-key or --allow-insecure-http)")
 	// ErrInvalidProxy is returned when a non-empty proxy value is not a usable
 	// proxy URL (unparseable, missing scheme/host, or an unsupported scheme).
 	ErrInvalidProxy = errors.New("config: invalid proxy url")
@@ -119,8 +124,14 @@ type Config struct {
 	// sse transports require it in the x-api-key request header; empty disables
 	// endpoint auth. It authenticates clients to this server and is unrelated to
 	// the Falcon OAuth credentials (ClientID/ClientSecret), which authenticate
-	// this server to CrowdStrike.
+	// this server to CrowdStrike. Empty APIKey is only permitted on a loopback
+	// bind, or when AllowInsecureHTTP is set.
 	APIKey string
+	// AllowInsecureHTTP opts into serving streamable-http/sse without an API key
+	// on a non-loopback address. Off by default so accidental 0.0.0.0 binds fail
+	// closed. Intended for intentional local demos (e.g. Docker compose) where
+	// network isolation is provided externally.
+	AllowInsecureHTTP bool
 	// Modules is an allowlist of module names to enable; empty enables all.
 	// config normalizes this list but does not validate names against the real
 	// module set — that authority belongs to the mcpserver package.
@@ -173,6 +184,13 @@ func Load(cfg Config) (*Config, error) {
 	}
 	if cfg.APIKey != "" && cfg.Transport == "stdio" {
 		return nil, fmt.Errorf("%w, got %q", ErrAPIKeyRequiresHTTP, cfg.Transport)
+	}
+	// Fail closed: an unauthenticated network transport on a non-loopback bind
+	// would expose Falcon tools to the network. Loopback (default 127.0.0.1) is
+	// fine without a key; non-loopback requires --api-key or an explicit
+	// --allow-insecure-http opt-in (e.g. isolated Docker demos).
+	if cfg.Transport != "stdio" && cfg.APIKey == "" && !cfg.AllowInsecureHTTP && !IsLoopbackAddr(cfg.HTTPAddr) {
+		return nil, fmt.Errorf("%w: transport=%s addr=%s", ErrUnauthenticatedNonLoopback, cfg.Transport, cfg.HTTPAddr)
 	}
 
 	if err := matchOrEmpty(cloudRE, ErrInvalidCloud, cfg.Cloud); err != nil {
@@ -343,4 +361,31 @@ func matchOrEmpty(re *regexp.Regexp, sentinel error, s string) error {
 		return nil
 	}
 	return fmt.Errorf("%w %q", sentinel, s)
+}
+
+// IsLoopbackAddr reports whether addr binds only to the loopback interface.
+// Callers use this to refuse or warn when a sensitive endpoint is exposed
+// off-host. A host that is an IP is checked directly; a hostname is resolved
+// and treated as loopback only when every resolved address is loopback. An
+// empty host (e.g. ":6060") binds all interfaces and is not loopback. A
+// malformed addr is reported as non-loopback so the caller errs toward
+// refusing/warning.
+func IsLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		return false
+	}
+	for _, ip := range ips {
+		if !ip.IsLoopback() {
+			return false
+		}
+	}
+	return true
 }
