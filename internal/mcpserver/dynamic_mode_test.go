@@ -96,8 +96,8 @@ func TestNormalModeExposesRealToolsNotMeta(t *testing.T) {
 // dynamic-mode meta-tools. falcon_search_tools and falcon_list_enabled_modules
 // are read-only discovery helpers; falcon_execute_tool is a general dispatcher
 // that can invoke mutating tools, so it must NOT advertise readOnlyHint
-// (Python uses annotations=None; Go uses MutatingAnnotations so base.AddTool
-// does not apply the default read-only set). See docs/usage/dynamic-mode.md.
+// (it uses MutatingAnnotations so base.AddTool does not apply the default
+// read-only set). See docs/usage/dynamic-mode.md.
 func TestDynamicMetaToolAnnotations(t *testing.T) {
 	t.Parallel()
 	srv, err := New(&config.Config{Dynamic: true}, &client.CrowdStrikeAPISpecification{})

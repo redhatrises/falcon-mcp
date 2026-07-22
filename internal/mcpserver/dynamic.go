@@ -68,8 +68,8 @@ var searchToolsSchema = base.SchemaFor[SearchToolsInput](func(s *jsonschema.Sche
 // dynamic mode). They flow through base.AddTool so they get the "falcon_"
 // prefix. search_tools and list_enabled_modules keep the default read-only
 // annotations; execute_tool is a general dispatcher that can invoke mutating
-// tools, so it must not advertise readOnlyHint (matches Python's
-// annotations=None and docs/usage/dynamic-mode.md).
+// tools, so it must not advertise readOnlyHint (see
+// docs/usage/dynamic-mode.md).
 func (m *MetaModule) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_tools",
