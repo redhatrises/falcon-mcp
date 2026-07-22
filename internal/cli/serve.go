@@ -29,6 +29,12 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
+	// Fail closed on non-loopback metrics/pprof before any network client work so
+	// a misconfigured bind is rejected immediately (no Falcon auth, no MCP setup).
+	if err := checkSensitiveOpsBinds(cfg); err != nil {
+		return err
+	}
+
 	api, err := falconapi.New(ctx, cfg)
 	if err != nil {
 		return err
@@ -45,20 +51,16 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	// They share ctx, so Ctrl+C signals their shutdown alongside the MCP server.
 	// serve does not wait for their drain to finish: they are best-effort
 	// debug/probe endpoints, so the process may exit before a slow pprof capture
-	// completes.
+	// completes. metrics/pprof non-loopback binds are rejected above unless
+	// AllowInsecureOpsBind is set.
 	for _, ops := range []struct {
 		name, addr string
 		handler    http.Handler
-		sensitive  bool
 	}{
-		{"health", cfg.HealthAddr, healthHandler(), false},
-		{"metrics", cfg.MetricsAddr, metricsHandler(), true},
-		{"pprof", cfg.PprofAddr, pprofHandler(), true},
+		{"health", cfg.HealthAddr, healthHandler()},
+		{"metrics", cfg.MetricsAddr, metricsHandler()},
+		{"pprof", cfg.PprofAddr, pprofHandler()},
 	} {
-		if ops.sensitive && ops.addr != "" && !config.IsLoopbackAddr(ops.addr) {
-			slog.Warn("ops endpoint bound to a non-loopback address; it is unauthenticated and intended for debugging only — restrict access with firewall rules",
-				"endpoint", ops.name, "addr", ops.addr)
-		}
 		if err := startOps(ctx, ops.name, ops.addr, ops.handler, cfg.IdleTimeout); err != nil {
 			return err
 		}
@@ -111,6 +113,28 @@ func warnInsecureHTTP(cfg *config.Config) {
 		slog.Warn("MCP HTTP transport is unauthenticated on a non-loopback address; any client that can reach this host can invoke Falcon tools — prefer --api-key, or restrict access with network controls",
 			"transport", cfg.Transport, "addr", cfg.HTTPAddr, "allow_insecure_http", cfg.AllowInsecureHTTP)
 	}
+}
+
+// checkSensitiveOpsBinds fails closed when metrics or pprof would bind a
+// non-loopback address without an explicit insecure override. Those endpoints
+// are unauthenticated; pprof can dump live process memory. Health is not gated
+// so orchestrator probes can still bind 0.0.0.0 intentionally. When the
+// override is set, a warning is logged and the bind is allowed.
+func checkSensitiveOpsBinds(cfg *config.Config) error {
+	for _, ops := range []struct{ name, addr string }{
+		{"metrics", cfg.MetricsAddr},
+		{"pprof", cfg.PprofAddr},
+	} {
+		if ops.addr == "" || config.IsLoopbackAddr(ops.addr) {
+			continue
+		}
+		if !cfg.AllowInsecureOpsBind {
+			return fmt.Errorf("%s endpoint address %q is not loopback; metrics and pprof are unauthenticated and can expose process memory — bind to 127.0.0.1 or pass --allow-insecure-ops-bind", ops.name, ops.addr)
+		}
+		slog.Warn("ops endpoint bound to a non-loopback address with --allow-insecure-ops-bind; it is unauthenticated and intended for debugging only — restrict access with firewall rules",
+			"endpoint", ops.name, "addr", ops.addr)
+	}
+	return nil
 }
 
 // startOps binds addr and serves h on it in a goroutine tied to ctx when addr
