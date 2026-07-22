@@ -72,8 +72,8 @@ Configuration precedence is flag > env > config file > default.`,
   export FALCON_CLIENT_ID=... FALCON_CLIENT_SECRET=...
   falcon-mcp
 
-  # streamable-http transport on all interfaces, port 8000
-  falcon-mcp -t streamable-http --host 0.0.0.0 -p 8000
+  # streamable-http on all interfaces (requires --api-key off-loopback)
+  falcon-mcp -t streamable-http --host 0.0.0.0 -p 8000 --api-key "$FALCON_MCP_API_KEY"
 
   # enable only specific modules
   falcon-mcp -m detections,intel,hosts`,
@@ -176,6 +176,7 @@ func registerFlags(cmd *cobra.Command) {
 	f.Bool("dynamic", false, "expose only the 3 meta-tools (falcon_search_tools/execute_tool/list_enabled_modules) instead of all tools")
 	f.Bool("stateless-http", false, "run the streamable-http transport in stateless mode")
 	f.String("api-key", "", "static secret required in the x-api-key header for http/sse clients")
+	f.Bool("allow-insecure-http", false, "allow unauthenticated http/sse on a non-loopback bind (unsafe; prefer --api-key)")
 	f.StringSliceP("modules", "m", nil, "a specific set of modules to enable (comma-separated)")
 	f.Duration("keep-alive", 0, "interval to ping idle sessions and hold long-lived http/sse connections open")
 	f.Duration("api-response-timeout", 30*time.Second, "max wait for Falcon API response headers before a request is abandoned; raise for heavy FQL queries")
@@ -240,6 +241,7 @@ func bindEnv(v *viper.Viper) {
 	_ = v.BindEnv("dynamic", "FALCON_MCP_DYNAMIC")
 	_ = v.BindEnv("stateless_http", "FALCON_MCP_STATELESS_HTTP")
 	_ = v.BindEnv("api_key", "FALCON_MCP_API_KEY")
+	_ = v.BindEnv("allow_insecure_http", "FALCON_MCP_ALLOW_INSECURE_HTTP")
 	_ = v.BindEnv("modules", "FALCON_MCP_MODULES")
 	// FALCON_MCP_PROXY is this server's own name; FALCON_PROXY_URL is the upstream
 	// falcon-mcp alias, accepted so existing Python configs keep working.
@@ -266,24 +268,25 @@ func newViper() (*viper.Viper, error) {
 // I/O; v must already be populated (flags bound, env enabled, file read).
 func resolve(v *viper.Viper) config.Config {
 	return config.Config{
-		ClientID:      v.GetString("client_id"),
-		ClientSecret:  v.GetString("client_secret"),
-		Cloud:         v.GetString("cloud"),
-		HostOverride:  v.GetString("base_url"),
-		MemberCID:     v.GetString("member_cid"),
-		Proxy:         v.GetString("proxy"),
-		Transport:     v.GetString("transport"),
-		HTTPAddr:      net.JoinHostPort(v.GetString("host"), strconv.Itoa(v.GetInt("port"))),
-		HealthAddr:    v.GetString("health_addr"),
-		MetricsAddr:   v.GetString("metrics_addr"),
-		PprofAddr:     v.GetString("pprof_addr"),
-		Hosted:        v.GetBool("hosted"),
-		Dynamic:       v.GetBool("dynamic"),
-		StatelessHTTP: v.GetBool("stateless_http"),
-		APIKey:        v.GetString("api_key"),
-		Modules:       v.GetStringSlice("modules"),
-		UserAgent:     v.GetString("user_agent"),
-		KeepAlive:     v.GetDuration("keep_alive"),
+		ClientID:          v.GetString("client_id"),
+		ClientSecret:      v.GetString("client_secret"),
+		Cloud:             v.GetString("cloud"),
+		HostOverride:      v.GetString("base_url"),
+		MemberCID:         v.GetString("member_cid"),
+		Proxy:             v.GetString("proxy"),
+		Transport:         v.GetString("transport"),
+		HTTPAddr:          net.JoinHostPort(v.GetString("host"), strconv.Itoa(v.GetInt("port"))),
+		HealthAddr:        v.GetString("health_addr"),
+		MetricsAddr:       v.GetString("metrics_addr"),
+		PprofAddr:         v.GetString("pprof_addr"),
+		Hosted:            v.GetBool("hosted"),
+		Dynamic:           v.GetBool("dynamic"),
+		StatelessHTTP:     v.GetBool("stateless_http"),
+		APIKey:            v.GetString("api_key"),
+		AllowInsecureHTTP: v.GetBool("allow_insecure_http"),
+		Modules:           v.GetStringSlice("modules"),
+		UserAgent:         v.GetString("user_agent"),
+		KeepAlive:         v.GetDuration("keep_alive"),
 
 		ResponseHeaderTimeout: v.GetDuration("api_response_timeout"),
 		IdleTimeout:           v.GetDuration("http_idle_timeout"),

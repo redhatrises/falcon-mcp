@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/crowdstrike/falcon-mcp/internal/config"
 )
 
 func TestServeHTTPGracefulShutdown(t *testing.T) {
@@ -328,6 +330,8 @@ func startOpsOnFreePort(ctx context.Context, t *testing.T, name string, h http.H
 
 func TestIsLoopbackAddr(t *testing.T) {
 	t.Parallel()
+	// isLoopbackAddr lives in config; keep a thin cli-side smoke test so the
+	// serve package's reliance on it stays covered without re-implementing.
 	tests := []struct {
 		name string
 		addr string
@@ -345,8 +349,8 @@ func TestIsLoopbackAddr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := isLoopbackAddr(tt.addr); got != tt.want {
-				t.Errorf("isLoopbackAddr(%q) = %v, want %v", tt.addr, got, tt.want)
+			if got := config.IsLoopbackAddr(tt.addr); got != tt.want {
+				t.Errorf("IsLoopbackAddr(%q) = %v, want %v", tt.addr, got, tt.want)
 			}
 		})
 	}

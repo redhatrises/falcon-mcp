@@ -55,7 +55,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		{"metrics", cfg.MetricsAddr, metricsHandler(), true},
 		{"pprof", cfg.PprofAddr, pprofHandler(), true},
 	} {
-		if ops.sensitive && ops.addr != "" && !isLoopbackAddr(ops.addr) {
+		if ops.sensitive && ops.addr != "" && !config.IsLoopbackAddr(ops.addr) {
 			slog.Warn("ops endpoint bound to a non-loopback address; it is unauthenticated and intended for debugging only — restrict access with firewall rules",
 				"endpoint", ops.name, "addr", ops.addr)
 		}
@@ -78,6 +78,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	case "streamable-http":
 		opts := &mcp.StreamableHTTPOptions{Stateless: cfg.StatelessHTTP}
 		h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv.MCP() }, opts)
+		warnInsecureHTTP(cfg)
 		slog.Info("falcon-mcp starting", "transport", "streamable-http", "addr", cfg.HTTPAddr, "stateless", cfg.StatelessHTTP, "auth", cfg.APIKey != "")
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "streamable-http",
@@ -87,6 +88,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		})
 	case "sse":
 		h := mcp.NewSSEHandler(func(*http.Request) *mcp.Server { return srv.MCP() }, nil)
+		warnInsecureHTTP(cfg)
 		slog.Info("falcon-mcp starting", "transport", "sse", "addr", cfg.HTTPAddr, "auth", cfg.APIKey != "")
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "sse",
@@ -97,6 +99,17 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	default:
 		// Defense-in-depth: config.Load already validated the transport.
 		return fmt.Errorf("unsupported transport %q", cfg.Transport)
+	}
+}
+
+// warnInsecureHTTP logs a loud warning when the operator has explicitly opted
+// into an unauthenticated non-loopback bind via --allow-insecure-http. Config
+// already fails closed without that flag; this is the runtime acknowledgement
+// that the endpoint is open to the network.
+func warnInsecureHTTP(cfg *config.Config) {
+	if cfg.APIKey == "" && !config.IsLoopbackAddr(cfg.HTTPAddr) {
+		slog.Warn("MCP HTTP transport is unauthenticated on a non-loopback address; any client that can reach this host can invoke Falcon tools — prefer --api-key, or restrict access with network controls",
+			"transport", cfg.Transport, "addr", cfg.HTTPAddr, "allow_insecure_http", cfg.AllowInsecureHTTP)
 	}
 }
 
@@ -128,32 +141,6 @@ func startOps(ctx context.Context, name, addr string, h http.Handler, idle time.
 		}
 	}()
 	return nil
-}
-
-// isLoopbackAddr reports whether addr binds only to the loopback interface, so
-// callers can warn when a sensitive endpoint is exposed off-host. A host that is
-// an IP is checked directly; a hostname is resolved and treated as loopback only
-// when every resolved address is loopback. An empty host (e.g. ":6060") binds
-// all interfaces and is not loopback. A malformed addr is reported as
-// non-loopback so the caller errs toward warning.
-func isLoopbackAddr(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil || host == "" {
-		return false
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	ips, err := net.LookupIP(host)
-	if err != nil || len(ips) == 0 {
-		return false
-	}
-	for _, ip := range ips {
-		if !ip.IsLoopback() {
-			return false
-		}
-	}
-	return true
 }
 
 // healthHandler serves a fixed 200 "ok" liveness response on /healthz. It is a

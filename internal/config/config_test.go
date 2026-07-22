@@ -153,14 +153,14 @@ func TestLoad(t *testing.T) {
 			errSubstr: "host and port",
 		},
 		{
-			name: "sse transport with addr",
-			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: ":8080"},
+			name: "sse transport with loopback addr (no api-key ok)",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: "127.0.0.1:8080"},
 			check: func(t *testing.T, c *Config) {
 				if c.Transport != "sse" {
 					t.Errorf("transport = %q, want sse", c.Transport)
 				}
-				if c.HTTPAddr != ":8080" {
-					t.Errorf("http addr = %q, want :8080", c.HTTPAddr)
+				if c.HTTPAddr != "127.0.0.1:8080" {
+					t.Errorf("http addr = %q, want 127.0.0.1:8080", c.HTTPAddr)
 				}
 			},
 		},
@@ -194,7 +194,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "stateless-http with http transport",
-			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: ":8080", StatelessHTTP: true},
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: "127.0.0.1:8080", StatelessHTTP: true},
 			check: func(t *testing.T, c *Config) {
 				if !c.StatelessHTTP {
 					t.Errorf("statelessHTTP = false, want true")
@@ -208,7 +208,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:    "stateless-http rejected with sse transport",
-			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: ":8080", StatelessHTTP: true},
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: "127.0.0.1:8080", StatelessHTTP: true},
 			wantErr: ErrStatelessRequiresHTTP,
 		},
 		{
@@ -238,6 +238,63 @@ func TestLoad(t *testing.T) {
 			name: "empty api-key allowed with stdio transport",
 			in:   valid,
 			check: func(t *testing.T, c *Config) {
+				if c.APIKey != "" {
+					t.Errorf("apiKey = %q, want empty", c.APIKey)
+				}
+			},
+		},
+		{
+			name: "empty api-key allowed on loopback http",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: "127.0.0.1:8000"},
+			check: func(t *testing.T, c *Config) {
+				if c.APIKey != "" {
+					t.Errorf("apiKey = %q, want empty", c.APIKey)
+				}
+			},
+		},
+		{
+			name: "empty api-key allowed on localhost",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: "localhost:8000"},
+			check: func(t *testing.T, c *Config) {
+				if c.HTTPAddr != "localhost:8000" {
+					t.Errorf("http addr = %q, want localhost:8000", c.HTTPAddr)
+				}
+			},
+		},
+		{
+			name:    "empty api-key rejected on non-loopback http",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: "0.0.0.0:8000"},
+			wantErr: ErrUnauthenticatedNonLoopback,
+		},
+		{
+			name:    "empty api-key rejected on empty-host bind-all",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "sse", HTTPAddr: ":8000"},
+			wantErr: ErrUnauthenticatedNonLoopback,
+		},
+		{
+			name:    "empty api-key rejected on routable ip",
+			in:      Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: "192.168.1.5:8000"},
+			wantErr: ErrUnauthenticatedNonLoopback,
+		},
+		{
+			name: "non-loopback with api-key ok",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: "0.0.0.0:8000", APIKey: "secret"},
+			check: func(t *testing.T, c *Config) {
+				if c.APIKey != "secret" {
+					t.Errorf("apiKey = %q, want secret", c.APIKey)
+				}
+				if c.HTTPAddr != "0.0.0.0:8000" {
+					t.Errorf("http addr = %q, want 0.0.0.0:8000", c.HTTPAddr)
+				}
+			},
+		},
+		{
+			name: "non-loopback without api-key ok with allow-insecure-http",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Transport: "streamable-http", HTTPAddr: "0.0.0.0:8000", AllowInsecureHTTP: true},
+			check: func(t *testing.T, c *Config) {
+				if !c.AllowInsecureHTTP {
+					t.Errorf("allowInsecureHTTP = false, want true")
+				}
 				if c.APIKey != "" {
 					t.Errorf("apiKey = %q, want empty", c.APIKey)
 				}

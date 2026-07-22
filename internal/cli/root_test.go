@@ -361,15 +361,62 @@ func TestExecuteHTTPTransport(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", "")
 	t.Setenv("FALCON_CLIENT_SECRET", "")
 
+	// Non-loopback without api-key fails closed.
 	cfg, err := resolveArgs(t, []string{
 		"--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9000",
+		"--client-id", validID, "--client-secret", validSecret,
+	})
+	if err == nil {
+		t.Fatal("expected error for unauthenticated non-loopback http bind")
+	}
+	if cfg != nil {
+		t.Fatal("cfg should be nil when config invalid")
+	}
+
+	// Same bind with --api-key is accepted.
+	cfg, err = resolveArgs(t, []string{
+		"--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9000",
+		"--api-key", "secret",
 		"--client-id", validID, "--client-secret", validSecret,
 	})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if cfg == nil || cfg.Transport != "streamable-http" || cfg.HTTPAddr != "0.0.0.0:9000" {
+	if cfg == nil || cfg.Transport != "streamable-http" || cfg.HTTPAddr != "0.0.0.0:9000" || cfg.APIKey != "secret" {
 		t.Fatalf("http transport not resolved: %+v", cfg)
+	}
+}
+
+func TestExecuteHTTPTransportAllowInsecure(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", "")
+	t.Setenv("FALCON_CLIENT_SECRET", "")
+
+	cfg, err := resolveArgs(t, []string{
+		"--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9000",
+		"--allow-insecure-http",
+		"--client-id", validID, "--client-secret", validSecret,
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || !cfg.AllowInsecureHTTP || cfg.APIKey != "" {
+		t.Fatalf("allow-insecure-http not resolved: %+v", cfg)
+	}
+}
+
+func TestExecuteHTTPTransportLoopbackNoKey(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", "")
+	t.Setenv("FALCON_CLIENT_SECRET", "")
+
+	cfg, err := resolveArgs(t, []string{
+		"--transport", "streamable-http", "--host", "127.0.0.1", "--port", "9000",
+		"--client-id", validID, "--client-secret", validSecret,
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || cfg.HTTPAddr != "127.0.0.1:9000" || cfg.APIKey != "" {
+		t.Fatalf("loopback without api-key should be allowed: %+v", cfg)
 	}
 }
 
@@ -773,11 +820,12 @@ func TestResolveMapsAllKeys(t *testing.T) {
 	v.Set("port", 9000)
 	v.Set("user_agent", "my-tool/1.0")
 	v.Set("api_key", "secret")
+	v.Set("allow_insecure_http", true)
 	v.Set("proxy", "http://proxy.example.com:8080")
 	in := resolve(v)
 	if in.Cloud != "us-1" || in.HostOverride != "https://example.test" ||
 		in.MemberCID != "abc" || in.Transport != "streamable-http" || in.HTTPAddr != "0.0.0.0:9000" ||
-		in.UserAgent != "my-tool/1.0" || in.APIKey != "secret" ||
+		in.UserAgent != "my-tool/1.0" || in.APIKey != "secret" || !in.AllowInsecureHTTP ||
 		in.Proxy != "http://proxy.example.com:8080" {
 		t.Errorf("resolve mapped keys incorrectly: %+v", in)
 	}
