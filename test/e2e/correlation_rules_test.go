@@ -61,4 +61,44 @@ var _ = Describe("correlation_rules module", Label("integration", "correlation_r
 		skipIfEmpty(res, "tenant has no correlation rules to sort")
 		expectSearchReturnsDetails(res, "rule_id")
 	})
+
+	It("creates, finds, and deletes a correlation rule", Label("mutating"), func() {
+		cs := newSession(ctx)
+		// The create endpoint requires the tenant CID; derive it from an existing
+		// rule (skips when the tenant has none), matching how a real caller scopes
+		// the create to their own CID.
+		search := callTool(ctx, cs, "falcon_search_correlation_rules", map[string]any{"limit": 1})
+		expectNoToolError(search)
+		customerID := firstResourceID(search, "customer_id") // skips when empty
+		name := uniqueTestName("corrrule")
+
+		create := callTool(ctx, cs, "falcon_create_correlation_rule", map[string]any{
+			"customer_id":   customerID,
+			"name":          name,
+			"search_filter": "#event_simpleName=ProcessRollup2 | CommandLine=*falcon-mcp-e2e*",
+			"severity":      10,
+			"description":   "disposable rule created by falcon-mcp e2e",
+			"status":        "inactive",
+		})
+		skipIfToolError(create, "create correlation rule (Correlation Rules write scope required)")
+		obj, ruleID := createdObject(create, "rule_id")
+
+		deferToolCleanup("falcon_delete_correlation_rules", map[string]any{
+			"ids":     []string{ruleID},
+			"comment": "falcon-mcp e2e cleanup",
+		})
+
+		Expect(obj).To(HaveKeyWithValue("name", name))
+
+		// Round-trip: the created rule must be findable by name. The rule index is
+		// eventually consistent, so poll rather than searching once.
+		Eventually(func() []string {
+			found := callTool(ctx, cs, "falcon_search_correlation_rules", map[string]any{
+				"filter": "name:'" + name + "'",
+				"limit":  5,
+			})
+			expectNoToolError(found)
+			return idsOf(found, "rule_id")
+		}).Should(ContainElement(ruleID), "created rule not found in search")
+	})
 })
