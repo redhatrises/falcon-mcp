@@ -105,7 +105,12 @@ type Config struct {
 	// Empty disables it. It is independent of HTTPAddr and works under any
 	// transport, including stdio; bind it to a local-only address.
 	PprofAddr string
-	Hosted    bool
+	// AllowInsecureOpsBind permits metrics and pprof to bind non-loopback
+	// addresses. Off by default: those endpoints are unauthenticated and pprof
+	// can dump process memory, so non-loopback binds require an explicit opt-in.
+	// Health is never gated by this flag (k8s probes often bind 0.0.0.0).
+	AllowInsecureOpsBind bool
+	Hosted               bool
 	// UserAgent is an optional caller-supplied string appended to the API
 	// User-Agent header. Load composes the final value; see composeUserAgent.
 	UserAgent string

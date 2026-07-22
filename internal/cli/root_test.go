@@ -1007,3 +1007,43 @@ func TestExecuteEnvBeatsDotEnv(t *testing.T) {
 		t.Fatalf("env should beat .env: got %+v", cfg)
 	}
 }
+
+func TestExecuteAllowInsecureOpsBindFlag(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	cfg, err := resolveArgs(t, []string{"--allow-insecure-ops-bind"})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || !cfg.AllowInsecureOpsBind {
+		t.Fatalf("AllowInsecureOpsBind = false, want true from --allow-insecure-ops-bind: %+v", cfg)
+	}
+}
+
+func TestExecuteAllowInsecureOpsBindEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_ALLOW_INSECURE_OPS_BIND", "true")
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || !cfg.AllowInsecureOpsBind {
+		t.Fatalf("AllowInsecureOpsBind = false, want true from env: %+v", cfg)
+	}
+}
+
+func TestExecuteAllowInsecureOpsBindDefaultFalse(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("cfg nil")
+	}
+	if cfg.AllowInsecureOpsBind {
+		t.Error("AllowInsecureOpsBind = true, want false by default")
+	}
+}

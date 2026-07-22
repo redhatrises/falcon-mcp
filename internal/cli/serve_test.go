@@ -330,8 +330,6 @@ func startOpsOnFreePort(ctx context.Context, t *testing.T, name string, h http.H
 
 func TestIsLoopbackAddr(t *testing.T) {
 	t.Parallel()
-	// isLoopbackAddr lives in config; keep a thin cli-side smoke test so the
-	// serve package's reliance on it stays covered without re-implementing.
 	tests := []struct {
 		name string
 		addr string
@@ -342,6 +340,7 @@ func TestIsLoopbackAddr(t *testing.T) {
 		{name: "ipv6 loopback", addr: "[::1]:6060", want: true},
 		{name: "localhost resolves loopback", addr: "localhost:6060", want: true},
 		{name: "all interfaces ipv4", addr: "0.0.0.0:6060", want: false},
+		{name: "all interfaces ipv6", addr: "[::]:6060", want: false},
 		{name: "empty host binds all", addr: ":6060", want: false},
 		{name: "routable ip", addr: "192.168.1.5:6060", want: false},
 		{name: "malformed addr", addr: "bad:addr:99", want: false},
@@ -355,3 +354,96 @@ func TestIsLoopbackAddr(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckSensitiveOpsBinds verifies metrics/pprof fail closed on non-loopback
+// binds unless AllowInsecureOpsBind is set, while health is never gated and
+// empty/loopback sensitive addrs always pass.
+func TestCheckSensitiveOpsBinds(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		cfg     *config.Config
+		wantErr bool
+	}{
+		{
+			name: "metrics loopback ok",
+			cfg:  &config.Config{MetricsAddr: "127.0.0.1:6061"},
+		},
+		{
+			name: "pprof loopback ok",
+			cfg:  &config.Config{PprofAddr: "127.0.0.1:6062"},
+		},
+		{
+			name:    "metrics non-loopback rejected",
+			cfg:     &config.Config{MetricsAddr: "0.0.0.0:6061"},
+			wantErr: true,
+		},
+		{
+			name:    "pprof non-loopback rejected",
+			cfg:     &config.Config{PprofAddr: "0.0.0.0:6062"},
+			wantErr: true,
+		},
+		{
+			name:    "empty host metrics rejected",
+			cfg:     &config.Config{MetricsAddr: ":6061"},
+			wantErr: true,
+		},
+		{
+			name: "health non-loopback not gated",
+			cfg:  &config.Config{HealthAddr: "0.0.0.0:6060"},
+		},
+		{
+			name: "empty metrics/pprof ok",
+			cfg:  &config.Config{},
+		},
+		{
+			name: "override allows non-loopback metrics",
+			cfg: &config.Config{
+				MetricsAddr:          "0.0.0.0:6061",
+				AllowInsecureOpsBind: true,
+			},
+		},
+		{
+			name: "override allows non-loopback pprof",
+			cfg: &config.Config{
+				PprofAddr:            "0.0.0.0:6062",
+				AllowInsecureOpsBind: true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := checkSensitiveOpsBinds(tt.cfg)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestCheckSensitiveOpsBindsOverrideWarns(t *testing.T) {
+	var buf syncBuffer
+	orig := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(orig) })
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+	err := checkSensitiveOpsBinds(&config.Config{
+		PprofAddr:            "0.0.0.0:6063",
+		AllowInsecureOpsBind: true,
+	})
+	if err != nil {
+		t.Fatalf("override should allow non-loopback bind: %v", err)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "allow-insecure-ops-bind") {
+		t.Errorf("expected warning about insecure override; got: %q", got)
+	}
+	if !strings.Contains(got, "endpoint=pprof") {
+		t.Errorf("expected warning to name pprof endpoint; got: %q", got)
+	}
+}
+
