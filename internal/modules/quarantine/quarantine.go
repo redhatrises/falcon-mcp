@@ -117,9 +117,11 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name: "update_quarantined_files",
 		Description: "Apply a reversible quarantine action (release or unrelease) to records " +
-			"selected by IDs or filter. Provide `ids` for specific records, or `filter` to select " +
-			"by query. Consult falcon://quarantine/files/search/fql-guide before constructing " +
-			"filter expressions. Returns success with no records.",
+			"selected by IDs or filter. Prefer `ids` for specific records. For filter-based " +
+			"updates, use falcon_preview_quarantine_actions first and a specific FQL expression " +
+			"(empty and bare-wildcard filters are rejected). Consult " +
+			"falcon://quarantine/files/search/fql-guide before constructing filter expressions. " +
+			"Returns success with no records.",
 		Annotations: base.MutatingAnnotations(),
 	}, m.updateQuarantinedFiles)
 
@@ -127,9 +129,10 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Name: "delete_quarantined_files",
 		Description: "Delete quarantine records selected by IDs or filter. This tool is " +
 			"destructive and should be used only when quarantine records should be removed rather " +
-			"than released. Provide `ids` for specific records, or `filter` to select by query. " +
-			"Consult falcon://quarantine/files/search/fql-guide before constructing filter " +
-			"expressions. Returns success with no records.",
+			"than released. Prefer `ids` for specific records. For filter-based deletes, use " +
+			"falcon_preview_quarantine_actions first and a specific FQL expression (empty and " +
+			"bare-wildcard filters are rejected). Consult falcon://quarantine/files/search/fql-guide " +
+			"before constructing filter expressions. Returns success with no records.",
 		Annotations: base.DestructiveAnnotations(true),
 	}, m.deleteQuarantinedFiles)
 }

@@ -93,8 +93,11 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	}, m.addIOC)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "remove_iocs",
-		Description: "Delete custom IOCs by IDs or FQL filter. If both are given, filter takes precedence. Returns the deleted IOC IDs. Idempotent.",
+		Name: "remove_iocs",
+		Description: "Delete custom IOCs by IDs or FQL filter. Prefer explicit `ids`. " +
+			"Filter-based bulk removal requires a specific FQL expression (empty and " +
+			"bare-wildcard filters are rejected). If both are given, filter takes precedence. " +
+			"Returns the deleted IOC IDs. Idempotent.",
 		Annotations: base.DestructiveAnnotations(true),
 	}, m.removeIOCs)
 }

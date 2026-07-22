@@ -223,6 +223,21 @@ func TestRemoveIOCsValidation(t *testing.T) {
 	}
 }
 
+func TestRemoveIOCsRejectsBroadFilter(t *testing.T) {
+	t.Parallel()
+	for _, filter := range []string{"*", "   ", "''", `""`} {
+		f := &fakeIoc{}
+		m := &Module{API: f, Logger: testLogger}
+		_, _, err := m.removeIOCs(context.Background(), nil, RemoveInput{Filter: filter})
+		if !errors.Is(err, errInvalidInput) {
+			t.Fatalf("filter %q: expected errInvalidInput, got %v", filter, err)
+		}
+		if f.lastDeleteReq != nil {
+			t.Fatalf("filter %q: expected no API call", filter)
+		}
+	}
+}
+
 func TestRemoveIOCsSuccess(t *testing.T) {
 	t.Parallel()
 

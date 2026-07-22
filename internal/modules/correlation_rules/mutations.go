@@ -12,8 +12,14 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
-// Default create-rule field values matching falcon-mcp, applied when the caller
-// omits them.
+// Default create-rule field values matching falcon-mcp (Python) and common
+// Falcon console create-rule behavior, applied when the caller omits them.
+//
+// defaultStatus is intentionally "active": creating an enabled rule matches the
+// Python module Field default and typical operator expectation that a new
+// detection rule starts evaluating immediately. Safer dry-run workflows can
+// pass status="inactive" explicitly; changing the default would diverge Go from
+// Python and break existing agent/tool contracts.
 const (
 	defaultSearchOutcome = "detection"
 	defaultLookback      = "1h0m"
@@ -58,7 +64,7 @@ type CreateInput struct {
 	SearchOutcome string               `json:"search_outcome,omitempty" jsonschema:"outcome type for rule matches (e.g. detection, case); default detection"`
 	Lookback      string               `json:"lookback,omitempty" jsonschema:"lookback window for event aggregation (e.g. 1h0m, 24h0m); default 1h0m"`
 	Schedule      string               `json:"schedule,omitempty" jsonschema:"schedule definition for rule evaluation, minimum @every 0h5m; default @every 1h0m"`
-	Status        string               `json:"status,omitempty" jsonschema:"initial rule status (active or inactive); default active"`
+	Status        string               `json:"status,omitempty" jsonschema:"initial rule status (active or inactive); default active (intentional product default for parity with Python/console — pass inactive for draft/dry-run)"`
 	TriggerMode   string               `json:"trigger_mode,omitempty" jsonschema:"how alerts are triggered per evaluation window (summary or verbose); default summary"`
 	UseIngestTime bool                 `json:"use_ingest_time,omitempty" jsonschema:"use event ingest time instead of event timestamp for the lookback window"`
 	Description   string               `json:"description,omitempty" jsonschema:"optional description explaining what the rule detects and why"`

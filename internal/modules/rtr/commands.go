@@ -2,6 +2,7 @@ package rtr
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -18,22 +19,34 @@ const (
 	defaultPollInterval = 2 * time.Second
 )
 
+// readOnlyBaseCommands is the Falcon RTRExecuteCommand (read-only) base-command
+// set, used as client-side defense-in-depth. The API also rejects non-read-only
+// commands on this endpoint; the allowlist fails closed before any network call
+// so admin/active-responder base commands never leave the MCP server.
+// Source: CrowdStrike Real Time Response "Available Commands (Read only)".
+var readOnlyBaseCommands = map[string]struct{}{
+	"cat": {}, "cd": {}, "clear": {}, "csrutil": {}, "env": {},
+	"eventlog": {}, "filehash": {}, "getsid": {}, "help": {}, "history": {},
+	"ipconfig": {}, "ls": {}, "mount": {}, "netstat": {}, "ps": {}, "reg": {},
+}
+
 // ExecuteInput is the input for falcon_execute_rtr_read_only_command.
 type ExecuteInput struct {
 	SessionID     string `json:"session_id" jsonschema:"RTR session ID from falcon_init_rtr_session or falcon_search_rtr_sessions (required)"`
-	BaseCommand   string `json:"base_command" jsonschema:"read-only RTR base command such as ls, ps, cat, filehash, or reg (required)"`
+	BaseCommand   string `json:"base_command" jsonschema:"read-only RTR base command from the Falcon read-only set (cat, cd, clear, csrutil, env, eventlog, filehash, getsid, help, history, ipconfig, ls, mount, netstat, ps, reg) (required)"`
 	CommandString string `json:"command_string,omitempty" jsonschema:"optional full command line to execute (e.g. cat C:\\Windows\\win.ini)"`
 	Persist       bool   `json:"persist,omitempty" jsonschema:"persist the read-only command in the RTR session history"`
 }
 
 func (m *Module) executeReadOnlyCommand(ctx context.Context, _ *mcp.CallToolRequest, in ExecuteInput) (*mcp.CallToolResult, base.EntitiesResult[*models.DomainCommandExecuteResponse], error) {
 	var zero base.EntitiesResult[*models.DomainCommandExecuteResponse]
-	if err := in.validate(); err != nil {
+	normalized, err := in.validate()
+	if err != nil {
 		return nil, zero, err
 	}
-	m.Logger.Debug("execute_rtr_read_only_command", "session_id", in.SessionID, "base_command", in.BaseCommand, "persist", in.Persist)
+	m.Logger.Debug("execute_rtr_read_only_command", "session_id", normalized.SessionID, "base_command", normalized.BaseCommand, "persist", normalized.Persist)
 
-	resp, err := m.execute(ctx, in)
+	resp, err := m.execute(ctx, normalized)
 	if e := base.APIError(err, resp, scopeRTRRead); e != nil {
 		return nil, zero, e
 	}
@@ -41,14 +54,23 @@ func (m *Module) executeReadOnlyCommand(ctx context.Context, _ *mcp.CallToolRequ
 }
 
 // validate enforces the client-side constraints shared by execute and wait.
-func (in ExecuteInput) validate() error {
-	if in.SessionID == "" {
-		return wrapInvalid("execute rtr read-only command", "session_id must not be empty")
+// On success it returns a copy with BaseCommand lowercased/trimmed for the API.
+func (in ExecuteInput) validate() (ExecuteInput, error) {
+	if strings.TrimSpace(in.SessionID) == "" {
+		return ExecuteInput{}, wrapInvalid("execute rtr read-only command", "session_id must not be empty")
 	}
-	if in.BaseCommand == "" {
-		return wrapInvalid("execute rtr read-only command", "base_command must not be empty")
+	cmd := strings.ToLower(strings.TrimSpace(in.BaseCommand))
+	if cmd == "" {
+		return ExecuteInput{}, wrapInvalid("execute rtr read-only command", "base_command must not be empty")
 	}
-	return nil
+	if _, ok := readOnlyBaseCommands[cmd]; !ok {
+		return ExecuteInput{}, wrapInvalid("execute rtr read-only command",
+			fmt.Sprintf("base_command %q is not a read-only RTR command (allowed: cat, cd, clear, csrutil, env, eventlog, filehash, getsid, help, history, ipconfig, ls, mount, netstat, ps, reg)", in.BaseCommand))
+	}
+	out := in
+	out.SessionID = strings.TrimSpace(in.SessionID)
+	out.BaseCommand = cmd
+	return out, nil
 }
 
 // execute issues the read-only RTRExecuteCommand request shared by the execute
@@ -101,7 +123,7 @@ func (m *Module) checkStatus(ctx context.Context, cloudRequestID string, sequenc
 // extends ExecuteInput with poll timing controls.
 type WaitInput struct {
 	SessionID           string  `json:"session_id" jsonschema:"RTR session ID from falcon_init_rtr_session or falcon_search_rtr_sessions (required)"`
-	BaseCommand         string  `json:"base_command" jsonschema:"read-only RTR base command such as ls, ps, cat, filehash, or reg (required)"`
+	BaseCommand         string  `json:"base_command" jsonschema:"read-only RTR base command from the Falcon read-only set (cat, cd, clear, csrutil, env, eventlog, filehash, getsid, help, history, ipconfig, ls, mount, netstat, ps, reg) (required)"`
 	CommandString       string  `json:"command_string,omitempty" jsonschema:"optional full command line to execute (e.g. cat C:\\Windows\\win.ini)"`
 	Persist             bool    `json:"persist,omitempty" jsonschema:"persist the read-only command in the RTR session history"`
 	TimeoutSeconds      int     `json:"timeout_seconds,omitempty" jsonschema:"maximum time to wait for command completion in seconds (max 600, default 60)"`
@@ -124,8 +146,8 @@ type WaitResult struct {
 
 func (m *Module) runReadOnlyCommandAndWait(ctx context.Context, req *mcp.CallToolRequest, in WaitInput) (*mcp.CallToolResult, WaitResult, error) {
 	var zero WaitResult
-	exec := ExecuteInput{SessionID: in.SessionID, BaseCommand: in.BaseCommand, CommandString: in.CommandString, Persist: in.Persist}
-	if err := exec.validate(); err != nil {
+	exec, err := (ExecuteInput{SessionID: in.SessionID, BaseCommand: in.BaseCommand, CommandString: in.CommandString, Persist: in.Persist}).validate()
+	if err != nil {
 		return nil, zero, err
 	}
 
@@ -144,7 +166,7 @@ func (m *Module) runReadOnlyCommandAndWait(ctx context.Context, req *mcp.CallToo
 			pollInterval = d
 		}
 	}
-	m.Logger.Debug("run_rtr_read_only_command_and_wait", "session_id", in.SessionID, "base_command", in.BaseCommand, "timeout", timeout, "poll_interval", pollInterval)
+	m.Logger.Debug("run_rtr_read_only_command_and_wait", "session_id", exec.SessionID, "base_command", exec.BaseCommand, "timeout", timeout, "poll_interval", pollInterval)
 
 	// Step 1: execute the read-only command, extracting the cloud_request_id.
 	execResp, err := m.execute(ctx, exec)
