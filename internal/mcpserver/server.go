@@ -67,12 +67,12 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 		return nil, err
 	}
 
-	// Probe uses cfg credentials for a non-stateful OAuth token request so
-	// falcon_check_connectivity does not mutate the shared gofalcon client.
-	// Capture cfg by value into the closure.
+	// Probe uses cfg credentials for an OAuth token exchange so
+	// falcon_check_connectivity does not disturb the shared gofalcon client's
+	// cached token. Capture cfg by value into the closure.
 	probeCfg := cfg
 	check := func(ctx context.Context) bool {
-		return falconapi.ProbeConnectivity(ctx, probeCfg)
+		return falconapi.CheckConnectivity(ctx, probeCfg)
 	}
 
 	cat, err := registerModules(s, enabled, allModules, check, cfg.Dynamic)
