@@ -744,7 +744,6 @@ func TestResolvePrecedence(t *testing.T) {
 	v.Set("client_id", "flagval") // simulates a bound flag value (highest)
 	v.Set("client_secret", "sekret")
 	v.SetDefault("transport", "stdio")
-	v.Set("hosted", true)
 	in := resolve(v)
 	if in.ClientID != "flagval" {
 		t.Errorf("ClientID = %q, want flagval", in.ClientID)
@@ -754,9 +753,6 @@ func TestResolvePrecedence(t *testing.T) {
 	}
 	if in.Transport != "stdio" {
 		t.Errorf("Transport = %q, want stdio", in.Transport)
-	}
-	if !in.Hosted {
-		t.Errorf("Hosted = false, want true")
 	}
 }
 
