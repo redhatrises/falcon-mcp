@@ -2,7 +2,10 @@ package falconapi
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -168,5 +171,97 @@ func TestOAuth2ContextKeyResolves(t *testing.T) {
 	got, ok := ctx.Value(oauth2.HTTPClient).(*http.Client)
 	if !ok || got != want {
 		t.Fatal("oauth2.HTTPClient context key did not round-trip an *http.Client")
+	}
+}
+
+func TestCheckConnectivitySuccess(t *testing.T) {
+	t.Parallel()
+	var sawMemberCID bool
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/token" {
+			t.Errorf("path = %q, want /oauth2/token", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %q, want POST", r.Method)
+		}
+		// member_cid always rides in the request body via EndpointParams,
+		// regardless of the client-auth style oauth2 negotiates.
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "member_cid=aabbccddeeff00112233445566778899") {
+			sawMemberCID = true
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"access_token":"x","token_type":"bearer","expires_in":1800}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		ClientID:     "testid01234567890123456789012",
+		ClientSecret: "testsecret012345678901234567890123456",
+		MemberCID:    "aabbccddeeff00112233445566778899",
+		HostOverride: strings.TrimPrefix(srv.URL, "https://"),
+	}
+	if !checkConnectivity(context.Background(), cfg, srv.Client()) {
+		t.Fatal("want connected=true when the token endpoint issues a token")
+	}
+	if !sawMemberCID {
+		t.Error("expected member_cid in token request body")
+	}
+}
+
+func TestCheckConnectivityAuthFailure(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"errors":[{"message":"access denied"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		ClientID:     "testid01234567890123456789012",
+		ClientSecret: "testsecret012345678901234567890123456",
+		HostOverride: strings.TrimPrefix(srv.URL, "https://"),
+	}
+	if checkConnectivity(context.Background(), cfg, srv.Client()) {
+		t.Fatal("want connected=false on HTTP 401")
+	}
+}
+
+func TestCheckConnectivityNetworkError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// never reached — we close the server first
+	}))
+	cfg := &config.Config{
+		ClientID:     "testid01234567890123456789012",
+		ClientSecret: "testsecret012345678901234567890123456",
+		HostOverride: strings.TrimPrefix(srv.URL, "https://"),
+	}
+	c := srv.Client()
+	srv.Close()
+
+	if checkConnectivity(context.Background(), cfg, c) {
+		t.Fatal("want connected=false on network error")
+	}
+}
+
+func TestCheckConnectivityNilConfig(t *testing.T) {
+	t.Parallel()
+	if CheckConnectivity(context.Background(), nil) {
+		t.Fatal("nil config must return false")
+	}
+}
+
+func TestCheckConnectivityFailClosed(t *testing.T) {
+	t.Parallel()
+	// Empty credentials against a dead host must fail closed (unreachable /
+	// auth error) without panicking.
+	cfg := &config.Config{
+		Cloud:        "us-2",
+		HostOverride: "127.0.0.1:1", // nothing listening
+	}
+	if CheckConnectivity(context.Background(), cfg) {
+		t.Fatal("empty credentials / dead host must return false")
 	}
 }
