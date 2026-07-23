@@ -100,7 +100,6 @@ type Config struct {
 	// Empty disables it. It is independent of HTTPAddr and works under any
 	// transport, including stdio; bind it to a local-only address.
 	PprofAddr string
-	Hosted    bool
 	// UserAgent is an optional caller-supplied string appended to the API
 	// User-Agent header. Load composes the final value; see composeUserAgent.
 	UserAgent string
