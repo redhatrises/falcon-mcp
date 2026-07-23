@@ -14,6 +14,7 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon"
 	"github.com/crowdstrike/gofalcon/falcon/client"
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 )
@@ -89,4 +90,59 @@ func apiHTTPClient(proxy string, respHeaderTimeout time.Duration, maxIdleConnsPe
 		tr.Proxy = http.ProxyURL(u)
 	}
 	return &http.Client{Transport: tr}, nil
+}
+
+// CheckConnectivity reports whether cfg's credentials can obtain an OAuth2
+// token from the Falcon API. It runs the same client-credentials exchange
+// gofalcon uses for every API call (golang.org/x/oauth2/clientcredentials),
+// so a success here means real requests will authenticate.
+//
+// It builds a fresh token source rather than touching any shared client, so a
+// connectivity check never disturbs cached token state. On any error — bad
+// credentials, non-2xx response, or an unreachable host — it logs a warning and
+// returns false rather than propagating.
+func CheckConnectivity(ctx context.Context, cfg *config.Config) bool {
+	return checkConnectivity(ctx, cfg, nil)
+}
+
+// checkConnectivity is the testable implementation. When httpClient is nil a
+// client is built from cfg (proxy, timeouts). Tests pass an httptest client so
+// the token-exchange branches are covered offline.
+func checkConnectivity(ctx context.Context, cfg *config.Config, httpClient *http.Client) bool {
+	if cfg == nil {
+		return false
+	}
+
+	host := cfg.HostOverride
+	if host == "" {
+		host = falcon.Cloud(cfg.Cloud).Host()
+	}
+
+	conf := clientcredentials.Config{
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
+		TokenURL:     "https://" + host + "/oauth2/token",
+	}
+	if cfg.MemberCID != "" {
+		conf.EndpointParams = url.Values{"member_cid": {cfg.MemberCID}}
+	}
+
+	if httpClient == nil {
+		var err error
+		httpClient, err = apiHTTPClient(cfg.Proxy, cfg.ResponseHeaderTimeout, cfg.MaxIdleConnsPerHost)
+		if err != nil {
+			slog.Warn("connectivity check failed", "err", err)
+			return false
+		}
+	}
+	// gofalcon resolves its token-exchange HTTP client from this context key
+	// (via oauth2.NewClient); reuse it so the probe honors proxy and timeout
+	// settings exactly as production calls do.
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
+
+	if _, err := conf.Token(ctx); err != nil {
+		slog.Warn("connectivity check failed", "err", err)
+		return false
+	}
+	return true
 }

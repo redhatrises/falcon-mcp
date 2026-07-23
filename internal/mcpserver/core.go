@@ -9,8 +9,8 @@ import (
 )
 
 // ConnectivityChecker probes live Falcon API authentication. It must not
-// mutate shared client token state (it uses a non-stateful token request).
-// Unit tests inject a stub; production uses falconapi.ProbeConnectivity.
+// disturb the shared client's cached token state (it uses a fresh token
+// exchange). Unit tests inject a stub; production uses falconapi.CheckConnectivity.
 type ConnectivityChecker func(ctx context.Context) bool
 
 // ConnectivityResult is the falcon_check_connectivity output envelope.
