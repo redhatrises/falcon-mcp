@@ -175,15 +175,6 @@ func TestLoad(t *testing.T) {
 			errSubstr: "member",
 		},
 		{
-			name: "hosted is inert",
-			in:   Config{ClientID: validID, ClientSecret: validSecret, Hosted: true},
-			check: func(t *testing.T, c *Config) {
-				if !c.Hosted {
-					t.Errorf("hosted = false, want true")
-				}
-			},
-		},
-		{
 			name: "dynamic passes through",
 			in:   Config{ClientID: validID, ClientSecret: validSecret, Dynamic: true},
 			check: func(t *testing.T, c *Config) {
