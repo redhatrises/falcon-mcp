@@ -100,7 +100,11 @@ func registerModules(s *mcp.Server, enabled, all []base.Module, check Connectivi
 		available: moduleNames(all),
 		check:     check,
 	}
-	reg := base.ServerRegistrar(s)
+	// order records the falcon_-prefixed name of every tool registered on the
+	// served server, in registration order, so the reordering middleware can
+	// restore the Python server's core-first, module-grouped tools/list order.
+	var order []string
+	reg := orderRecorder{inner: base.ServerRegistrar(s), order: &order}
 	// falcon_list_enabled_modules is always registered — dynamic mode's
 	// no-results hint references it by name, and it's useful in both modes.
 	core.registerAlwaysOn(reg)
@@ -112,6 +116,7 @@ func registerModules(s *mcp.Server, enabled, all []base.Module, check Connectivi
 			m.RegisterResources(s)
 			m.RegisterPrompts(s)
 		}
+		s.AddReceivingMiddleware(orderToolsMiddleware(order))
 		return nil, nil
 	}
 
@@ -129,6 +134,7 @@ func registerModules(s *mcp.Server, enabled, all []base.Module, check Connectivi
 	}
 	// Meta-tools only: list_enabled_modules is already on the served server.
 	NewMetaModule(cat, enabled).RegisterTools(reg)
+	s.AddReceivingMiddleware(orderToolsMiddleware(order))
 	return cat, nil
 }
 
