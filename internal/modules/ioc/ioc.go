@@ -82,7 +82,7 @@ var searchIOCsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Schema) {
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_iocs",
-		Description: "Search custom IOCs in CrowdStrike Falcon using IOC FQL (fields: type, value, action, source, severity_number, expiration, expired, applied_globally, metadata.filename.raw). Returns full indicator records.",
+		Description: "Search custom IOCs in CrowdStrike Falcon using IOC FQL (fields: type, value, action, source, severity_number, expiration, expired, applied_globally, metadata.filename.raw). Consult falcon://ioc/search/fql-guide before constructing filter expressions. Returns full indicator records.",
 		InputSchema: searchIOCsSchema,
 	}, m.searchIOCs)
 
@@ -116,7 +116,7 @@ func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 
 // SearchInput is the input for falcon_search_iocs.
 type SearchInput struct {
-	Filter     string `json:"filter,omitempty" jsonschema:"IOC FQL filter (e.g. type:'domain'+expired:false, source:'mcp')"`
+	Filter     string `json:"filter,omitempty" jsonschema:"IOC FQL filter (e.g. type:'domain'+expired:false, source:'mcp'). See falcon://ioc/search/fql-guide for syntax."`
 	Limit      int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset     int    `json:"offset,omitempty" jsonschema:"pagination offset; mutually exclusive with after"`
 	Sort       string `json:"sort,omitempty" jsonschema:"IOC FQL sort (e.g. modified_on.desc, severity_number.desc)"`
