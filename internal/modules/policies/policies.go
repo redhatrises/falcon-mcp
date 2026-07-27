@@ -220,8 +220,8 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name: "search_policy_members",
 		Description: "List the host devices governed by a specific policy. Provide the policy_type and policy " +
-			"id; the filter and sort operate on HOST/DEVICE attributes (see the hosts FQL guide), not policy " +
-			"attributes. Differs from falcon_search_policies (which returns the policy object) and " +
+			"id; the filter and sort operate on HOST/DEVICE attributes, not policy " +
+			"attributes. Consult falcon://hosts/search/fql-guide before constructing filter expressions. Differs from falcon_search_policies (which returns the policy object) and " +
 			"falcon_search_host_group_members (one group's hosts). Returns full host device records.",
 		InputSchema: searchPolicyMembersSchema,
 	}, m.searchPolicyMembers)
@@ -327,7 +327,7 @@ func (m *Module) searchPolicies(ctx context.Context, _ *mcp.CallToolRequest, in 
 type MembersInput struct {
 	PolicyType string `json:"policy_type" jsonschema:"policy type: prevention, sensor_update, firewall, device_control, response, or content_update"`
 	ID         string `json:"id" jsonschema:"the policy ID whose host members to list; use falcon_search_policies to look it up"`
-	Filter     string `json:"filter,omitempty" jsonschema:"FQL filter on HOST attributes (e.g. platform_name:'Windows'). See the hosts FQL guide."`
+	Filter     string `json:"filter,omitempty" jsonschema:"FQL filter on HOST attributes (e.g. platform_name:'Windows'). See falcon://hosts/search/fql-guide for syntax."`
 	Limit      int    `json:"limit,omitempty" jsonschema:"maximum records to return [1-5000]"`
 	Offset     int    `json:"offset,omitempty" jsonschema:"starting index of the result set"`
 	Sort       string `json:"sort,omitempty" jsonschema:"host FQL sort (e.g. hostname.asc, last_seen.desc)"`

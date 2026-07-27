@@ -93,19 +93,19 @@ var (
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_actors",
-		Description: "Research threat actors and adversary groups tracked by CrowdStrike intelligence using intel FQL (fields: name, actor_type, target_countries, target_industries, motivations, created_date, last_activity_date). Returns full actor profiles.",
+		Description: "Research threat actors and adversary groups tracked by CrowdStrike intelligence using intel FQL (fields: name, actor_type, target_countries, target_industries, motivations, created_date, last_activity_date). Consult falcon://intel/actors/fql-guide before constructing filter expressions. Returns full actor profiles.",
 		InputSchema: searchActorsSchema,
 	}, m.searchActors)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_indicators",
-		Description: "Search threat indicators/IOCs from CrowdStrike intelligence using intel FQL (fields: type, indicator, malicious_confidence, malware_families, kill_chains, published_date, threat_types, vulnerabilities). Returns full indicator details.",
+		Description: "Search threat indicators/IOCs from CrowdStrike intelligence using intel FQL (fields: type, indicator, malicious_confidence, malware_families, kill_chains, published_date, threat_types, vulnerabilities). Consult falcon://intel/indicators/fql-guide before constructing filter expressions. Returns full indicator details.",
 		InputSchema: searchIndicatorsSchema,
 	}, m.searchIndicators)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_reports",
-		Description: "Search CrowdStrike intelligence publications and threat reports using intel FQL (fields: name, type, sub_type, actors, target_countries, target_industries, motivations, tags, created_date). Returns full report metadata.",
+		Description: "Search CrowdStrike intelligence publications and threat reports using intel FQL (fields: name, type, sub_type, actors, target_countries, target_industries, motivations, tags, created_date). Consult falcon://intel/reports/fql-guide before constructing filter expressions. Returns full report metadata.",
 		InputSchema: searchReportsSchema,
 	}, m.searchReports)
 
@@ -135,7 +135,7 @@ func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 
 // ActorsInput is the input for falcon_search_actors.
 type ActorsInput struct {
-	Filter string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. name:'FANCY BEAR', animal_classifier:'BEAR')"`
+	Filter string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. name:'FANCY BEAR', animal_classifier:'BEAR'). See falcon://intel/actors/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 	Sort   string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. created_date|desc)"`
@@ -183,7 +183,7 @@ func (m *Module) searchActors(ctx context.Context, _ *mcp.CallToolRequest, in Ac
 
 // IndicatorsInput is the input for falcon_search_indicators.
 type IndicatorsInput struct {
-	Filter           string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. type:'domain', malicious_confidence:'high')"`
+	Filter           string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. type:'domain', malicious_confidence:'high'). See falcon://intel/indicators/fql-guide for syntax."`
 	Limit            int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset           int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 	Sort             string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. published_date|desc)"`
@@ -240,7 +240,7 @@ func (m *Module) searchIndicators(ctx context.Context, _ *mcp.CallToolRequest, i
 
 // ReportsInput is the input for falcon_search_reports.
 type ReportsInput struct {
-	Filter string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. type:'notice', target_industries:'Technology')"`
+	Filter string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. type:'notice', target_industries:'Technology'). See falcon://intel/reports/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 	Sort   string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. created_date|desc)"`

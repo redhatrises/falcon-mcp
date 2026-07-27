@@ -100,13 +100,13 @@ var (
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_host_groups",
-		Description: "Search host groups in CrowdStrike Falcon using host-group FQL (fields: name, group_type, created_by, created_timestamp, modified_by, modified_timestamp). Returns full group records.",
+		Description: "Search host groups in CrowdStrike Falcon using host-group FQL (fields: name, group_type, created_by, created_timestamp, modified_by, modified_timestamp). Consult falcon://host-groups/search/fql-guide before constructing filter expressions. Returns full group records.",
 		InputSchema: searchHostGroupsSchema,
 	}, m.searchHostGroups)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_host_group_members",
-		Description: "List the member devices of a host group. The filter and sort operate on HOST/DEVICE attributes (e.g. platform_name, hostname), not group attributes — see the hosts FQL guide. Returns full host device records.",
+		Description: "List the member devices of a host group. The filter and sort operate on HOST/DEVICE attributes (e.g. platform_name, hostname), not group attributes. Consult falcon://hosts/search/fql-guide before constructing filter expressions. Returns full host device records.",
 		InputSchema: searchHostGroupMembersSchema,
 	}, m.searchHostGroupMembers)
 
@@ -152,7 +152,7 @@ func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 
 // SearchInput is the input for falcon_search_host_groups.
 type SearchInput struct {
-	Filter string `json:"filter,omitempty" jsonschema:"host-group FQL filter (e.g. name:'Servers*', group_type:'static')"`
+	Filter string `json:"filter,omitempty" jsonschema:"host-group FQL filter (e.g. name:'Servers*', group_type:'static'). See falcon://host-groups/search/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 	Sort   string `json:"sort,omitempty" jsonschema:"host-group FQL sort (e.g. name.asc, modified_timestamp.desc); default name.asc"`
@@ -199,7 +199,7 @@ func (m *Module) searchHostGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 // MembersInput is the input for falcon_search_host_group_members.
 type MembersInput struct {
 	ID     string `json:"id" jsonschema:"the host group ID whose members to list (required)"`
-	Filter string `json:"filter,omitempty" jsonschema:"host/device FQL filter on member attributes (e.g. platform_name:'Windows')"`
+	Filter string `json:"filter,omitempty" jsonschema:"host/device FQL filter on member attributes (e.g. platform_name:'Windows'). See falcon://hosts/search/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 	Sort   string `json:"sort,omitempty" jsonschema:"host/device FQL sort (e.g. hostname.asc)"`

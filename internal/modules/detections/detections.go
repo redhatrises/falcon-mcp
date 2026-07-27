@@ -79,7 +79,7 @@ var searchDetectionsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Sche
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_detections",
-		Description: "Search for detections/alerts in CrowdStrike Falcon using FQL. Returns full alert records. Covers EPP, IDP, XDR, OverWatch, and NG-SIEM alerts.",
+		Description: "Search for detections/alerts in CrowdStrike Falcon using FQL. Consult falcon://detections/search/fql-guide before constructing filter expressions. Returns full alert records. Covers EPP, IDP, XDR, OverWatch, and NG-SIEM alerts.",
 		InputSchema: searchDetectionsSchema,
 	}, m.searchDetections)
 
@@ -109,7 +109,7 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 
 // SearchInput is the input for falcon_search_detections.
 type SearchInput struct {
-	Filter        string `json:"filter,omitempty" jsonschema:"FQL filter (e.g. severity.desc, status:'new')"`
+	Filter        string `json:"filter,omitempty" jsonschema:"FQL filter (e.g. severity.desc, status:'new'). See falcon://detections/search/fql-guide for syntax."`
 	Limit         int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset        int    `json:"offset,omitempty" jsonschema:"pagination offset"`
 	Q             string `json:"q,omitempty" jsonschema:"free-text metadata search"`
