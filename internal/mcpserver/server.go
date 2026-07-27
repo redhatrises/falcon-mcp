@@ -24,11 +24,11 @@ import (
 var ErrUnknownModule = errors.New("mcpserver: unknown module")
 
 // serverInstructions is returned to clients in the initialize response's
-// instructions field as a usage hint for the LLM. It is intentionally empty for
-// now: the field is wired end-to-end so populating it later is a one-line change,
-// and an empty value is omitted from the wire (json:",omitempty"), leaving the
-// initialize response unchanged until real guidance is written here.
-const serverInstructions = ""
+// instructions field as a usage hint for the LLM.
+const serverInstructions = "Connects AI agents to the CrowdStrike Falcon platform, exposing detections, threat intelligence, host management, and more as MCP tools."
+
+// serverTitle is the human-readable display name reported to clients.
+const serverTitle = "The CrowdStrike Falcon MCP Server"
 
 // Server wraps the assembled MCP server and its registered modules. In dynamic
 // mode it also owns the tool catalog's in-process session, torn down by Close.
@@ -45,7 +45,7 @@ type Server struct {
 // does not exist. In dynamic mode it wires the catalog's in-process session;
 // call Close to release it.
 func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, error) {
-	s := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp", Version: version.Version}, &mcp.ServerOptions{
+	s := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp", Title: serverTitle, Version: version.Version}, &mcp.ServerOptions{
 		Instructions: serverInstructions,
 		// KeepAlive pings idle sessions to detect dead peers and hold long-lived
 		// http/sse connections open. Zero disables it (the SDK default), so stdio
