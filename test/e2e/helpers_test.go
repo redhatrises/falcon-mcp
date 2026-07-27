@@ -294,12 +294,31 @@ func createdObject(res *mcp.CallToolResult, idField string) (map[string]any, str
 // reports no error. A fresh context is used because the spec's own context may
 // already be cancelled by the time cleanup runs. Registering it immediately
 // after a create ensures teardown runs even if a later assertion fails.
+//
+// The callback builds its context and session inline rather than via
+// newSpecContext/newSession because those helpers call DeferCleanup, which
+// Ginkgo forbids from within a running DeferCleanup callback: the illegal call
+// aborts the process before the teardown tool runs, leaking live-tenant state.
+// So the context cancel and session close are deferred manually here instead.
 func deferToolCleanup(tool string, args map[string]any) {
 	GinkgoHelper()
 	DeferCleanup(func() {
-		cctx := newSpecContext()
-		ccs := newSession(cctx)
-		res := callTool(cctx, ccs, tool, args)
+		Expect(srv).NotTo(BeNil(), "suite server not initialized")
+
+		ctx, cancel := context.WithTimeout(context.Background(), specTimeout())
+		defer cancel()
+
+		clientT, serverT := mcp.NewInMemoryTransports()
+		ss, err := srv.MCP().Connect(ctx, serverT, nil)
+		Expect(err).NotTo(HaveOccurred(), "cleanup server connect")
+		defer func() { _ = ss.Wait() }()
+
+		c := mcp.NewClient(&mcp.Implementation{Name: "falcon-mcp-e2e", Version: "test"}, nil)
+		cs, err := c.Connect(ctx, clientT, nil)
+		Expect(err).NotTo(HaveOccurred(), "cleanup client connect")
+		defer func() { _ = cs.Close() }()
+
+		res := callTool(ctx, cs, tool, args)
 		expectNoToolError(res)
 	})
 }
