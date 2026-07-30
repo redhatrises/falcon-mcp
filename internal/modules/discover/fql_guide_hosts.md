@@ -28,7 +28,8 @@ Values must be single-quoted. Relative dates must be lowercase ('now-7d' not 'NO
 
 === AUTOMATIC FILTERING ===
 This tool automatically filters for unmanaged assets only by adding entity_type:'unmanaged' to all queries.
-You do not need to (and cannot) specify entity_type in your filter — it is always set to 'unmanaged'.
+Your filter is wrapped in parentheses and AND-ed with that scope, so it cannot widen the result set:
+specifying any other entity_type matches nothing. Parentheses and single quotes in your filter must be balanced.
 
 === falcon_search_unmanaged_assets FQL filter options ===
 
@@ -54,7 +55,8 @@ You do not need to (and cannot) specify entity_type in your filter — it is alw
 |confidence|Number|Yes|Confidence level of the unmanaged asset discovery (0-100). Higher values indicate higher confidence. Ex: confidence:>80 Ex: confidence:>=90 Ex: confidence:<50|
 
 === IMPORTANT NOTES ===
-• entity_type:'unmanaged' is automatically applied — do not include it in your filter
+• entity_type:'unmanaged' is automatically AND-ed with your filter — omit it; another entity_type matches nothing
+• Parentheses and single quotes in your filter must be balanced, or the request is rejected
 • Use single quotes around string values: 'value'
 • Use square brackets for exact matches and multiple values: ['value1','value2']
 • Wildcard matching uses the * operator with * globs inside the quotes: hostname:*'PC-*'
