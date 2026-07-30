@@ -225,8 +225,10 @@ func TestSearchUnmanagedAssetsSuccess(t *testing.T) {
 }
 
 // TestSearchUnmanagedAssetsAlwaysConstrainsUnmanaged verifies the tool prepends
-// entity_type:'unmanaged' and ANDs the user filter, both when a user filter is
-// present and when it is absent.
+// entity_type:'unmanaged' and ANDs the parenthesized user filter, both when a
+// user filter is present and when it is absent. The comma cases cover the
+// scope-escape regression: an unparenthesized caller filter with a top-level
+// comma would bind as (scope AND a) OR b and return managed hosts.
 func TestSearchUnmanagedAssetsAlwaysConstrainsUnmanaged(t *testing.T) {
 	t.Parallel()
 
@@ -235,8 +237,28 @@ func TestSearchUnmanagedAssetsAlwaysConstrainsUnmanaged(t *testing.T) {
 		userFilter string
 		wantFilter string
 	}{
-		{"with user filter", "platform_name:'Windows'", "entity_type:'unmanaged'+platform_name:'Windows'"},
+		{"with user filter", "platform_name:'Windows'", "entity_type:'unmanaged'+(platform_name:'Windows')"},
 		{"no user filter", "", "entity_type:'unmanaged'"},
+		{
+			"top-level comma stays scoped",
+			"platform_name:'Windows',entity_type:'managed'",
+			"entity_type:'unmanaged'+(platform_name:'Windows',entity_type:'managed')",
+		},
+		{
+			"quoted parens are not grouping",
+			"hostname:'foo)bar'",
+			"entity_type:'unmanaged'+(hostname:'foo)bar')",
+		},
+		{
+			"balanced group passes through",
+			"platform_name:'Windows'+(criticality:'Critical',criticality:'High')",
+			"entity_type:'unmanaged'+(platform_name:'Windows'+(criticality:'Critical',criticality:'High'))",
+		},
+		{
+			"nested groups",
+			"((platform_name:'Windows'))",
+			"entity_type:'unmanaged'+(((platform_name:'Windows')))",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -314,9 +336,170 @@ func TestSearchUnmanagedAssetsFQLError(t *testing.T) {
 		t.Fatalf("expected FQL guide in error result")
 	}
 	// The echoed filter includes the auto-applied unmanaged constraint.
-	if out.FilterUsed != "entity_type:'unmanaged'+bogus::" {
+	if out.FilterUsed != "entity_type:'unmanaged'+(bogus::)" {
 		t.Fatalf("expected combined filter echoed, got %q", out.FilterUsed)
 	}
+}
+
+// TestSearchUnmanagedAssetsMalformedFilterSoftError verifies a caller filter
+// with unbalanced parentheses or an unterminated quote is rejected client-side
+// instead of being wrapped, and that the rejection is reported as a soft FQL
+// result carrying the guide rather than a hard Go error, matching the shape of
+// an API-rejected filter so the model can self-correct either way.
+//
+// The stray-) case is the security-relevant one: wrapping alone would not
+// contain it, because the stray ) closes the wrapping group early and lets the
+// following top-level , escape the scope clause and return managed hosts. The
+// API accepts that shape with HTTP 200 and the widened result set, so it must be
+// caught here. The remaining cases the API would itself reject with a 400; they
+// are rejected here to keep the paren-depth model sound.
+func TestSearchUnmanagedAssetsMalformedFilterSoftError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		userFilter string
+	}{
+		{"scope escape via stray close", "platform_name:'Windows'),entity_type:'managed'+(product_type_desc:'Server'"},
+		{"unmatched close", "platform_name:'Windows')"},
+		{"unclosed open", "(platform_name:'Windows'"},
+		{"unterminated quote", "hostname:'foo"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeDiscover{hostsResp: hostsOK()}
+			m := &Module{API: f, Logger: testLogger}
+
+			_, out, err := m.searchUnmanagedAssets(context.Background(), nil, UnmanagedAssetsInput{Filter: tc.userFilter})
+			if err != nil {
+				t.Fatalf("expected soft FQL error result, got Go error: %v", err)
+			}
+			if len(out.Errors) != 1 {
+				t.Fatalf("expected one FQL error detail, got %+v", out.Errors)
+			}
+			if out.FQLGuide == "" {
+				t.Errorf("expected FQL guide so the caller can self-correct")
+			}
+			// No request was made, so the echoed filter is the caller's raw
+			// input rather than a combined filter that was never built.
+			if out.FilterUsed != tc.userFilter {
+				t.Errorf("FilterUsed = %q, want raw caller filter %q", out.FilterUsed, tc.userFilter)
+			}
+			if f.hostCalls != 0 {
+				t.Errorf("API called %d times, want 0 — malformed filter must not reach the API", f.hostCalls)
+			}
+		})
+	}
+}
+
+// TestScopedFilter exercises filter scoping directly, covering the accept path
+// where paren depth rises and returns to zero (which the handler tests reach
+// only incidentally) alongside each rejection class. Rejections must surface
+// errInvalidFilter and must not return a filter.
+func TestScopedFilter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		filter     string
+		wantFilter string
+		wantErr    bool
+	}{
+		{"empty", "", "entity_type:'unmanaged'", false},
+		{"simple term", "platform_name:'Windows'", "entity_type:'unmanaged'+(platform_name:'Windows')", false},
+		{"balanced group", "a:'1'+(b:'2',c:'3')", "entity_type:'unmanaged'+(a:'1'+(b:'2',c:'3'))", false},
+		{"nested groups", "((a:'1'))", "entity_type:'unmanaged'+(((a:'1')))", false},
+		{"parens inside quotes", "hostname:'foo)bar'", "entity_type:'unmanaged'+(hostname:'foo)bar')", false},
+		{"unmatched close", "a:'1')", "", true},
+		{"unclosed open", "(a:'1'", "", true},
+		{"unterminated quote", "hostname:'foo", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := scopedFilter(tc.filter)
+			if tc.wantErr {
+				if !errors.Is(err, errInvalidFilter) {
+					t.Fatalf("err = %v, want errInvalidFilter", err)
+				}
+				if got != "" {
+					t.Errorf("filter = %q, want empty on rejection", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("scopedFilter(%q) = %v, want nil", tc.filter, err)
+			}
+			if got != tc.wantFilter {
+				t.Errorf("filter = %q, want %q", got, tc.wantFilter)
+			}
+		})
+	}
+}
+
+// FuzzScopedFilterCannotEscapeScope asserts the property the parenthesizing
+// exists to guarantee: any filter scopedFilter accepts produces a combined
+// filter with no comma at paren depth 0. A top-level comma is the escape, since
+// FQL's , (OR) binds looser than + (AND), so "scope+a,b" groups as
+// (scope AND a) OR b and the second branch carries no scope term.
+//
+// The caller filter is model-supplied and untrusted, so this covers the input
+// space the table tests above can only sample.
+func FuzzScopedFilterCannotEscapeScope(f *testing.F) {
+	seeds := []string{
+		"",
+		"platform_name:'Windows'",
+		"platform_name:'Windows',entity_type:'managed'",
+		"platform_name:'Windows'),entity_type:'managed'+(a:'1'",
+		"hostname:'foo)bar'",
+		"((a:'1'))",
+		"a:'),b+('c",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+
+	f.Fuzz(func(t *testing.T, userFilter string) {
+		got, err := scopedFilter(userFilter)
+		if err != nil {
+			return // rejected: no filter reaches the API
+		}
+		if hasTopLevelComma(got) {
+			t.Fatalf("scope escape: filter %q accepted, built %q with a top-level comma", userFilter, got)
+		}
+		if !strings.HasPrefix(got, unmanagedFilter) {
+			t.Fatalf("built filter %q lost the scope clause", got)
+		}
+	})
+}
+
+// hasTopLevelComma reports whether s contains a , at paren depth 0, ignoring
+// single-quoted values. It is deliberately written independently of
+// checkFilterSyntax so the fuzz target does not assert a function against its
+// own logic.
+func hasTopLevelComma(s string) bool {
+	depth, quoted := 0, false
+	for _, r := range s {
+		if r == '\'' {
+			quoted = !quoted
+			continue
+		}
+		if quoted {
+			continue
+		}
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestSearchUnmanagedAssetsAPIError verifies a non-FQL error is returned as a
@@ -358,7 +541,7 @@ func TestSearchEmitsDebugLog(t *testing.T) {
 	// the composed filter, not the raw user input.
 	wantFilters := map[string]string{
 		"search_applications":     "name:'Chrome'",
-		"search_unmanaged_assets": "entity_type:'unmanaged'+platform_name:'Windows'",
+		"search_unmanaged_assets": "entity_type:'unmanaged'+(platform_name:'Windows')",
 	}
 	seen := map[string]bool{}
 	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
