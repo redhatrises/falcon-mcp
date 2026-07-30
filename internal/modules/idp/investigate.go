@@ -12,14 +12,15 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
-// InvestigateInput is the input for falcon_idp_investigate_entity. The json tags
-// use the same names as the Python module so existing clients stay compatible;
-// the served schema is inferred from these jsonschema tags, then refined by
-// investigateEntitySchema for bounds and defaults the tags cannot express.
+// InvestigateInput is the input for falcon_idp_investigate_entity. The json tag
+// names are part of the tool's wire contract, so existing clients stay
+// compatible; the served schema is inferred from these jsonschema tags, then
+// refined by investigateEntitySchema for bounds and defaults the tags cannot
+// express.
 //
 // At least one of the identifier fields (EntityIDs, EntityNames, EmailAddresses,
 // IPAddresses, DomainNames) must be supplied; this is validated in the handler
-// and returned as data, mirroring the Python module.
+// and returned as data.
 type InvestigateInput struct {
 	EntityIDs      []string `json:"entity_ids,omitempty" jsonschema:"List of specific entity IDs to investigate (e.g., ['entity-001'])"`
 	EntityNames    string   `json:"entity_names,omitempty" jsonschema:"Entity display name pattern to search for (e.g., 'John Doe' or 'Doe, John' or 'Administrator' or 'Admin*'). Supports '*' wildcards. When combined with other parameters, uses AND logic."`
@@ -42,10 +43,9 @@ type InvestigateInput struct {
 }
 
 // investigateEntitySchema refines the inferred schema with the bounds and
-// defaults the Python module declares via Field(ge/le/default). The three
-// include_* booleans and investigation_types default to the Python values; the
-// handler applies the same defaults at runtime because MCP clients omit
-// zero-valued fields, so the schema default is advisory only.
+// defaults the struct tags cannot express. The handler applies the same defaults
+// at runtime because MCP clients omit zero-valued fields, so the schema default
+// is advisory only.
 var investigateEntitySchema = base.SchemaFor[InvestigateInput](func(s *jsonschema.Schema) {
 	s.Properties["relationship_depth"].Minimum = jsonschema.Ptr(float64(minRelationshipDepth))
 	s.Properties["relationship_depth"].Maximum = jsonschema.Ptr(float64(maxRelationshipDepth))
@@ -60,11 +60,10 @@ var investigateEntitySchema = base.SchemaFor[InvestigateInput](func(s *jsonschem
 })
 
 // InvestigationResult is the bespoke result envelope returned by
-// falcon_idp_investigate_entity, mirroring the Python module's response dict. It
-// carries a summary, the resolved entity IDs, and one field per requested
-// investigation type. On a validation or resolution failure only Error and
-// Summary (status "failed") are populated, matching the Python error dict —
-// these are returned as data, not as a Go error.
+// falcon_idp_investigate_entity. It carries a summary, the resolved entity IDs,
+// and one field per requested investigation type. On a validation or resolution
+// failure only Error and Summary (status "failed") are populated — these are
+// returned as data, not as a Go error.
 //
 // The per-type result fields hold the raw shapes the GraphQL queries return, so
 // they are typed as any and omitted when their investigation type was not
@@ -84,7 +83,7 @@ type InvestigationResult struct {
 // InvestigationMeta is the investigation_summary block. EntityCount, the
 // requested types, an RFC 3339 timestamp, and a status ("completed"/"failed")
 // are always present; ResolvedEntityIDs and SearchCriteria appear only on
-// success, matching the Python summary.
+// success.
 type InvestigationMeta struct {
 	EntityCount        int             `json:"entity_count"`
 	ResolvedEntityIDs  []string        `json:"resolved_entity_ids,omitempty"`
@@ -94,8 +93,8 @@ type InvestigationMeta struct {
 	SearchCriteria     *SearchCriteria `json:"search_criteria,omitempty"`
 }
 
-// SearchCriteria echoes the identifiers the caller supplied, mirroring the
-// Python search_criteria dict. Empty fields are omitted.
+// SearchCriteria echoes the identifiers the caller supplied. Empty fields are
+// omitted.
 type SearchCriteria struct {
 	EntityIDs      []string `json:"entity_ids,omitempty"`
 	EntityNames    string   `json:"entity_names,omitempty"`
@@ -118,7 +117,7 @@ func (s SearchCriteria) hasAny() bool {
 func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, in InvestigateInput) (*mcp.CallToolResult, InvestigationResult, error) {
 	m.Logger.Debug("Starting comprehensive entity investigation")
 
-	// Apply the Python defaults for fields MCP clients omit when zero-valued.
+	// Apply defaults for fields MCP clients omit when zero-valued.
 	investigationTypes := in.InvestigationTypes
 	if len(investigationTypes) == 0 {
 		investigationTypes = []string{investigationEntityDetails}
@@ -175,10 +174,9 @@ func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, 
 		if apiErr != nil {
 			return nil, InvestigationResult{}, apiErr
 		}
-		// Mirror the Python orchestrator: a single investigation that reports a
-		// data-level error (e.g. an unknown investigation type) aborts the whole
-		// call with a failed status rather than silently producing a completed
-		// result missing that type.
+		// A single investigation that reports a data-level error (e.g. an unknown
+		// investigation type) aborts the whole call with a failed status rather than
+		// silently producing a completed result missing that type.
 		if msg, ok := investigationError(res); ok {
 			m.Logger.Error("investigation failed", "type", t, "error", msg)
 			return nil, m.errorResult(
@@ -193,8 +191,8 @@ func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, 
 }
 
 // investigationError reports whether a per-investigation result carries a
-// data-level "error" string, mirroring the Python `if "error" in result` check
-// the orchestrator applies to each _execute_single_investigation result.
+// data-level "error" string, which the orchestrator checks for on each
+// investigation result.
 func investigationError(res any) (string, bool) {
 	if m, ok := res.(map[string]any); ok {
 		if msg, ok := m["error"].(string); ok {
@@ -204,9 +202,9 @@ func investigationError(res any) (string, bool) {
 	return "", false
 }
 
-// validateIdentifiers mirrors the Python _validate_entity_identifiers. It returns
-// a failed-status result when no identifier is supplied, or when entity_names /
-// email_addresses is a bare wildcard. A nil return means the input is valid.
+// validateIdentifiers returns a failed-status result when no identifier is
+// supplied, or when entity_names / email_addresses is a bare wildcard. A nil
+// return means the input is valid.
 func (m *Module) validateIdentifiers(c SearchCriteria, investigationTypes []string) *InvestigationResult {
 	if !c.hasAny() {
 		r := m.errorResult(
@@ -225,17 +223,16 @@ func (m *Module) validateIdentifiers(c SearchCriteria, investigationTypes []stri
 }
 
 // isBareWildcard reports whether s is non-empty but collapses to nothing once
-// '*' and spaces are stripped (e.g. "*", "  * "), mirroring the Python
-// strip("* ") == "" check.
+// '*' and spaces are stripped (e.g. "*", "  * ").
 func isBareWildcard(s string) bool {
 	return s != "" && strings.Trim(s, "* ") == ""
 }
 
-// errorResult builds a failed-status InvestigationResult, mirroring the Python
-// _create_error_response. entityCount is the resolved-entity count to report: 0
-// for a validation or no-match failure (resolution never produced entities), or
-// the resolved count when a later investigation step fails. searchCriteria is
-// attached only when non-nil and carrying at least one identifier.
+// errorResult builds a failed-status InvestigationResult. entityCount is the
+// resolved-entity count to report: 0 for a validation or no-match failure
+// (resolution never produced entities), or the resolved count when a later
+// investigation step fails. searchCriteria is attached only when non-nil and
+// carrying at least one identifier.
 func (m *Module) errorResult(msg string, entityCount int, investigationTypes []string, criteria *SearchCriteria) InvestigationResult {
 	res := InvestigationResult{
 		Error: msg,
@@ -253,8 +250,7 @@ func (m *Module) errorResult(msg string, entityCount int, investigationTypes []s
 	return res
 }
 
-// synthesize builds the success response, mirroring the Python
-// _synthesize_investigation_response. It assembles the summary, echoes the
+// synthesize builds the success response. It assembles the summary, echoes the
 // resolved IDs, attaches each investigation type's result to its field, and adds
 // cross-investigation insights when applicable.
 func (m *Module) synthesize(entityIDs, investigationTypes []string, criteria SearchCriteria, results map[string]any) InvestigationResult {

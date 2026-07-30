@@ -263,8 +263,8 @@ func TestRiskAssessmentDefaults(t *testing.T) {
 
 func TestGraphQLErrorsArrayDoesNotFail(t *testing.T) {
 	t.Parallel()
-	// A 200 response carrying a GraphQL "errors" array is NOT a failure: mirroring
-	// the Python module, the body is used verbatim. A resolve response with data
+	// A 200 response carrying a GraphQL "errors" array is NOT a failure: the body
+	// is used verbatim, preserving partial successes. A resolve response with data
 	// plus an errors array still yields the resolved entity, and a subsequent
 	// details call completes normally.
 	f := &fakeIDP{resps: []*identity_protection.APIPreemptProxyPostGraphqlOK{
@@ -305,9 +305,9 @@ func TestUnknownInvestigationType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Mirroring Python: an unknown investigation type aborts the whole call with a
-	// failed status and an "Investigation failed during ..." error, returned as
-	// data (not a Go error).
+	// An unknown investigation type aborts the whole call with a failed status and
+	// an "Investigation failed during ..." error, returned as data (not a Go
+	// error).
 	if out.Summary.Status != "failed" {
 		t.Fatalf("expected failed status for unknown type, got %+v", out.Summary)
 	}
@@ -315,7 +315,7 @@ func TestUnknownInvestigationType(t *testing.T) {
 		!strings.Contains(out.Error, "Unknown investigation type: bogus_type") {
 		t.Fatalf("expected 'Investigation failed during ...' error, got %q", out.Error)
 	}
-	// The failed summary reports the resolved-entity count, matching Python.
+	// The failed summary reports the resolved-entity count.
 	if out.Summary.EntityCount != 1 {
 		t.Fatalf("expected entity_count 1 in failed summary, got %d", out.Summary.EntityCount)
 	}

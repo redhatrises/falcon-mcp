@@ -11,7 +11,7 @@ import (
 )
 
 // investigationParams carries the per-run knobs shared across investigation
-// types, mirroring the Python investigation_params dict.
+// types.
 type investigationParams struct {
 	includeAssociations bool
 	includeAccounts     bool
@@ -29,11 +29,9 @@ type investigationParams struct {
 // hints on a 403.
 //
 // A GraphQL document that carries an "errors" array on an HTTP 200 is NOT
-// treated as a failure: this mirrors the Python module, whose GraphQL path
-// returns the response body verbatim on 200 and whose _is_error check looks only
-// for a top-level "error" key (never the GraphQL "errors" array). Returning the
-// "data" object as-is also preserves GraphQL partial successes, where "data" and
-// "errors" legitimately co-occur.
+// treated as a failure: only a top-level "error" key counts as one. Returning
+// the "data" object as-is also preserves GraphQL partial successes, where "data"
+// and "errors" legitimately co-occur.
 func (m *Module) runGraphQL(ctx context.Context, query string) (map[string]any, *base.Error) {
 	params := identity_protection.NewAPIPreemptProxyPostGraphqlParamsWithContext(ctx)
 	params.Body = &models.SwaggerGraphQLQuery{Query: &query}
@@ -54,8 +52,7 @@ func (m *Module) runGraphQL(ctx context.Context, query string) (map[string]any, 
 }
 
 // entityNodes extracts data.entities.nodes from a decoded GraphQL data object as
-// a slice of objects, mirroring the Python data.get("entities", {}).get("nodes",
-// []). A missing or malformed path yields an empty slice.
+// a slice of objects. A missing or malformed path yields an empty slice.
 func entityNodes(data map[string]any) []map[string]any {
 	entities, _ := data["entities"].(map[string]any)
 	if entities == nil {
@@ -76,10 +73,9 @@ func toObjects(in []any) []map[string]any {
 	return out
 }
 
-// runInvestigation dispatches to the handler for one investigation type,
-// mirroring the Python _execute_single_investigation. An unknown type yields a
-// map with an "error" key (as data), matching the Python warning path; only an
-// API failure returns a *base.Error.
+// runInvestigation dispatches to the handler for one investigation type. An
+// unknown type yields a map with an "error" key (as data); only an API failure
+// returns a *base.Error.
 func (m *Module) runInvestigation(ctx context.Context, investigationType string, entityIDs []string, p investigationParams) (any, *base.Error) {
 	switch investigationType {
 	case investigationEntityDetails:
@@ -97,7 +93,7 @@ func (m *Module) runInvestigation(ctx context.Context, investigationType string,
 }
 
 // entityDetailsBatch fetches detailed entity information for all IDs in a single
-// query, mirroring _get_entity_details_batch.
+// query.
 func (m *Module) entityDetailsBatch(ctx context.Context, entityIDs []string, p investigationParams) (any, *base.Error) {
 	query := buildEntityDetailsQuery(entityIDs, true, p.includeAssociations, p.includeIncidents, p.includeAccounts)
 	data, err := m.runGraphQL(ctx, query)
@@ -108,12 +104,19 @@ func (m *Module) entityDetailsBatch(ctx context.Context, entityIDs []string, p i
 	return map[string]any{"entities": entities, "entity_count": len(entities)}, nil
 }
 
-// timelinesBatch fetches a timeline per entity, mirroring
-// _get_entity_timelines_batch (one query per entity).
+// timelinesBatch fetches a timeline per entity, one query per entity.
 func (m *Module) timelinesBatch(ctx context.Context, entityIDs []string, p investigationParams) (any, *base.Error) {
+	// Filter once for the whole batch: every query would otherwise reject the same
+	// values, and a silently narrowed timeline (fewer events than the caller asked
+	// for) carries no signal without this.
+	categories, rejected := filterTimelineCategories(p.timelineEventTypes)
+	if len(rejected) > 0 {
+		m.Logger.Warn("Ignoring unrecognized timeline event types", "rejected", rejected)
+	}
+
 	timelines := make([]any, 0, len(entityIDs))
 	for _, id := range entityIDs {
-		query := buildTimelineQuery(id, p.timelineStartTime, p.timelineEndTime, p.timelineEventTypes, p.limit)
+		query := buildTimelineQuery(id, p.timelineStartTime, p.timelineEndTime, categories, p.limit)
 		data, err := m.runGraphQL(ctx, query)
 		if err != nil {
 			return nil, err
@@ -138,8 +141,7 @@ func (m *Module) timelinesBatch(ctx context.Context, entityIDs []string, p inves
 	return map[string]any{"timelines": timelines, "entity_count": len(entityIDs)}, nil
 }
 
-// relationshipsBatch analyzes relationships per entity, mirroring
-// _analyze_relationships_batch (one query per entity).
+// relationshipsBatch analyzes relationships per entity, one query per entity.
 func (m *Module) relationshipsBatch(ctx context.Context, entityIDs []string, p investigationParams) (any, *base.Error) {
 	relationships := make([]any, 0, len(entityIDs))
 	for _, id := range entityIDs {
@@ -167,8 +169,7 @@ func (m *Module) relationshipsBatch(ctx context.Context, entityIDs []string, p i
 	return map[string]any{"relationships": relationships, "entity_count": len(entityIDs)}, nil
 }
 
-// riskAssessmentBatch performs a risk assessment for all IDs in a single query,
-// mirroring _assess_risks_batch.
+// riskAssessmentBatch performs a risk assessment for all IDs in a single query.
 func (m *Module) riskAssessmentBatch(ctx context.Context, entityIDs []string) (any, *base.Error) {
 	query := buildRiskAssessmentQuery(entityIDs, true)
 	data, err := m.runGraphQL(ctx, query)
@@ -189,11 +190,10 @@ func (m *Module) riskAssessmentBatch(ctx context.Context, entityIDs []string) (a
 	return map[string]any{"risk_assessments": assessments, "entity_count": len(assessments)}, nil
 }
 
-// getOr returns m[key] when key is present, otherwise def. It mirrors Python's
-// dict.get(key, default): an explicitly-present null value is preserved (returned
-// as nil), and only an absent key yields the default. This matches
-// _assess_risks_batch's entity.get("riskScore", 0) / .get("riskScoreSeverity",
-// "LOW") fallbacks.
+// getOr returns m[key] when key is present, otherwise def. An explicitly-present
+// null value is preserved (returned as nil); only an absent key yields the
+// default, which is what riskAssessmentBatch's riskScore / riskScoreSeverity
+// fallbacks rely on.
 func getOr(m map[string]any, key string, def any) any {
 	if v, ok := m[key]; ok {
 		return v
@@ -208,7 +208,7 @@ func asArray(v any) []any {
 }
 
 // normalizeArray returns a non-nil slice so an absent array serializes as [] not
-// null, matching the Python default of [].
+// null.
 func normalizeArray(in []any) []any {
 	if in == nil {
 		return []any{}
