@@ -3,16 +3,20 @@ package idp
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 )
 
-// This file builds the GraphQL query strings, mirroring the Python idp module's
-// _build_*_query helpers verbatim in structure. The field selections match the
-// Python queries exactly so the returned shapes are identical.
+// This file builds the GraphQL query strings submitted to the Identity
+// Protection endpoint. Each builder renders one investigation type's query.
 
 // jsonList renders a string slice as a JSON array literal for embedding in a
-// GraphQL query, mirroring the Python json.dumps(list).
+// GraphQL query. A nil or empty slice renders as [] rather than null, since null
+// is not a valid value for the list arguments these queries build.
 func jsonList(items []string) string {
+	if len(items) == 0 {
+		return "[]"
+	}
 	b, err := json.Marshal(items)
 	if err != nil {
 		return "[]"
@@ -20,8 +24,7 @@ func jsonList(items []string) string {
 	return string(b)
 }
 
-// jsonString renders a string as a JSON string literal, mirroring
-// json.dumps(str).
+// jsonString renders a string as a JSON string literal.
 func jsonString(s string) string {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -30,7 +33,43 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-// buildEntityDetailsQuery mirrors _build_entity_details_query.
+// allowedTimelineCategories is the set of GraphQL enum values the timeline
+// query accepts for its categories argument, matching the values documented on
+// InvestigateInput.TimelineEventTypes.
+var allowedTimelineCategories = []string{
+	"ACTIVITY",
+	"NOTIFICATION",
+	"THREAT",
+	"ENTITY",
+	"AUDIT",
+	"POLICY",
+	"SYSTEM",
+}
+
+// filterTimelineCategories returns the allowlisted timeline categories from
+// eventTypes, preserving the caller's order, along with the values it rejected
+// so the caller can report them. Duplicates are passed through unchanged.
+//
+// Timeline categories are GraphQL enums, which are bare identifiers rather than
+// strings, so they cannot be JSON-encoded the way the query's string arguments
+// are. Restricting them to known values is what keeps caller input from being
+// interpolated into the query as executable structure.
+func filterTimelineCategories(eventTypes []string) (kept, rejected []string) {
+	if len(eventTypes) == 0 {
+		return nil, nil
+	}
+	kept = make([]string, 0, len(eventTypes))
+	for _, et := range eventTypes {
+		if slices.Contains(allowedTimelineCategories, et) {
+			kept = append(kept, et)
+			continue
+		}
+		rejected = append(rejected, et)
+	}
+	return kept, rejected
+}
+
+// buildEntityDetailsQuery renders the entity-details query for a batch of IDs.
 func buildEntityDetailsQuery(entityIDs []string, includeRiskFactors, includeAssociations, includeIncidents, includeAccounts bool) string {
 	fields := []string{
 		"entityId",
@@ -152,20 +191,25 @@ func buildEntityDetailsQuery(entityIDs []string, includeRiskFactors, includeAsso
         `, jsonList(entityIDs), fieldsString)
 }
 
-// buildTimelineQuery mirrors _build_timeline_query.
+// buildTimelineQuery renders the activity-timeline query for one entity.
+//
+// The entity ID and time bounds are embedded as JSON string literals so caller
+// input cannot terminate the literal and inject query structure. Categories are
+// GraphQL enums and must stay unquoted, so they are allowlisted instead.
 func buildTimelineQuery(entityID, startTime, endTime string, eventTypes []string, limit int) string {
-	filters := []string{fmt.Sprintf(`sourceEntityQuery: {entityIds: ["%s"]}`, entityID)}
+	filters := []string{fmt.Sprintf(`sourceEntityQuery: {entityIds: %s}`, jsonList([]string{entityID}))}
 
 	if startTime != "" {
-		filters = append(filters, fmt.Sprintf(`startTime: "%s"`, startTime))
+		filters = append(filters, fmt.Sprintf(`startTime: %s`, jsonString(startTime)))
 	}
 	if endTime != "" {
-		filters = append(filters, fmt.Sprintf(`endTime: "%s"`, endTime))
+		filters = append(filters, fmt.Sprintf(`endTime: %s`, jsonString(endTime)))
 	}
-	if len(eventTypes) > 0 {
-		// Format event types as unquoted GraphQL enums.
-		categories := "[" + strings.Join(eventTypes, ", ") + "]"
-		filters = append(filters, fmt.Sprintf("categories: %s", categories))
+	// Allowlisting happens here, at the point of embedding, so the guarantee holds
+	// regardless of what the caller passed. Rejected values are reported by
+	// timelinesBatch, which filters once for the whole batch.
+	if categories, _ := filterTimelineCategories(eventTypes); len(categories) > 0 {
+		filters = append(filters, fmt.Sprintf("categories: [%s]", strings.Join(categories, ", ")))
 	}
 
 	filterString := strings.Join(filters, ", ")
@@ -400,8 +444,11 @@ func buildTimelineQuery(entityID, startTime, endTime string, eventTypes []string
         `, filterString, limit)
 }
 
-// buildRelationshipQuery mirrors _build_relationship_analysis_query, including
-// its recursive association nesting driven by relationshipDepth.
+// buildRelationshipQuery renders the relationship-graph query for one entity,
+// including its recursive association nesting driven by relationshipDepth.
+//
+// The entity ID is embedded as a JSON string literal, matching
+// buildEntityDetailsQuery, so caller input cannot inject query structure.
 func buildRelationshipQuery(entityID string, relationshipDepth int, includeRiskContext bool, limit int) string {
 	riskFields := ""
 	if includeRiskContext {
@@ -419,7 +466,7 @@ func buildRelationshipQuery(entityID string, relationshipDepth int, includeRiskC
 
 	return fmt.Sprintf(`
         query {
-            entities(entityIds: ["%s"], first: %d) {
+            entities(entityIds: %s, first: %d) {
                 nodes {
                     entityId
                     primaryDisplayName
@@ -430,11 +477,11 @@ func buildRelationshipQuery(entityID string, relationshipDepth int, includeRiskC
                 }
             }
         }
-        `, entityID, limit, riskFields, associationFields)
+        `, jsonList([]string{entityID}), limit, riskFields, associationFields)
 }
 
 // buildAssociationFields recursively builds nested association selections to the
-// given depth, mirroring the Python inner build_association_fields closure.
+// given depth.
 func buildAssociationFields(depth int, riskFields string) string {
 	if depth <= 0 {
 		return ""
@@ -485,7 +532,7 @@ func buildAssociationFields(depth int, riskFields string) string {
             `, riskFields, nested, riskFields, nested)
 }
 
-// buildRiskAssessmentQuery mirrors _build_risk_assessment_query.
+// buildRiskAssessmentQuery renders the risk-assessment query for a batch of IDs.
 func buildRiskAssessmentQuery(entityIDs []string, includeRiskFactors bool) string {
 	riskFields := `
             riskScore

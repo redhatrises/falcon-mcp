@@ -1,17 +1,16 @@
 // Package idp implements the falcon_idp_investigate_entity tool over the
-// gofalcon identity_protection GraphQL client. It mirrors the Python falcon-mcp
-// idp module 1:1: a single read-only investigation tool that resolves Identity
-// Protection entities from a mix of identifiers (IDs, names, emails, IPs,
-// domains) and then runs one or more investigation types against them —
-// entity details, activity timeline, relationship graph, and risk assessment.
+// gofalcon identity_protection GraphQL client: a single read-only investigation
+// tool that resolves Identity Protection entities from a mix of identifiers
+// (IDs, names, emails, IPs, domains) and then runs one or more investigation
+// types against them — entity details, activity timeline, relationship graph,
+// and risk assessment.
 //
 // All Falcon access goes through a single endpoint,
 // POST /identity-protection/combined/graphql/v1 (gofalcon operation
 // APIPreemptProxyPostGraphql), driven by GraphQL query strings this module
 // builds. Invalid input (no identifier, a bare wildcard) and "no entities
-// found" are returned as data on the result envelope — matching the Python
-// contract — rather than as Go errors; only a transport/API failure surfaces as
-// a *base.Error.
+// found" are returned as data on the result envelope rather than as Go errors;
+// only a transport/API failure surfaces as a *base.Error.
 package idp
 
 import (
@@ -29,7 +28,7 @@ import (
 // GraphQL operation. Surfaced on a 403 via base.APIError.
 var scopeIdentityProtection = base.Scope{Name: "Identity Protection Entities", Read: true}
 
-// Investigation type identifiers, mirroring the Python module's string values.
+// Investigation type identifiers.
 const (
 	investigationEntityDetails  = "entity_details"
 	investigationTimeline       = "timeline_analysis"
@@ -37,8 +36,8 @@ const (
 	investigationRiskAssessment = "risk_assessment"
 )
 
-// Bounds on the investigation parameters, mirroring the Python Field ge/le
-// constraints so the served schema advertises the same limits.
+// Bounds on the investigation parameters, advertised on the served schema and
+// enforced by the MCP layer before a call reaches the handler.
 const (
 	minRelationshipDepth = 1
 	maxRelationshipDepth = 3
@@ -81,10 +80,10 @@ func (m *Module) Description() string {
 	return "Investigate CrowdStrike Falcon Identity Protection entities"
 }
 
-// timestamp returns the current UTC time formatted like Python's
-// datetime.utcnow().isoformat(): a naive ISO 8601 timestamp with no timezone
-// designator, and with the fractional-seconds component present only when the
-// microsecond field is non-zero. It uses m.now when set so tests can pin the
+// timestamp returns the current UTC time as a naive ISO 8601 timestamp: no
+// timezone designator, and with the fractional-seconds component present only
+// when the microsecond field is non-zero. Clients parse this format, so it is
+// part of the tool's wire contract. It uses m.now when set so tests can pin the
 // value.
 func (m *Module) timestamp() string {
 	now := time.Now
@@ -98,8 +97,7 @@ func (m *Module) timestamp() string {
 	return t.Format("2006-01-02T15:04:05.000000")
 }
 
-// investigateEntityDescription mirrors the Python falcon-mcp idp module's tool
-// docstring 1:1 for client compatibility.
+// investigateEntityDescription is the tool description served to clients.
 const investigateEntityDescription = "Investigate one or more Identity Protection entities by ID, name, email, IP, or domain.\n\n" +
 	"Use this to look up entity details, activity timelines, relationship graphs, and risk\n" +
 	"assessments; at least one identifier must be supplied, and multiple identifiers are\n" +
@@ -117,7 +115,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 }
 
 // RegisterResources is a no-op: IDP uses GraphQL, not FQL, so there is no filter
-// guide to publish (the Python module registers no resources either).
+// guide to publish.
 func (m *Module) RegisterResources(_ *mcp.Server) {}
 
 // RegisterPrompts is a no-op: the idp module exposes no prompts.
