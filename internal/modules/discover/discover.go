@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/discover"
@@ -34,6 +35,10 @@ const maxLimit = 1000
 // unmanagedFilter is prepended to every unmanaged-asset query so the tool only
 // ever returns hosts without a Falcon sensor, mirroring the Python module.
 const unmanagedFilter = "entity_type:'unmanaged'"
+
+// errInvalidFilter classifies a caller filter rejected client-side, before any
+// request is built, so callers can distinguish it from an API error.
+var errInvalidFilter = errors.New("invalid filter")
 
 // scopeAssetsRead is the CrowdStrike API scope required by this module's
 // discover operations (console permission "Assets"). Surfaced on a 403 via
@@ -102,7 +107,7 @@ Note: Requests that do not include the host_info or browser_extension facets sti
 
 	applicationsSortDescription = "Property used to sort the results. All properties can be used to sort unless otherwise noted in their property descriptions."
 
-	unmanagedFilterDescription = "FQL filter expression. See `falcon://discover/hosts/fql-guide` for syntax. Note: entity_type:'unmanaged' is automatically applied."
+	unmanagedFilterDescription = "FQL filter expression. See `falcon://discover/hosts/fql-guide` for syntax. Note: entity_type:'unmanaged' is automatically applied. Parentheses and single quotes must be balanced or the filter is rejected."
 
 	unmanagedSortDescription = `Sort unmanaged assets using these options:
 
@@ -254,12 +259,17 @@ func (m *Module) searchUnmanagedAssets(ctx context.Context, _ *mcp.CallToolReque
 		limit = defaultLimit
 	}
 
-	// Always constrain to unmanaged assets, combining with any user filter via
-	// the FQL AND operator (+).
-	filter := unmanagedFilter
-	if in.Filter != "" {
-		filter = unmanagedFilter + "+" + in.Filter
+	// A filter that cannot be safely scoped is reported as a soft FQL result
+	// rather than a Go error, so the caller receives the guide and can
+	// self-correct exactly as it would from an API-rejected filter. The echoed
+	// filter is the raw input because no combined filter was built.
+	filter, err := scopedFilter(in.Filter)
+	if err != nil {
+		m.Logger.Warn("search_unmanaged_assets rejected malformed filter", "filter", in.Filter, "err", err)
+		details := []base.FQLErrorDetail{{Code: 400, Message: err.Error()}}
+		return nil, base.FQLError[*models.DomainDiscoverAPIHost](details, in.Filter, unmanagedAssetsFQLGuide), nil
 	}
+
 	m.Logger.Debug("search_unmanaged_assets", "filter", filter, "limit", limit, "sort", in.Sort)
 
 	params := discover.NewCombinedHostsParamsWithContext(ctx)
@@ -282,6 +292,75 @@ func (m *Module) searchUnmanagedAssets(ctx context.Context, _ *mcp.CallToolReque
 	assets := resp.Payload.Resources
 	m.Logger.Debug("search_unmanaged_assets query complete", "matched", len(assets))
 	return nil, base.Found(assets, filter).WithMeta(resp.Payload.Meta), nil
+}
+
+// scopedFilter combines the mandatory unmanaged-asset scope with the caller's
+// filter, rejecting a filter it cannot safely wrap.
+//
+// The caller portion is parenthesized because FQL's , (OR) binds looser than +
+// (AND): concatenating a caller filter that contains a top-level comma yields
+// "scope+a,b", which the API groups as (scope AND a) OR b. The second branch
+// carries no scope term, so it matches managed hosts and escapes the
+// unmanaged-only contract this tool advertises.
+//
+// Wrapping alone is not enough, which is why validation lives here rather than
+// in the caller: a stray ) in the filter closes the wrapping group early and
+// puts any following comma back at top level. Validating and wrapping in one
+// function means there is no way to build a scoped filter without the check.
+func scopedFilter(userFilter string) (string, error) {
+	if userFilter == "" {
+		return unmanagedFilter, nil
+	}
+	if err := checkFilterSyntax(userFilter); err != nil {
+		return "", err
+	}
+	return unmanagedFilter + "+(" + userFilter + ")", nil
+}
+
+// checkFilterSyntax verifies s is safe to wrap in a parenthesized group: parens
+// balance outside single-quoted values, and no quoted value is left open. It
+// rejects both a ) that closes a group never opened and groups left open at the
+// end. Parens inside quoted values are literal data, not grouping, so
+// hostname:'foo)bar' is accepted.
+//
+// The no-prefix-deficit property is what makes wrapping safe: if no prefix of s
+// holds more ) than (, the group scopedFilter opens is never closed early, so a
+// comma in s can never reach top level. An unterminated quote is rejected
+// because it makes the paren depth unreliable in both directions.
+//
+// Only the stray-) class is a security boundary. The API silently accepts a
+// scope-escaping filter with HTTP 200 and the widened result set (verified
+// live), so that class must be caught here. It rejects the other classes itself
+// with a 400 ("unmatched paren", "expected binary operator"); they are checked
+// here to keep the depth model above sound, not because the API misses them.
+func checkFilterSyntax(s string) error {
+	depth, quoted := 0, false
+	for i, r := range s {
+		if r == '\'' {
+			quoted = !quoted
+			continue
+		}
+		if quoted {
+			// Inside a quoted value: parens are literal data.
+			continue
+		}
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			if depth == 0 {
+				return fmt.Errorf("%w: %q has an unmatched ) at byte offset %d", errInvalidFilter, s, i)
+			}
+			depth--
+		}
+	}
+	if quoted {
+		return fmt.Errorf("%w: %q has an unterminated quoted value", errInvalidFilter, s)
+	}
+	if depth != 0 {
+		return fmt.Errorf("%w: %q has %d unclosed (", errInvalidFilter, s, depth)
+	}
+	return nil
 }
 
 // applicationsFQLBadRequest reports whether err is a 400-class combined
