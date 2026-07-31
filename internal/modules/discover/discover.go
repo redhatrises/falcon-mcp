@@ -45,6 +45,10 @@ var errInvalidFilter = errors.New("invalid filter")
 // base.APIError.
 var scopeAssetsRead = base.Scope{Name: "Assets", Read: true}
 
+// errInvalidInput classifies client-side validation failures (e.g. a missing
+// required filter) so the handler can distinguish them from API errors.
+var errInvalidInput = errors.New("discover: invalid input")
+
 // Factory builds the discover module from shared deps. The generated aggregator
 // (internal/mcpserver) collects it, so the module needs no init side effect.
 // Both tools are one-call queries, so the module ignores Deps.Concurrency.
@@ -211,6 +215,9 @@ type ApplicationsInput struct {
 
 func (m *Module) searchApplications(ctx context.Context, _ *mcp.CallToolRequest, in ApplicationsInput) (*mcp.CallToolResult, base.SearchResult[*models.DomainDiscoverAPIApplication], error) {
 	var zero base.SearchResult[*models.DomainDiscoverAPIApplication]
+	if in.Filter == "" {
+		return nil, zero, fmt.Errorf("%w: filter is required (the combined applications endpoint rejects an unfiltered query)", errInvalidInput)
+	}
 	limit := int64(in.Limit)
 	if limit == 0 {
 		limit = defaultLimit
@@ -248,12 +255,12 @@ func (m *Module) searchApplications(ctx context.Context, _ *mcp.CallToolRequest,
 // augmented with the limit bounds and the backtick/multi-line descriptions.
 //
 // The combined hosts endpoint paginates by token (after), not offset, so this
-// tool exposes no offset parameter (the Python offset had no gofalcon
-// equivalent).
+// tool exposes after rather than an offset parameter.
 type UnmanagedAssetsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter (e.g. platform_name:'Windows', criticality:'Critical')"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum records to return"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. hostname.asc, last_seen_timestamp.desc)"`
+	After  string `json:"after,omitempty" jsonschema:"pagination token from a previous response"`
 }
 
 func (m *Module) searchUnmanagedAssets(ctx context.Context, _ *mcp.CallToolRequest, in UnmanagedAssetsInput) (*mcp.CallToolResult, base.SearchResult[*models.DomainDiscoverAPIHost], error) {
@@ -273,14 +280,16 @@ func (m *Module) searchUnmanagedAssets(ctx context.Context, _ *mcp.CallToolReque
 		details := []base.FQLErrorDetail{{Code: 400, Message: err.Error()}}
 		return nil, base.FQLError[*models.DomainDiscoverAPIHost](details, in.Filter, unmanagedAssetsFQLGuide), nil
 	}
-
-	m.Logger.Debug("search_unmanaged_assets", "filter", filter, "limit", limit, "sort", in.Sort)
+	m.Logger.Debug("search_unmanaged_assets", "filter", filter, "limit", limit, "sort", in.Sort, "after", in.After)
 
 	params := discover.NewCombinedHostsParamsWithContext(ctx)
 	params.Limit = &limit
 	params.Filter = filter
 	if in.Sort != "" {
 		params.Sort = &in.Sort
+	}
+	if in.After != "" {
+		params.After = &in.After
 	}
 
 	resp, err := m.API.CombinedHosts(params)
