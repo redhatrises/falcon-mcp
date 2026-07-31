@@ -751,3 +751,74 @@ func TestDestructiveAnnotationsComplete(t *testing.T) {
 		}
 	}
 }
+
+func TestEnumDerivesFromAllowedValues(t *testing.T) {
+	t.Parallel()
+
+	allowed := []string{"fast", "slow"}
+	s := SchemaFor[enumIn](func(s *jsonschema.Schema) {
+		Enum(s, "mode", allowed, "fast")
+	})
+
+	got := s.Properties["mode"].Enum
+	if len(got) != len(allowed) {
+		t.Fatalf("enum = %v, want %v", got, allowed)
+	}
+	for i, want := range allowed {
+		if got[i] != any(want) {
+			t.Errorf("enum[%d] = %v, want %q", i, got[i], want)
+		}
+	}
+	if want := `"fast"`; string(s.Properties["mode"].Default) != want {
+		t.Errorf("default = %s, want %s", s.Properties["mode"].Default, want)
+	}
+}
+
+func TestEnumOmitsEmptyDefault(t *testing.T) {
+	t.Parallel()
+
+	s := SchemaFor[enumIn](func(s *jsonschema.Schema) {
+		Enum(s, "mode", []string{"fast", "slow"}, "")
+	})
+
+	if got := s.Properties["mode"].Default; got != nil {
+		t.Errorf("default = %s, want unset", got)
+	}
+}
+
+// enumIn is the input struct the Enum tests build schemas from. Count is an int
+// so the non-string property case is reachable.
+type enumIn struct {
+	Mode  string `json:"mode,omitempty" jsonschema:"the mode"`
+	Count int    `json:"count,omitempty" jsonschema:"the count"`
+}
+
+func TestEnumPanics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		property string
+		allowed  []string
+		def      string
+	}{
+		{"unknown property", "nope", []string{"x"}, ""},
+		{"non-string property", "count", []string{"x"}, ""},
+		{"no allowed values", "mode", nil, ""},
+		{"default not in allowed", "mode", []string{"fast"}, "slow"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("Enum(%q, %v, %q): expected panic", tc.property, tc.allowed, tc.def)
+				}
+			}()
+			SchemaFor[enumIn](func(s *jsonschema.Schema) {
+				Enum(s, tc.property, tc.allowed, tc.def)
+			})
+		})
+	}
+}

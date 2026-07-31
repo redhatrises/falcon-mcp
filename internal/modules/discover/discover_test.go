@@ -41,6 +41,7 @@ type fakeDiscover struct {
 	lastHostFilter string
 	lastHostSort   string
 	lastHostLimit  int64
+	lastHostAfter  string
 }
 
 func (f *fakeDiscover) CombinedApplications(p *discover.CombinedApplicationsParams, _ ...discover.ClientOption) (*discover.CombinedApplicationsOK, error) {
@@ -64,6 +65,9 @@ func (f *fakeDiscover) CombinedHosts(p *discover.CombinedHostsParams, _ ...disco
 	}
 	if p.Limit != nil {
 		f.lastHostLimit = *p.Limit
+	}
+	if p.After != nil {
+		f.lastHostAfter = *p.After
 	}
 	return f.hostsResp, f.hostsErr
 }
@@ -299,6 +303,49 @@ func TestSearchUnmanagedAssetsForwardsParams(t *testing.T) {
 	}
 	if f.lastHostSort != "hostname.asc" {
 		t.Errorf("sort = %q", f.lastHostSort)
+	}
+}
+
+func TestSearchUnmanagedAssetsForwardsAfter(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	if _, _, err := m.searchUnmanagedAssets(context.Background(), nil, UnmanagedAssetsInput{After: "tok-123"}); err != nil {
+		t.Fatalf("searchUnmanagedAssets: %v", err)
+	}
+	if f.lastHostAfter != "tok-123" {
+		t.Errorf("after = %q, want %q", f.lastHostAfter, "tok-123")
+	}
+}
+
+func TestSearchUnmanagedAssetsOmitsEmptyAfter(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	if _, _, err := m.searchUnmanagedAssets(context.Background(), nil, UnmanagedAssetsInput{}); err != nil {
+		t.Fatalf("searchUnmanagedAssets: %v", err)
+	}
+	if f.lastHostAfter != "" {
+		t.Errorf("after = %q, want unset", f.lastHostAfter)
+	}
+}
+
+func TestSearchApplicationsRejectsEmptyFilter(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{appsResp: appsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, _, err := m.searchApplications(context.Background(), nil, ApplicationsInput{})
+	if !errors.Is(err, errInvalidInput) {
+		t.Fatalf("expected errInvalidInput, got %v", err)
+	}
+	if f.appCalls != 0 {
+		t.Errorf("API called %d times, want 0", f.appCalls)
 	}
 }
 
