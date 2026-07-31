@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"slices"
 	"testing"
 
 	dp "github.com/crowdstrike/gofalcon/falcon/client/data_protection_configuration"
@@ -168,6 +169,45 @@ func TestSearchClassificationsAPIError(t *testing.T) {
 }
 
 // --- Policies ---
+
+func TestSearchPoliciesSchemaAdvertisesPlatformEnum(t *testing.T) {
+	t.Parallel()
+
+	prop, ok := searchPoliciesSchema.Properties["platform_name"]
+	if !ok {
+		t.Fatal("platform_name missing from schema properties")
+	}
+	if len(prop.Enum) != len(validPlatformNames) {
+		t.Fatalf("enum has %d values, want %d: %v", len(prop.Enum), len(validPlatformNames), prop.Enum)
+	}
+	for _, want := range validPlatformNames {
+		if !slices.Contains(prop.Enum, any(want)) {
+			t.Errorf("enum missing %q: %v", want, prop.Enum)
+		}
+	}
+	// The endpoint has no default platform, so the caller must pick one.
+	if prop.Default != nil {
+		t.Errorf("default = %s, want unset", prop.Default)
+	}
+}
+
+func TestSearchPoliciesRejectsInvalidPlatform(t *testing.T) {
+	t.Parallel()
+
+	for _, platform := range []string{"", "windows", "WIN", "linux"} {
+		t.Run(platform, func(t *testing.T) {
+			t.Parallel()
+
+			f := &fakeAPI{}
+			m := &Module{API: f, Logger: testLogger}
+
+			_, _, err := m.searchPolicies(context.Background(), nil, SearchPoliciesInput{PlatformName: platform})
+			if !errors.Is(err, errInvalidInput) {
+				t.Fatalf("platform %q: expected errInvalidInput, got %v", platform, err)
+			}
+		})
+	}
+}
 
 func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	t.Parallel()

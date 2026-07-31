@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -362,6 +363,8 @@ func TestUpdateExclusionMLSingularBody(t *testing.T) {
 func TestCreateExclusionValidation(t *testing.T) {
 	t.Parallel()
 
+	tru, fls := true, false
+
 	tests := []struct {
 		name    string
 		in      MutateInput
@@ -371,6 +374,8 @@ func TestCreateExclusionValidation(t *testing.T) {
 		{"ioa missing fields", MutateInput{ExclusionType: "ioa", Name: "n"}, true},
 		{"ioa catch-all regex", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: ".*", ClRegex: ".*"}, true},
 		{"ioa valid", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b"}, false},
+		{"ioa applied_globally true unsupported", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", AppliedGlobally: &tru}, true},
+		{"ioa applied_globally false ok", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", AppliedGlobally: &fls}, false},
 		// ML
 		{"ml missing value", MutateInput{ExclusionType: "ml"}, true},
 		{"ml valid", MutateInput{ExclusionType: "ml", Value: "/x"}, false},
@@ -378,6 +383,8 @@ func TestCreateExclusionValidation(t *testing.T) {
 		{"sv missing value", MutateInput{ExclusionType: "sensor_visibility", HostGroups: []string{"g1"}}, true},
 		{"sv missing host_groups", MutateInput{ExclusionType: "sensor_visibility", Value: "/x"}, true},
 		{"sv valid", MutateInput{ExclusionType: "sensor_visibility", Value: "/x", HostGroups: []string{"g1"}}, false},
+		{"sv applied_globally true unsupported", MutateInput{ExclusionType: "sensor_visibility", Value: "/x", HostGroups: []string{"g1"}, AppliedGlobally: &tru}, true},
+		{"sv applied_globally false ok", MutateInput{ExclusionType: "sensor_visibility", Value: "/x", HostGroups: []string{"g1"}, AppliedGlobally: &fls}, false},
 		// Certificate
 		{"cert missing certificate", MutateInput{ExclusionType: "certificate", Name: "n", Status: "enabled"}, true},
 		{"cert bad status", MutateInput{ExclusionType: "certificate", Name: "n", Certificate: &Certificate{Issuer: "i"}, Status: "on"}, true},
@@ -394,6 +401,47 @@ func TestCreateExclusionValidation(t *testing.T) {
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// TestMutateExclusionAppliedGloballyOpPrefix verifies the applied_globally
+// rejection names the operation actually being performed. buildBody serves both
+// create and update, so a hardcoded prefix would mislabel update failures.
+func TestMutateExclusionAppliedGloballyOpPrefix(t *testing.T) {
+	t.Parallel()
+
+	tru := true
+	tests := []struct {
+		exclusionType string
+		in            MutateInput
+	}{
+		{"ioa", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", AppliedGlobally: &tru}},
+		{"sensor_visibility", MutateInput{ExclusionType: "sensor_visibility", Value: "/x", HostGroups: []string{"g1"}, AppliedGlobally: &tru}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.exclusionType, func(t *testing.T) {
+			t.Parallel()
+
+			m := moduleWith(tc.exclusionType, &fakeBackend{})
+
+			_, _, err := m.createExclusion(context.Background(), nil, tc.in)
+			if err == nil {
+				t.Fatal("createExclusion: expected error")
+			}
+			if want := "create " + tc.exclusionType + " exclusion"; !strings.Contains(err.Error(), want) {
+				t.Errorf("createExclusion error = %q, want prefix %q", err, want)
+			}
+
+			withID := tc.in
+			withID.ID = "abc123"
+			_, _, err = m.updateExclusion(context.Background(), nil, withID)
+			if err == nil {
+				t.Fatal("updateExclusion: expected error")
+			}
+			if want := "update " + tc.exclusionType + " exclusion"; !strings.Contains(err.Error(), want) {
+				t.Errorf("updateExclusion error = %q, want prefix %q", err, want)
 			}
 		})
 	}

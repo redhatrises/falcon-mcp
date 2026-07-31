@@ -12,7 +12,11 @@ package data_protection
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 
 	dp "github.com/crowdstrike/gofalcon/falcon/client/data_protection_configuration"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -41,6 +45,16 @@ const (
 // scopeDataProtectionRead is the CrowdStrike API scope required by this module's
 // operations. Surfaced on a 403 via base.APIError.
 var scopeDataProtectionRead = base.Scope{Name: "Data Protection", Read: true}
+
+// errInvalidInput classifies client-side validation failures (e.g. an
+// unsupported platform_name) so the handler can distinguish them from API
+// errors.
+var errInvalidInput = errors.New("data_protection: invalid input")
+
+// validPlatformNames are the platform values the policies query endpoint
+// accepts, in schema order. It is the single source for both the advertised
+// enum and the handler's check.
+var validPlatformNames = []string{"win", "mac"}
 
 // Factory builds the data_protection module from shared deps. The generated
 // aggregator (internal/mcpserver) collects it, so the module needs no init side
@@ -133,6 +147,7 @@ var searchClassificationsSchema = base.SchemaFor[SearchInput](func(s *jsonschema
 var searchPoliciesSchema = base.SchemaFor[SearchPoliciesInput](func(s *jsonschema.Schema) {
 	s.Properties["filter"].Description = policiesFilterDescription
 	s.Properties["platform_name"].Description = platformNameDescription
+	base.Enum(s, "platform_name", validPlatformNames, "")
 	limitBounds(s)
 })
 
@@ -266,6 +281,9 @@ func (m *Module) searchClassifications(ctx context.Context, req *mcp.CallToolReq
 
 func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, in SearchPoliciesInput) (*mcp.CallToolResult, base.SearchResult[*models.PolicymanagerExternalPolicy], error) {
 	var zero base.SearchResult[*models.PolicymanagerExternalPolicy]
+	if !slices.Contains(validPlatformNames, in.PlatformName) {
+		return nil, zero, fmt.Errorf("%w: platform_name %q (want %s)", errInvalidInput, in.PlatformName, strings.Join(validPlatformNames, " or "))
+	}
 	m.Logger.Debug("search_data_protection_policies", "platform_name", in.PlatformName, "filter", in.Filter, "limit", in.Limit, "offset", in.Offset, "sort", in.Sort)
 
 	params := dp.NewQueriesPolicyGetV2ParamsWithContext(ctx)

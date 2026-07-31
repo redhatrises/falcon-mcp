@@ -31,9 +31,11 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sync/atomic"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -98,6 +100,41 @@ func SchemaFor[In any](mutate func(*jsonschema.Schema)) *jsonschema.Schema {
 		mutate(s)
 	}
 	return s
+}
+
+// Enum constrains a schema property to allowed, deriving the JSON Schema enum
+// from the same slice the handler validates against with slices.Contains so the
+// two cannot drift. An empty def leaves the property with no default; otherwise
+// def is advertised as the default and must itself be in allowed. Panics when
+// the property is absent, when the property is not a string, when allowed is
+// empty, or when def is not in allowed (all programming errors caught at
+// startup).
+func Enum(s *jsonschema.Schema, property string, allowed []string, def string) {
+	prop, ok := s.Properties[property]
+	if !ok {
+		panic(fmt.Sprintf("base.Enum: no property %q in schema", property))
+	}
+	if prop.Type != "string" {
+		panic(fmt.Sprintf("base.Enum: property %q has type %q, want string", property, prop.Type))
+	}
+	if len(allowed) == 0 {
+		panic(fmt.Sprintf("base.Enum: property %q has no allowed values", property))
+	}
+	prop.Enum = make([]any, len(allowed))
+	for i, v := range allowed {
+		prop.Enum[i] = v
+	}
+	if def == "" {
+		return
+	}
+	if !slices.Contains(allowed, def) {
+		panic(fmt.Sprintf("base.Enum: property %q default %q is not in %v", property, def, allowed))
+	}
+	encoded, err := json.Marshal(def)
+	if err != nil {
+		panic(fmt.Sprintf("base.Enum: marshaling property %q default %q: %v", property, def, err))
+	}
+	prop.Default = encoded
 }
 
 // readOnlyAnnotations returns the default annotations applied to query tools:

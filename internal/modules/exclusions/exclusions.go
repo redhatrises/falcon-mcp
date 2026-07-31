@@ -149,15 +149,18 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Name: "create_exclusion",
 		Description: "Create an exclusion of the given exclusion_type. 'ioa' needs name, pattern_id, " +
 			"ifn_regex, and cl_regex; 'ml' and 'sensor_visibility' need value (sensor_visibility also " +
-			"needs host_groups); 'certificate' needs name, certificate, and status. Returns the created " +
-			"exclusion record(s).",
+			"needs host_groups); 'certificate' needs name, certificate, and status. applied_globally is " +
+			"honored only for 'ml' and 'certificate'; the 'ioa' and 'sensor_visibility' APIs have no such " +
+			"field, so applied_globally:true is rejected for those types rather than silently narrowing " +
+			"the exclusion's scope — use host_groups instead. Returns the created exclusion record(s).",
 		Annotations: base.MutatingAnnotations(),
 	}, m.createExclusion)
 
 	base.AddTool(r, &mcp.Tool{
 		Name: "update_exclusion",
 		Description: "Update an existing exclusion of the given exclusion_type. Provide the id plus the " +
-			"same fields used when creating that type. All four types update via HTTP PATCH. Returns the " +
+			"same fields used when creating that type. All four types update via HTTP PATCH. As with " +
+			"create, applied_globally:true is rejected for 'ioa' and 'sensor_visibility'. Returns the " +
 			"updated exclusion record(s).",
 		Annotations: base.MutatingAnnotations(),
 	}, m.updateExclusion)

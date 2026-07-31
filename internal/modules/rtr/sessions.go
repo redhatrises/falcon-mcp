@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/real_time_response"
 	"github.com/crowdstrike/gofalcon/falcon/client/real_time_response_audit"
@@ -14,9 +16,12 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
-// validAggregateTypes are the accepted aggregate_type values, mirroring the
-// Python module's Literal["terms", "date_range"] constraint.
-var validAggregateTypes = map[string]bool{"terms": true, "date_range": true}
+// validAggregateTypes are the accepted aggregate_type values, in schema order.
+// It is the single source for both the advertised enum and the handler's check.
+// defaultAggregateType is applied when the caller omits the field.
+var validAggregateTypes = []string{"terms", "date_range"}
+
+const defaultAggregateType = "terms"
 
 // defaultSearchLimit is the session-search page size applied when the caller
 // omits limit, matching the Python module's default of 10.
@@ -146,10 +151,10 @@ func (m *Module) aggregateSessions(ctx context.Context, _ *mcp.CallToolRequest, 
 	}
 	aggType := in.AggregateType
 	if aggType == "" {
-		aggType = "terms"
+		aggType = defaultAggregateType
 	}
-	if !validAggregateTypes[aggType] {
-		return nil, zero, wrapInvalid("aggregate rtr sessions", fmt.Sprintf("invalid aggregate_type %q (want terms or date_range)", aggType))
+	if !slices.Contains(validAggregateTypes, aggType) {
+		return nil, zero, wrapInvalid("aggregate rtr sessions", fmt.Sprintf("invalid aggregate_type %q (want %s)", aggType, strings.Join(validAggregateTypes, " or ")))
 	}
 	name := in.Name
 	if name == "" {

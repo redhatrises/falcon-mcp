@@ -38,7 +38,7 @@ type MutateInput struct {
 	IsDescendantProcess *bool    `json:"is_descendant_process,omitempty" jsonschema:"whether the exclusion applies to descendant processes; ml and sensor_visibility"`
 
 	HostGroups      []string `json:"host_groups,omitempty" jsonschema:"host group IDs to scope the exclusion; required (non-empty) for sensor_visibility, optional otherwise"`
-	AppliedGlobally *bool    `json:"applied_globally,omitempty" jsonschema:"whether the exclusion applies to all hosts"`
+	AppliedGlobally *bool    `json:"applied_globally,omitempty" jsonschema:"whether the exclusion applies to all hosts; supported only for ml and certificate, rejected for ioa and sensor_visibility"`
 	Description     string   `json:"description,omitempty" jsonschema:"exclusion description; applies to ioa and certificate"`
 	Comment         string   `json:"comment,omitempty" jsonschema:"audit comment for the exclusion"`
 }
@@ -136,8 +136,31 @@ func buildBody(exclusionType string, in MutateInput, exclusionID string) (any, e
 	}
 }
 
+// mutateOp names the operation a body builder is serving, for the op prefix on
+// its validation errors. exclusionID is empty for create and the target ID for
+// update, matching buildBody's convention.
+func mutateOp(exclusionType, exclusionID string) string {
+	if exclusionID == "" {
+		return "create " + exclusionType + " exclusion"
+	}
+	return "update " + exclusionType + " exclusion"
+}
+
+// rejectAppliedGlobally reports an error when the caller asked for
+// applied_globally on an exclusion type whose gofalcon model cannot carry it.
+// Only an explicit true is rejected: false matches the field's absence, so
+// sending it loses nothing. op names the operation for the error prefix.
+func rejectAppliedGlobally(in MutateInput, op string) error {
+	if in.AppliedGlobally == nil || !*in.AppliedGlobally {
+		return nil
+	}
+	return wrapInvalid(op,
+		"this exclusion type cannot be applied globally; scope it with host_groups instead")
+}
+
 // buildIOABody builds the wrapped IOA v2 exclusion request. The gofalcon item
-// model has no applied_globally field, so that param is not sent for IOA.
+// model has no applied_globally field, so requesting it is rejected rather than
+// silently dropped.
 func buildIOABody(in MutateInput, id string) (any, error) {
 	if in.Name == "" || in.PatternID == "" || in.IfnRegex == "" || in.ClRegex == "" {
 		return nil, wrapInvalid("create ioa exclusion",
@@ -148,6 +171,9 @@ func buildIOABody(in MutateInput, id string) (any, error) {
 		return nil, wrapInvalid("create ioa exclusion",
 			"ifn_regex and cl_regex cannot both be '.*' (this would exclude everything); "+
 				"provide more specific regexes")
+	}
+	if err := rejectAppliedGlobally(in, mutateOp("ioa", id)); err != nil {
+		return nil, err
 	}
 
 	if id == "" {
@@ -216,8 +242,9 @@ func buildMLBody(in MutateInput, id string) (any, error) {
 }
 
 // buildSVBody builds the Sensor Visibility v1 flat request. Sensor visibility
-// requires a non-empty host_groups list even when applied_globally is true; the
-// gofalcon model has no applied_globally field, so it is not sent.
+// requires a non-empty host_groups list; the gofalcon model has no
+// applied_globally field, so requesting it is rejected rather than silently
+// dropped.
 func buildSVBody(in MutateInput, id string) (any, error) {
 	if in.Value == "" {
 		return nil, wrapInvalid("create sensor_visibility exclusion",
@@ -225,7 +252,10 @@ func buildSVBody(in MutateInput, id string) (any, error) {
 	}
 	if len(in.HostGroups) == 0 {
 		return nil, wrapInvalid("create sensor_visibility exclusion",
-			"sensor visibility exclusions require a non-empty host_groups list, even when applied_globally is true")
+			"sensor visibility exclusions require a non-empty host_groups list")
+	}
+	if err := rejectAppliedGlobally(in, mutateOp("sensor_visibility", id)); err != nil {
+		return nil, err
 	}
 	descendant := in.IsDescendantProcess != nil && *in.IsDescendantProcess
 	if id == "" {
