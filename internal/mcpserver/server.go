@@ -128,7 +128,7 @@ func registerModules(s *mcp.Server, enabled, all []base.Module, check Connectivi
 		return nil, err
 	}
 	// Meta-tools only: list_enabled_modules is already on the served server.
-	NewMetaModule(cat, enabled).RegisterTools(reg)
+	NewMetaModule(cat).RegisterTools(reg)
 	return cat, nil
 }
 

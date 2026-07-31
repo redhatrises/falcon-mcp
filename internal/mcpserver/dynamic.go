@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -33,13 +34,12 @@ var ErrUnknownTool = errors.New("dynamic: unknown tool")
 // resources of its own.
 type MetaModule struct {
 	catalog *Catalog
-	modules []base.Module // retained for catalog context; not listed here
 }
 
-// NewMetaModule returns a MetaModule over cat. modules is the set of enabled
-// modules that contributed tools to the catalog (kept for future use).
-func NewMetaModule(cat *Catalog, modules []base.Module) *MetaModule {
-	return &MetaModule{catalog: cat, modules: modules}
+// NewMetaModule returns a MetaModule over cat. The enabled modules that
+// contributed tools are reachable through cat.Modules().
+func NewMetaModule(cat *Catalog) *MetaModule {
+	return &MetaModule{catalog: cat}
 }
 
 // Name reports the module name.
@@ -74,14 +74,24 @@ var searchToolsSchema = base.SchemaFor[SearchToolsInput](func(s *jsonschema.Sche
 // registered by coreTools.registerAlwaysOn, not here.
 func (m *MetaModule) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_tools",
-		Description: "Discover available Falcon tools by keyword search. Returns matching tool names, descriptions, and parameters; call falcon_execute_tool to run one.",
+		Name: "search_tools",
+		Description: "Discover available Falcon tools by keyword search. Keywords are " +
+			"matched against tool names, descriptions, module names, and parameter " +
+			"names; pass module to restrict results to one module. Each match reports " +
+			"its parameters plus read_only and destructive flags. Consult this before " +
+			"calling falcon_execute_tool to understand a tool's parameters and " +
+			"mutation risk.",
 		InputSchema: searchToolsSchema,
 	}, m.searchTools)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "execute_tool",
-		Description: "Execute a Falcon tool by name with the given parameters. Use falcon_search_tools to discover tool names and parameters first.",
+		Name: "execute_tool",
+		Description: "Execute a Falcon tool by name with the given parameters. " +
+			"Use falcon_search_tools to discover tool names and parameters first, " +
+			"and to check each tool's read_only and destructive flags — do not " +
+			"execute destructive tools without confirming the user's intent. " +
+			"Results are returned in full: use the target tool's own limit " +
+			"parameter to control response volume.",
 		// Not read-only: this meta-tool can dispatch to mutating/destructive
 		// tools. Agents must use falcon_search_tools' read_only/destructive
 		// fields to assess risk per target tool.
@@ -106,10 +116,13 @@ type ToolSummary struct {
 	Destructive bool           `json:"destructive"`
 }
 
-// SearchToolsResult is the falcon_search_tools output envelope.
+// SearchToolsResult is the falcon_search_tools output envelope. Hint is set only
+// when Tools is empty, carrying recovery guidance; it is omitted otherwise so a
+// successful search keeps the same shape minus the noise.
 type SearchToolsResult struct {
 	Tools []ToolSummary `json:"tools"`
 	Total int           `json:"total"`
+	Hint  string        `json:"hint,omitempty"`
 }
 
 // searchTools implements falcon_search_tools. It filters the catalog by exact
@@ -142,7 +155,24 @@ func (m *MetaModule) searchTools(_ context.Context, _ *mcp.CallToolRequest, in S
 			break
 		}
 	}
-	return nil, SearchToolsResult{Tools: tools, Total: len(tools)}, nil
+	res := SearchToolsResult{Tools: tools, Total: len(tools)}
+	if len(tools) == 0 {
+		res.Hint = m.noMatchHint()
+	}
+	return nil, res, nil
+}
+
+// noMatchHint returns the recovery guidance attached to an empty
+// falcon_search_tools result: the modules this server actually exposes (sorted
+// for a stable message) plus the next things to try. Without it a search for a
+// module the deployment does not enable is indistinguishable from a typo.
+func (m *MetaModule) noMatchHint() string {
+	mods := m.catalog.Modules()
+	slices.Sort(mods)
+	return fmt.Sprintf(
+		"No tools matched. Available modules: %s. Try a broader query, drop the module filter, or call falcon_list_enabled_modules.",
+		strings.Join(mods, ", "),
+	)
 }
 
 // matchesAll reports whether corpus contains every token (AND substring).

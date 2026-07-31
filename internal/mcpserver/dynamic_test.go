@@ -83,16 +83,14 @@ func (m fakeToolModule) RegisterTools(r base.Registrar) {
 func buildCatalog(t *testing.T, modules ...fakeToolModule) *MetaModule {
 	t.Helper()
 	cat := NewCatalog()
-	mods := make([]base.Module, 0, len(modules))
 	for _, m := range modules {
 		m.RegisterTools(cat.ForModule(m.Name()))
-		mods = append(mods, m)
 	}
 	if err := cat.Connect(context.Background()); err != nil {
 		t.Fatalf("catalog connect: %v", err)
 	}
 	t.Cleanup(func() { _ = cat.Close() })
-	return NewMetaModule(cat, mods)
+	return NewMetaModule(cat)
 }
 
 func callSearch(t *testing.T, m *MetaModule, in SearchToolsInput) SearchToolsResult {
@@ -186,6 +184,55 @@ func TestSearchToolsNoMatchIsEmptyNotNil(t *testing.T) {
 	}
 	if len(got.Tools) != 0 {
 		t.Errorf("Tools len = %d, want 0", len(got.Tools))
+	}
+}
+
+// TestSearchToolsNoMatchHint checks that an empty result set carries the
+// recovery hint naming the available modules, so an agent that searched a
+// module this server does not expose can tell why and what to try next. Both
+// no-match routes are covered: an unmatched query token and a module filter
+// naming a module the deployment does not enable.
+func TestSearchToolsNoMatchHint(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   SearchToolsInput
+	}{
+		{name: "unmatched query", in: SearchToolsInput{Query: "nonexistent"}},
+		{name: "unknown module", in: SearchToolsInput{Module: "nonexistent"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m := buildCatalog(t, fakeToolModule{name: "hosts"}, fakeToolModule{name: "detections"})
+			got := callSearch(t, m, tt.in)
+			if len(got.Tools) != 0 {
+				t.Fatalf("precondition: Tools = %v, want no matches", toolNames(got))
+			}
+			if got.Hint == "" {
+				t.Fatal("Hint is empty on a no-match search, want a recovery hint")
+			}
+			// Modules are listed sorted, so the hint text is deterministic.
+			for _, want := range []string{"detections", "hosts", "falcon_list_enabled_modules"} {
+				if !strings.Contains(got.Hint, want) {
+					t.Errorf("Hint %q missing %q", got.Hint, want)
+				}
+			}
+		})
+	}
+}
+
+// TestSearchToolsMatchHasNoHint checks the hint stays absent when results exist,
+// so it never adds noise to a successful search.
+func TestSearchToolsMatchHasNoHint(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t, fakeToolModule{name: "hosts"})
+	got := callSearch(t, m, SearchToolsInput{Query: "hosts"})
+	if len(got.Tools) == 0 {
+		t.Fatal("precondition: expected a match")
+	}
+	if got.Hint != "" {
+		t.Errorf("Hint = %q on a successful search, want empty", got.Hint)
 	}
 }
 

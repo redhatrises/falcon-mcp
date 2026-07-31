@@ -34,11 +34,14 @@ type coreTools struct {
 }
 
 // registerAlwaysOn registers falcon_list_enabled_modules, which is present in
-// both normal and dynamic mode (dynamic's no-results hint references it).
+// both normal and dynamic mode: MetaModule.noMatchHint names it as the recovery
+// step for a search that matched nothing, so it must be callable in dynamic mode.
 func (c *coreTools) registerAlwaysOn(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "list_enabled_modules",
-		Description: "List the Falcon modules enabled on this server.",
+		Name: "list_enabled_modules",
+		Description: "List the Falcon modules enabled on this server, each with its " +
+			"name and description. Use this to learn which capability areas this " +
+			"server exposes before searching for a tool.",
 	}, c.listEnabledModules)
 }
 

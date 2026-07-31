@@ -113,7 +113,9 @@ avoid large responses.
 { "query": "quarantine release" }
 ```
 
-If no tools match, the response lists available module names so the agent can narrow its query.
+When nothing matches, the response carries an empty `tools` array plus a `hint` field naming the
+modules this server actually exposes — useful for telling a typo apart from a module the deployment
+does not enable. The `hint` field is omitted when there are matches.
 
 ## When to Use Dynamic Mode
 
