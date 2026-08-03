@@ -213,7 +213,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"device_control, response, or content_update) by name, platform, enabled state, or timestamp. " +
 			"Select which policy API is queried with policy_type. Consult falcon://policies/search/fql-guide " +
 			"before constructing filter expressions — the name match operator differs per type. Returns full " +
-			"policy records including id, name, platform_name, enabled, settings, and assigned host groups.",
+			"policy records including id, name, platform_name, enabled, settings, and assigned host groups.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchPoliciesSchema,
 	}, m.searchPolicies)
 
@@ -222,7 +224,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "List the host devices governed by a specific policy. Provide the policy_type and policy " +
 			"id; the filter and sort operate on HOST/DEVICE attributes, not policy " +
 			"attributes. Consult falcon://hosts/search/fql-guide before constructing filter expressions. Differs from falcon_search_policies (which returns the policy object) and " +
-			"falcon_search_host_group_members (one group's hosts). Returns full host device records.",
+			"falcon_search_host_group_members (one group's hosts). Returns full host device records.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchPolicyMembersSchema,
 	}, m.searchPolicyMembers)
 

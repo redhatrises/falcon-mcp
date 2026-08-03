@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/quarantine"
@@ -91,6 +92,7 @@ var searchQuarantinedFilesSchema = base.SchemaFor[SearchInput](func(s *jsonschem
 	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["limit"].Maximum = jsonschema.Ptr(500.0)
 	s.Properties["limit"].Default = json.RawMessage(`10`)
+	s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
 })
 
 // RegisterTools registers the four quarantine tools into r.
@@ -101,7 +103,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"user, or quarantine state, and return full quarantine metadata. Consult " +
 			"falcon://quarantine/files/search/fql-guide before constructing filter expressions. " +
 			"Returns full quarantine details including hostname, sha256, paths, state, and " +
-			"associated alert and detection IDs.",
+			"associated alert and detection IDs." +
+			" Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchQuarantinedFilesSchema,
 	}, m.searchQuarantinedFiles)
 
@@ -153,9 +157,7 @@ func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 type SearchInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter expression. See falcon://quarantine/files/search/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of quarantine file IDs to return (max 500)"`
-	// The quarantine query endpoint declares offset as a string type, unlike
-	// most other Falcon endpoints which use an integer offset.
-	Offset string `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
+	Offset int    `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort such as date_updated|desc or hostname|asc"`
 }
 
@@ -172,8 +174,12 @@ func (m *Module) searchQuarantinedFiles(ctx context.Context, req *mcp.CallToolRe
 	if in.Filter != "" {
 		params.Filter = &in.Filter
 	}
-	if in.Offset != "" {
-		params.Offset = &in.Offset
+	// This endpoint types its offset query param as a string while reporting a
+	// numeric offset back in meta.pagination, so the numeric input is formatted
+	// here rather than exposing the string form to callers.
+	if in.Offset != 0 {
+		offset := strconv.Itoa(in.Offset)
+		params.Offset = &offset
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

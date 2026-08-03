@@ -18,6 +18,10 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
+
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
 
@@ -56,9 +60,11 @@ type fakeAssets struct {
 	getResp   *cloud_security_assets.CloudSecurityAssetsEntitiesGetOK
 	getCalls  int
 	getIDs    []string
+	lastQuery *cloud_security_assets.CloudSecurityAssetsQueriesParams
 }
 
-func (f *fakeAssets) CloudSecurityAssetsQueries(*cloud_security_assets.CloudSecurityAssetsQueriesParams, ...cloud_security_assets.ClientOption) (*cloud_security_assets.CloudSecurityAssetsQueriesOK, error) {
+func (f *fakeAssets) CloudSecurityAssetsQueries(p *cloud_security_assets.CloudSecurityAssetsQueriesParams, _ ...cloud_security_assets.ClientOption) (*cloud_security_assets.CloudSecurityAssetsQueriesOK, error) {
+	f.lastQuery = p
 	return f.queryResp, f.queryErr
 }
 func (f *fakeAssets) CloudSecurityAssetsEntitiesGet(p *cloud_security_assets.CloudSecurityAssetsEntitiesGetParams, _ ...cloud_security_assets.ClientOption) (*cloud_security_assets.CloudSecurityAssetsEntitiesGetOK, error) {
@@ -72,9 +78,11 @@ type fakeDetections struct {
 	queryErr  error
 	getResp   *cloud_security_detections.CspmEvaluationsIomEntitiesOK
 	getCalls  int
+	lastQuery *cloud_security_detections.CspmEvaluationsIomQueriesParams
 }
 
-func (f *fakeDetections) CspmEvaluationsIomQueries(*cloud_security_detections.CspmEvaluationsIomQueriesParams, ...cloud_security_detections.ClientOption) (*cloud_security_detections.CspmEvaluationsIomQueriesOK, error) {
+func (f *fakeDetections) CspmEvaluationsIomQueries(p *cloud_security_detections.CspmEvaluationsIomQueriesParams, _ ...cloud_security_detections.ClientOption) (*cloud_security_detections.CspmEvaluationsIomQueriesOK, error) {
+	f.lastQuery = p
 	return f.queryResp, f.queryErr
 }
 func (f *fakeDetections) CspmEvaluationsIomEntities(*cloud_security_detections.CspmEvaluationsIomEntitiesParams, ...cloud_security_detections.ClientOption) (*cloud_security_detections.CspmEvaluationsIomEntitiesOK, error) {
@@ -142,7 +150,7 @@ func TestSearchKubernetesContainersReturnsRecords(t *testing.T) {
 	t.Parallel()
 	f := &fakeKubernetes{combinedResp: &kubernetes_protection.ContainerCombinedOK{Payload: &models.ModelsContainerEntityResponse{
 		Resources: []*models.ModelsContainer{{ContainerID: str("c1")}, {ContainerID: str("c2")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{Kubernetes: f, Logger: testLogger}
 
@@ -208,7 +216,7 @@ func TestSearchImagesVulnerabilities(t *testing.T) {
 	t.Parallel()
 	f := &fakeVulns{resp: &container_vulnerabilities.ReadCombinedVulnerabilitiesOK{Payload: &models.VulnerabilitiesAPICombinedVulnerability{
 		Resources: []*models.ModelsAPIVulnerabilityCombined{{CveID: str("CVE-2025-1")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{Vulns: f, Logger: testLogger}
 
@@ -228,7 +236,7 @@ func TestSearchCSPMAssetsSlimsAndReturns(t *testing.T) {
 	f := &fakeAssets{
 		queryResp: &cloud_security_assets.CloudSecurityAssetsQueriesOK{Payload: &models.AssetsGetResourceIDsResponse{
 			Resources: []string{"a1", "a2"},
-			Meta:      &models.RestCursorAndLimitMetaInfo{},
+			Meta:      &models.RestCursorAndLimitMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getResp: &cloud_security_assets.CloudSecurityAssetsEntitiesGetOK{Payload: &models.AssetsGetResourcesResponse{
 			Resources: []*models.ResourcesCloudResource{
@@ -403,7 +411,7 @@ func TestSearchIOMFindingsReturnsDetails(t *testing.T) {
 	f := &fakeDetections{
 		queryResp: &cloud_security_detections.CspmEvaluationsIomQueriesOK{Payload: &models.EvaluationsQueryIOMsResponse{
 			Resources: []string{"i1", "i2"},
-			Meta:      &models.RestCursorAndLimitMetaInfo{},
+			Meta:      &models.RestCursorAndLimitMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getResp: &cloud_security_detections.CspmEvaluationsIomEntitiesOK{Payload: &models.EvaluationsGetIOMsResponse{
 			Resources: []*models.EvaluationsEvaluation{{ID: "i1"}, {ID: "i2"}},
@@ -420,6 +428,32 @@ func TestSearchIOMFindingsReturnsDetails(t *testing.T) {
 	}
 	if f.getCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.getCalls)
+	}
+}
+
+// TestSearchIOMFindingsSurfacesSiblingCursor pins that this endpoint's top-level
+// "next" cursor — reported as a sibling of pagination rather than inside it — is
+// folded into pagination.next, so a caller reads the cursor from the same place on
+// every endpoint.
+func TestSearchIOMFindingsSurfacesSiblingCursor(t *testing.T) {
+	t.Parallel()
+	f := &fakeDetections{
+		queryResp: &cloud_security_detections.CspmEvaluationsIomQueriesOK{Payload: &models.EvaluationsQueryIOMsResponse{
+			Resources: []string{},
+			Meta:      &models.RestCursorAndLimitMetaInfo{QueryTime: &metaQueryTime, Next: "cursor-next"},
+		}},
+	}
+	m := &Module{Detections: f, Concurrency: 4, Logger: testLogger}
+
+	_, out, err := m.searchIOMFindings(context.Background(), nil, SearchIOMFindingsInput{})
+	if err != nil {
+		t.Fatalf("searchIOMFindings: %v", err)
+	}
+	if out.Meta == nil || out.Meta.Pagination == nil {
+		t.Fatalf("result must carry pagination meta, got %+v", out.Meta)
+	}
+	if out.Meta.Pagination.Next != "cursor-next" {
+		t.Errorf("pagination.next = %q, want cursor-next", out.Meta.Pagination.Next)
 	}
 }
 
@@ -449,7 +483,7 @@ func TestSearchCloudRisks(t *testing.T) {
 	t.Parallel()
 	f := &fakeCloudSec{risksResp: &cloud_security.CombinedCloudRisksOK{Payload: &models.RisksGetCloudRisksResponse{
 		Resources: []*models.RisksUnionCloudRisk{{ID: str("r1")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{CloudSec: f, Logger: testLogger}
 
@@ -557,7 +591,7 @@ func TestSearchCSPMSuppressionRules(t *testing.T) {
 	f := &fakePolicies{
 		queryResp: &cloud_policies.QuerySuppressionRulesOK{Payload: &models.SuppressionrulesQuerySuppressionRulesResponse{
 			Resources: []string{"s1", "s2"},
-			Meta:      &models.MsaMetaInfo{},
+			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getResp: &cloud_policies.GetSuppressionRulesOK{Payload: &models.SuppressionrulesGetSuppressionRulesResponse{
 			Resources: []*models.ApimodelsSuppressionRule{{ID: str("s1")}, {ID: str("s2")}},
@@ -806,5 +840,45 @@ func assertDestructive(t *testing.T, name string, a *mcp.ToolAnnotations, idempo
 	}
 	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
 		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
+	}
+}
+
+// TestSearchCSPMAssetsAdvertisesNoOffset pins the pagination input surface for
+// search_cspm_assets. The endpoint treats offset and after as mutually exclusive
+// and caps offset at 10,000, so the cursor is the only way to traverse a full
+// result set and offering an offset alongside it would give a caller two ways to
+// page with no way to choose.
+func TestSearchCSPMAssetsAdvertisesNoOffset(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := searchCSPMAssetsSchema.Properties["offset"]; ok {
+		t.Error("search_cspm_assets must not advertise an offset input")
+	}
+	if _, ok := searchCSPMAssetsSchema.Properties["after"]; !ok {
+		t.Error("search_cspm_assets must advertise an after cursor")
+	}
+}
+
+// TestSearchCSPMAssetsNeverSendsOffset pins that the handler cannot forward an
+// offset alongside the cursor, which the endpoint rejects.
+func TestSearchCSPMAssetsNeverSendsOffset(t *testing.T) {
+	t.Parallel()
+	f := &fakeAssets{queryResp: &cloud_security_assets.CloudSecurityAssetsQueriesOK{
+		Payload: &models.AssetsGetResourceIDsResponse{Resources: []string{}},
+	}}
+	m := &Module{Assets: f, Concurrency: 4, Logger: testLogger}
+
+	_, _, err := m.searchCSPMAssets(context.Background(), nil, SearchCSPMAssetsInput{After: "tok"})
+	if err != nil {
+		t.Fatalf("searchCSPMAssets: %v", err)
+	}
+	if f.lastQuery == nil {
+		t.Fatal("query params must be recorded")
+	}
+	if f.lastQuery.Offset != nil {
+		t.Errorf("offset = %v, want unset", *f.lastQuery.Offset)
+	}
+	if f.lastQuery.After == nil || *f.lastQuery.After != "tok" {
+		t.Errorf("after = %v, want tok", f.lastQuery.After)
 	}
 }

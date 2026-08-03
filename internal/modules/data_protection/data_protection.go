@@ -88,7 +88,8 @@ const (
 Use this to find classification rules that define what sensitive data patterns
 to detect. Consult falcon://data-protection/classifications/fql-guide before
 constructing filter expressions. Returns full classification details including
-content pattern references and rule configuration.`
+content pattern references and rule configuration.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	searchPoliciesDescription = `Search for Data Protection policies in your CrowdStrike environment.
 
@@ -96,14 +97,16 @@ Use this to find data protection policies by platform, enablement status, or
 precedence. Requires a platform_name ('win' or 'mac'). Consult
 falcon://data-protection/policies/fql-guide before constructing filter
 expressions. Returns full policy details including host groups and
-classification assignments.`
+classification assignments.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	searchContentPatternsDescription = `Search for Data Protection content patterns in your CrowdStrike environment.
 
 Use this to find regex-based content detection patterns by type, category, or
 region. Consult falcon://data-protection/content-patterns/fql-guide before
 constructing filter expressions. Returns full pattern details including regex
-definitions and match thresholds.`
+definitions and match thresholds.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	classificationsFilterDescription = "FQL filter expression. See `falcon://data-protection/classifications/fql-guide` for syntax."
 	policiesFilterDescription        = "FQL filter expression. See `falcon://data-protection/policies/fql-guide` for syntax."

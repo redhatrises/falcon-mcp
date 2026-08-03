@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/alerts"
@@ -118,7 +119,7 @@ func TestSearchDetectionsFetchesDetails(t *testing.T) {
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 resources, got %+v", out)
 	}
-	if out.Meta != any(f.queryResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
 		t.Fatalf("expected query meta passed through verbatim, got %+v", out.Meta)
 	}
 	if got := *out.Resources[0].CompositeID; got != "id1" {
@@ -215,7 +216,7 @@ func TestUpdateDetectionsMetaPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updateDetections: %v", err)
 	}
-	if out.Meta != any(meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
 		t.Fatalf("expected meta passthrough, got %+v", out.Meta)
 	}
 }

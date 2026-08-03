@@ -20,10 +20,14 @@ type assetsAPI interface {
 }
 
 // SearchCSPMAssetsInput is the input for falcon_search_cspm_assets.
+//
+// Pagination is cursor-only: pass pagination.next from the previous response as
+// after. The endpoint documents offset and after as mutually exclusive, and
+// offset as usable only below 10,000, so traversing a large result set has to go
+// through the cursor.
 type SearchCSPMAssetsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter. See the fql-guide resource for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of assets to return"`
-	Offset int    `json:"offset,omitempty" jsonschema:"starting index of overall result set from which to return assets"`
 	After  string `json:"after,omitempty" jsonschema:"pagination token from a previous response; use with limit to page results"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. updated_at.desc, resource_type.asc)"`
 }
@@ -43,7 +47,7 @@ var searchCSPMAssetsSchema = base.SchemaFor[SearchCSPMAssetsInput](func(s *jsons
 // returns a typed 400 for an unknown field.
 func (m *Module) searchCSPMAssets(ctx context.Context, req *mcp.CallToolRequest, in SearchCSPMAssetsInput) (*mcp.CallToolResult, base.SearchResult[map[string]any], error) {
 	var zero base.SearchResult[map[string]any]
-	m.Logger.Debug("search_cspm_assets", "filter", in.Filter, "limit", in.Limit, "offset", in.Offset, "after", in.After, "sort", in.Sort)
+	m.Logger.Debug("search_cspm_assets", "filter", in.Filter, "limit", in.Limit, "after", in.After, "sort", in.Sort)
 
 	params := cloud_security_assets.NewCloudSecurityAssetsQueriesParamsWithContext(ctx)
 	limit := int64(in.Limit)
@@ -53,10 +57,6 @@ func (m *Module) searchCSPMAssets(ctx context.Context, req *mcp.CallToolRequest,
 	params.Limit = &limit
 	if in.Filter != "" {
 		params.Filter = &in.Filter
-	}
-	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
 	}
 	if in.After != "" {
 		params.After = &in.After

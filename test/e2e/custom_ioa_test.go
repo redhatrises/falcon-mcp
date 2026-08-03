@@ -57,6 +57,12 @@ var _ = Describe("custom_ioa module", Label("integration", "custom_ioa"), func()
 		expectSearchReturnsDetails(res, "id", "name", "platform")
 	})
 
+	It("pages rule groups and rule types by advancing the reported offset", func() {
+		cs := newSession(ctx)
+		expectOffsetPaginates(ctx, cs, "falcon_search_ioa_rule_groups", map[string]any{"limit": 2})
+		expectOffsetPaginates(ctx, cs, "falcon_get_ioa_rule_types", map[string]any{"limit": 2})
+	})
+
 	It("gets the available IOA platforms", func() {
 		cs := newSession(ctx)
 		res := callTool(ctx, cs, "falcon_get_ioa_platforms", map[string]any{})

@@ -46,7 +46,7 @@ Use `GetSupportedSaasV3` via the API to get the current list of platforms availa
 
 ## Pagination Notes
 
-- `meta.pagination.total` is always null — iterate until empty results
+- Activity Monitor reports no match count — its `meta.pagination.total` is null, so iterate until empty results
 - Activity Monitor: use `meta.pagination.next` as `to_date` and `meta.pagination.offset` as `skip`
-- Alerts: use `last_id` for cursor-based pagination (alternative to offset)
+- Alerts: pass `meta.pagination.next` as `last_id` to fetch the next page
 - Activity Monitor has 24-hour date range limit when using integration_id/category/actor filters
