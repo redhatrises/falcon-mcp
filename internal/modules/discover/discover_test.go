@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/discover"
 	"github.com/crowdstrike/gofalcon/falcon/models"
+
+	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
 // testLogger discards output; modules require a non-nil logger.
@@ -94,8 +97,8 @@ func TestSearchApplicationsSuccess(t *testing.T) {
 	if out.Resources[0].Name != "Chrome" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}
-	if out.Meta != any(f.appsResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.appsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -219,8 +222,8 @@ func TestSearchUnmanagedAssetsSuccess(t *testing.T) {
 	if out.Resources[0].Hostname != "PC-001" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}
-	if out.Meta != any(f.hostsResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.hostsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 

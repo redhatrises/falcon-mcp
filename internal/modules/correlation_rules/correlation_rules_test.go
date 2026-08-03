@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/correlation_rules"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -76,7 +81,7 @@ func TestSearchSuccess(t *testing.T) {
 
 	f := &fakeAPI{searchResp: &correlation_rules.CombinedRulesGetV2OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
 		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("r1"), Name: str("Rule One")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -93,8 +98,8 @@ func TestSearchSuccess(t *testing.T) {
 	if f.lastSearch.Limit == nil || *f.lastSearch.Limit != defaultLimit {
 		t.Fatalf("expected default limit %d, got %v", defaultLimit, f.lastSearch.Limit)
 	}
-	if out.Meta != any(f.searchResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.searchResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -210,7 +215,7 @@ func TestCreateBodyDefaults(t *testing.T) {
 
 	f := &fakeAPI{createResp: &correlation_rules.EntitiesRulesPostV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
 		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("new"), RuleID: "rule-new"}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -226,8 +231,8 @@ func TestCreateBodyDefaults(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record returned, got %+v", out)
 	}
-	if out.Meta != any(f.createResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	body := f.lastCreate
 	if body == nil {
@@ -348,7 +353,7 @@ func TestUpdateBodyPartial(t *testing.T) {
 
 	f := &fakeAPI{patchResp: &correlation_rules.EntitiesRulesPatchV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
 		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("r1")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -362,8 +367,8 @@ func TestUpdateBodyPartial(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected updated record returned, got %+v", out)
 	}
-	if out.Meta != any(f.patchResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.patchResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	// The wire body is a single-element list of patch maps.
 	body, ok := f.lastPatchReq.([]map[string]any)
@@ -502,7 +507,7 @@ func TestDeleteSuccess(t *testing.T) {
 
 	f := &fakeAPI{deleteResp: &correlation_rules.EntitiesRulesDeleteV1OK{Payload: &models.MsaspecQueryResponse{
 		Resources: []string{"r1", "r2"},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -516,8 +521,8 @@ func TestDeleteSuccess(t *testing.T) {
 	if len(f.lastDelete) != 2 {
 		t.Fatalf("expected 2 ids passed, got %v", f.lastDelete)
 	}
-	if out.Meta != any(f.deleteResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 

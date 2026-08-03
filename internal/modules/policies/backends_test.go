@@ -11,6 +11,10 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 )
 
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
+
 // ---- device_control two-step search --------------------------------------------
 
 // fakeDeviceControl implements deviceControlClient for the two-step search test.
@@ -56,7 +60,7 @@ func (f *fakeDeviceControl) SetDeviceControlPoliciesPrecedence(*device_control_p
 func TestDeviceControlSearchTwoStep(t *testing.T) {
 	t.Parallel()
 	idA, idB := "a", "b"
-	meta := &models.MsaMetaInfo{}
+	meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	fake := &fakeDeviceControl{
 		queryIDs:  []string{"b", "a"}, // query order [b, a]
 		queryMeta: meta,

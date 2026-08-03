@@ -491,3 +491,36 @@ func TestRegisterToolsNamesAndAnnotations(t *testing.T) {
 		t.Fatalf("dismiss should be idempotent")
 	}
 }
+
+// TestSearchShieldAlertsPaginatesByCursorOnly pins the alerts pagination surface.
+// Alerts page by the last_id cursor, so the tool must not advertise an offset
+// alongside it or forward one to the API. The other Shield search tools have no
+// cursor and keep their offset, so this is scoped to alerts.
+func TestSearchShieldAlertsPaginatesByCursorOnly(t *testing.T) {
+	t.Parallel()
+
+	schema := base.SchemaFor[SearchAlertsInput](pagingSchema)
+	if _, ok := schema.Properties["offset"]; ok {
+		t.Error("search_shield_alerts must not advertise an offset input")
+	}
+	if _, ok := schema.Properties["last_id"]; !ok {
+		t.Error("search_shield_alerts must advertise a last_id cursor")
+	}
+
+	f := &fakeShield{}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, _, err := m.searchShieldAlerts(context.Background(), nil, SearchAlertsInput{LastID: "tok"})
+	if err != nil {
+		t.Fatalf("searchShieldAlerts: %v", err)
+	}
+	if f.alertsParams == nil {
+		t.Fatal("alert params must be recorded")
+	}
+	if f.alertsParams.Offset != nil {
+		t.Errorf("offset = %v, want unset", *f.alertsParams.Offset)
+	}
+	if f.alertsParams.LastID == nil || *f.alertsParams.LastID != "tok" {
+		t.Errorf("last_id = %v, want tok", f.alertsParams.LastID)
+	}
+}

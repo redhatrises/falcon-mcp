@@ -92,20 +92,26 @@ var (
 // RegisterTools registers the four intel tools into r. All are read-only.
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_actors",
-		Description: "Research threat actors and adversary groups tracked by CrowdStrike intelligence using intel FQL (fields: name, actor_type, target_countries, target_industries, motivations, created_date, last_activity_date). Consult falcon://intel/actors/fql-guide before constructing filter expressions. Returns full actor profiles.",
+		Name: "search_actors",
+		Description: "Research threat actors and adversary groups tracked by CrowdStrike intelligence using intel FQL (fields: name, actor_type, target_countries, target_industries, motivations, created_date, last_activity_date). Consult falcon://intel/actors/fql-guide before constructing filter expressions. Returns full actor profiles.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchActorsSchema,
 	}, m.searchActors)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_indicators",
-		Description: "Search threat indicators/IOCs from CrowdStrike intelligence using intel FQL (fields: type, indicator, malicious_confidence, malware_families, kill_chains, published_date, threat_types, vulnerabilities). Consult falcon://intel/indicators/fql-guide before constructing filter expressions. Returns full indicator details.",
+		Name: "search_indicators",
+		Description: "Search threat indicators/IOCs from CrowdStrike intelligence using intel FQL (fields: type, indicator, malicious_confidence, malware_families, kill_chains, published_date, threat_types, vulnerabilities). Consult falcon://intel/indicators/fql-guide before constructing filter expressions. Returns full indicator details.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchIndicatorsSchema,
 	}, m.searchIndicators)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_reports",
-		Description: "Search CrowdStrike intelligence publications and threat reports using intel FQL (fields: name, type, sub_type, actors, target_countries, target_industries, motivations, tags, created_date). Consult falcon://intel/reports/fql-guide before constructing filter expressions. Returns full report metadata.",
+		Name: "search_reports",
+		Description: "Search CrowdStrike intelligence publications and threat reports using intel FQL (fields: name, type, sub_type, actors, target_countries, target_industries, motivations, tags, created_date). Consult falcon://intel/reports/fql-guide before constructing filter expressions. Returns full report metadata.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchReportsSchema,
 	}, m.searchReports)
 

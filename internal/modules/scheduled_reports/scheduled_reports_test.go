@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -15,6 +16,10 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -98,7 +103,7 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 	r := &fakeReports{
 		queryResp: &scheduled_reports.QueryOK{Payload: &models.MsaQueryResponse{
 			Resources: []string{"r1", "r2"},
-			Meta:      &models.MsaMetaInfo{},
+			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getResp: &scheduled_reports.QueryByIDOK{Payload: &models.DomainScheduledReportsResultV1{
 			// Returned out of query order to exercise reordering by id.
@@ -129,8 +134,8 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 	if strings.Join(r.getIDs, ",") != "r1,r2" {
 		t.Fatalf("detail fetch got IDs %v", r.getIDs)
 	}
-	if out.Meta != any(r.queryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(r.queryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -198,7 +203,7 @@ func TestLaunchScheduledReportSuccess(t *testing.T) {
 
 	r := &fakeReports{execResp: &scheduled_reports.ExecuteOK{Payload: &models.DomainReportExecutionsResponseV1{
 		Resources: []*models.DomainReportExecutionV1{{ID: str("exec1")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(r, &fakeExecutions{})
 
@@ -216,8 +221,8 @@ func TestLaunchScheduledReportSuccess(t *testing.T) {
 	if len(r.execBody) != 1 || r.execBody[0].ID == nil || *r.execBody[0].ID != "report1" {
 		t.Fatalf("execute body not shaped as [{id}]: %+v", r.execBody)
 	}
-	if out.Meta != any(r.execResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(r.execResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -244,7 +249,7 @@ func TestSearchReportExecutionsSuccess(t *testing.T) {
 	e := &fakeExecutions{
 		queryResp: &report_executions.ReportExecutionsQueryOK{Payload: &models.MsaQueryResponse{
 			Resources: []string{"e1", "e2"},
-			Meta:      &models.MsaMetaInfo{},
+			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getResp: &report_executions.ReportExecutionsGetOK{Payload: &models.DomainReportExecutionsResponseV1{
 			Resources: []*models.DomainReportExecutionV1{
@@ -265,8 +270,8 @@ func TestSearchReportExecutionsSuccess(t *testing.T) {
 	if e.getCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", e.getCalls)
 	}
-	if out.Meta != any(e.queryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(e.queryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 

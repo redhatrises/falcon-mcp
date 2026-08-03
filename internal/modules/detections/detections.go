@@ -78,8 +78,9 @@ var searchDetectionsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Sche
 // RegisterTools registers the three detection tools into r.
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_detections",
-		Description: "Search for detections/alerts in CrowdStrike Falcon using FQL. Consult falcon://detections/search/fql-guide before constructing filter expressions. Returns full alert records. Covers EPP, IDP, XDR, OverWatch, and NG-SIEM alerts.",
+		Name: "search_detections",
+		Description: "Search for detections/alerts in CrowdStrike Falcon using FQL. Consult falcon://detections/search/fql-guide before constructing filter expressions. Returns full alert records. Covers EPP, IDP, XDR, OverWatch, and NG-SIEM alerts." + " Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchDetectionsSchema,
 	}, m.searchDetections)
 

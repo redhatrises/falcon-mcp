@@ -94,10 +94,13 @@ func (m *Module) searchShieldChecks(ctx context.Context, _ *mcp.CallToolRequest,
 
 const searchAlertsDescription = "Search Falcon Shield (SaaS Security) alerts for monitored SaaS applications.\n\n" +
 	"Use this to find configuration drift, degraded checks, integration failures, or active threats; " +
-	"use last_id from the last result for cursor-based pagination or offset for offset-based pagination. " +
+	"paginate by passing `pagination.next` from the previous result as the `last_id` parameter. " +
 	"Returns alert objects containing id, type, integration details, timestamp, and severity."
 
 // SearchAlertsInput is the input for falcon_search_shield_alerts.
+//
+// Pagination is cursor-only: pass pagination.next from the previous result as
+// last_id.
 type SearchAlertsInput struct {
 	ID            string `json:"id,omitempty" jsonschema:"Specific alert ID."`
 	Type          string `json:"type,omitempty" jsonschema:"Filter by type: configuration_drift, check_degraded, integration_failure, threat."`
@@ -106,8 +109,7 @@ type SearchAlertsInput struct {
 	ToDate        string `json:"to_date,omitempty" jsonschema:"End date (YYYY-MM-DD)."`
 	Ascending     *bool  `json:"ascending,omitempty" jsonschema:"If true, return oldest alerts first. If false or omitted, return newest first."`
 	Limit         int    `json:"limit,omitempty" jsonschema:"Maximum number of results to return (default: 10)."`
-	Offset        int    `json:"offset,omitempty" jsonschema:"Zero-based offset for pagination. Omit or set to 0 for the first page."`
-	LastID        string `json:"last_id,omitempty" jsonschema:"Cursor-based pagination token from the last result (alternative to offset)."`
+	LastID        string `json:"last_id,omitempty" jsonschema:"Cursor-based pagination token. Pass pagination.next from the previous result to fetch the next page."`
 }
 
 func (m *Module) searchShieldAlerts(ctx context.Context, _ *mcp.CallToolRequest, in SearchAlertsInput) (*mcp.CallToolResult, base.SearchResult[*models.AlertGetAlertsResponse], error) {
@@ -119,7 +121,6 @@ func (m *Module) searchShieldAlerts(ctx context.Context, _ *mcp.CallToolRequest,
 	p.Ascending = boolPtr(in.Ascending)
 	p.LastID = strPtr(in.LastID)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
-	p.Offset = int64Ptr(in.Offset)
 	if from, err := parseDate("from_date", in.FromDate); err != nil {
 		return nil, zero, err
 	} else {
