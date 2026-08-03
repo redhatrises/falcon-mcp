@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"strconv"
 	"time"
@@ -321,6 +322,69 @@ func deferToolCleanup(tool string, args map[string]any) {
 		res := callTool(ctx, cs, tool, args)
 		expectNoToolError(res)
 	})
+}
+
+// expectOffsetPaginates drives the offset-paging contract end to end: the offset a
+// tool reports in meta.pagination is the offset the caller sent, and advancing it by
+// the page size returns the next, non-overlapping page. The reported offset must be
+// numeric so it satisfies the tool's integer-typed offset input; a string there is
+// the schema mismatch this spec exists to catch.
+//
+// args must carry an int "limit" — it is the page size the next offset advances by.
+// A tenant holding a single page or fewer cannot exercise paging, so that case skips
+// rather than asserting a vacuous truth; a missing meta, pagination block, or offset
+// on a tool declared offset-paginated is the regression this exists to catch.
+func expectOffsetPaginates(ctx context.Context, cs *mcp.ClientSession, name string, args map[string]any) {
+	GinkgoHelper()
+
+	limit, ok := args["limit"].(int)
+	Expect(ok).To(BeTrue(), "expectOffsetPaginates requires an int limit in args, got %#v", args["limit"])
+
+	first := callTool(ctx, cs, name, args)
+	expectNoToolError(first)
+
+	meta, ok := structured(first)["meta"].(map[string]any)
+	Expect(ok).To(BeTrue(), "%s reported no meta to page from", name)
+	paging, ok := meta["pagination"].(map[string]any)
+	Expect(ok).To(BeTrue(), "%s reported no pagination block: %v", name, meta)
+	Expect(paging).To(HaveKey("offset"), "%s is offset-paginated but reported no offset: %v", name, paging)
+
+	// The offset must be numeric to satisfy the integer-typed offset inputs; a
+	// string here is the exact mismatch this spec exists to catch.
+	offset, ok := paging["offset"].(float64)
+	Expect(ok).To(BeTrue(), "%s reported a non-numeric offset %#v, which its integer-typed input rejects", name, paging["offset"])
+
+	// Paging is only observable with more than one page of results. total is the
+	// API's own count, so use it to skip a tenant too small to page.
+	total, ok := paging["total"].(float64)
+	if !ok || total <= float64(limit) {
+		Skip(fmt.Sprintf("%s tenant reports total %v for page size %d; too few to page", name, paging["total"], limit))
+	}
+
+	firstIDs := idsOf(first, "id")
+	Expect(firstIDs).NotTo(BeEmpty(), "%s reported total %v but returned no page-one resources", name, total)
+
+	// Advance by the page size and hand the offset back through the advertised input
+	// schema. Copying args keeps limit/filter identical, so the offset is the only
+	// difference between the two calls.
+	next := make(map[string]any, len(args)+1)
+	maps.Copy(next, args)
+	next["offset"] = int(offset) + limit
+	second := callTool(ctx, cs, name, next)
+	expectNoToolError(second)
+
+	secondIDs := idsOf(second, "id")
+	Expect(secondIDs).NotTo(BeEmpty(), "%s returned no resources at offset %d despite total %v", name, int(offset)+limit, total)
+
+	// The second page must not repeat the first: an offset advanced by the page size
+	// skips exactly the resources already seen.
+	firstSet := make(map[string]bool, len(firstIDs))
+	for _, id := range firstIDs {
+		firstSet[id] = true
+	}
+	for _, id := range secondIDs {
+		Expect(firstSet[id]).To(BeFalse(), "%s returned ID %q on both pages; the offset did not advance", name, id)
+	}
 }
 
 // idsOf collects the idField value from every resource in a search result. It

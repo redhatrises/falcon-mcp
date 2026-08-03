@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	dp "github.com/crowdstrike/gofalcon/falcon/client/data_protection_configuration"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -98,7 +103,7 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{
-		classQueryResp: &dp.QueriesClassificationGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"c1", "c2"}, Meta: &models.MsaMetaInfo{}}},
+		classQueryResp: &dp.QueriesClassificationGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"c1", "c2"}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		classGetResp: &dp.EntitiesClassificationGetV2OK{Payload: &models.PolicymanagerClassificationsResponse{
 			Resources: []*models.PolicymanagerExternalClassification{
 				{ID: str("c1"), Name: str("Credit Cards")},
@@ -121,8 +126,8 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 	if len(f.classGetIDs) != 2 || f.classGetIDs[0] != "c1" {
 		t.Fatalf("detail fetch did not receive the query IDs: %v", f.classGetIDs)
 	}
-	if out.Meta != any(f.classQueryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.classQueryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -168,7 +173,7 @@ func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{
-		policyQueryResp: &dp.QueriesPolicyGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"p1"}, Meta: &models.MsaMetaInfo{}}},
+		policyQueryResp: &dp.QueriesPolicyGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"p1"}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		policyGetResp: &dp.EntitiesPolicyGetV2OK{Payload: &models.PolicymanagerPoliciesResponse{
 			Resources: []*models.PolicymanagerExternalPolicy{{ID: str("p1"), Name: str("Default")}},
 		}},
@@ -188,8 +193,8 @@ func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	if f.policyGetCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.policyGetCalls)
 	}
-	if out.Meta != any(f.policyQueryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.policyQueryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -235,7 +240,7 @@ func TestSearchContentPatternsReturnsDetails(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{
-		patternQueryResp: &dp.QueriesContentPatternGetV2OK{Payload: &models.MsaspecQueryResponse{Resources: []string{"x1"}, Meta: &models.MsaMetaInfo{}}},
+		patternQueryResp: &dp.QueriesContentPatternGetV2OK{Payload: &models.MsaspecQueryResponse{Resources: []string{"x1"}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		patternGetResp: &dp.EntitiesContentPatternGetOK{Payload: &models.APIContentPatternMSAResponseV1{
 			Resources: []*models.APIContentPatternV1{{ID: str("x1"), Name: "AWS Key", Type: str("custom")}},
 		}},
@@ -252,8 +257,8 @@ func TestSearchContentPatternsReturnsDetails(t *testing.T) {
 	if f.patternGetCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.patternGetCalls)
 	}
-	if out.Meta != any(f.patternQueryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.patternQueryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 

@@ -284,9 +284,9 @@ var opaqueRecordSchema = &jsonschema.Schema{Types: []string{"null", "object"}}
 // open object and its contents pass through unvalidated.
 //
 // The record type is located via Out's Resources slice field and overridden
-// through TypeSchemas. The element type is dereferenced first because the
-// reflector consults TypeSchemas by the pointed-to type, not the pointer.
-// Envelopes without a Resources field (e.g. ActionResult) are reflected as-is.
+// through TypeSchemas. The element type is dereferenced first because the reflector
+// consults TypeSchemas by the pointed-to type, not the pointer. Envelopes without a
+// Resources field (e.g. ActionResult) are reflected as-is.
 //
 // Out == any yields a nil schema so the SDK falls back to its default (no
 // output schema), matching its own handling of untyped output.
@@ -296,11 +296,12 @@ func inferOutputSchema[Out any]() *jsonschema.Schema {
 		return nil
 	}
 
-	// An any-typed field (the Meta passthrough) reflects to the JSON Schema
-	// boolean `true`. That is a valid schema, but a boolean where a property
-	// schema is expected trips strict MCP clients, which then drop the whole
-	// tools/list. Describe it as an opaque object so the property carries a
-	// schema object instead.
+	// An any-typed field reflects to the JSON Schema boolean `true`. That is a
+	// valid schema, but a boolean where a property schema is expected trips strict
+	// MCP clients, which then drop the whole tools/list. Describe it as an opaque
+	// object so the property carries a schema object instead. The remaining
+	// any-typed output fields are the idp module's per-investigation result blocks;
+	// each holds a JSON object, so an opaque object describes them accurately.
 	typeSchemas := map[reflect.Type]*jsonschema.Schema{
 		reflect.TypeFor[any](): opaqueRecordSchema,
 	}
@@ -332,11 +333,11 @@ func inferOutputSchema[Out any]() *jsonschema.Schema {
 // total, so this response-level count is the only count available and reflects
 // resolved-versus-requested records. This differs from SearchResult, which
 // carries no Total because the authoritative match count for a paginated FQL
-// search lives in the Meta object (meta.pagination.total et al.).
+// search lives in Meta (meta.pagination.total).
 type EntitiesResult[T any] struct {
-	Resources []T `json:"resources"`
-	Total     int `json:"total"`
-	Meta      any `json:"meta,omitempty"`
+	Resources []T   `json:"resources"`
+	Total     int   `json:"total"`
+	Meta      *Meta `json:"meta,omitempty"`
 }
 
 // Entities builds an EntitiesResult, normalizing a nil slice to empty.
@@ -347,9 +348,9 @@ func Entities[T any](resources []T) EntitiesResult[T] {
 	return EntitiesResult[T]{Resources: resources, Total: len(resources)}
 }
 
-// WithMeta returns r with the raw API meta object attached for verbatim
-// passthrough. A nil or nil-pointer meta leaves the field unset. See
-// normalizeMeta for the nil handling.
+// WithMeta returns r with the API's response metadata attached, normalized to the
+// fixed Meta shape. A nil or nil-pointer meta, or one carrying nothing reportable,
+// leaves the field unset. See normalizeMeta.
 func (r EntitiesResult[T]) WithMeta(meta any) EntitiesResult[T] {
 	r.Meta = normalizeMeta(meta)
 	return r
@@ -361,29 +362,16 @@ func (r EntitiesResult[T]) WithMeta(meta any) EntitiesResult[T] {
 type ActionResult struct {
 	Ok   bool   `json:"ok"`
 	Hint string `json:"hint,omitempty"`
-	Meta any    `json:"meta,omitempty"`
+	Meta *Meta  `json:"meta,omitempty"`
 }
 
-// WithMeta returns r with the raw API meta object attached for verbatim
-// passthrough. A nil or nil-pointer meta leaves the field unset. See
-// normalizeMeta for the nil handling.
+// WithMeta returns r with the API's response metadata attached, normalized to the
+// fixed Meta shape. Mutating endpoints report no pagination, so in practice only
+// query_time and trace_id survive. A nil or nil-pointer meta, or one carrying
+// nothing reportable, leaves the field unset. See normalizeMeta.
 func (r ActionResult) WithMeta(meta any) ActionResult {
 	r.Meta = normalizeMeta(meta)
 	return r
-}
-
-// normalizeMeta returns v unless it is nil or a nil pointer, in which case it
-// returns untyped nil so a meta,omitempty field is omitted rather than
-// serializing as JSON null. An interface holding a typed nil pointer is itself
-// non-nil, so omitempty alone would emit "null" without this guard.
-func normalizeMeta(v any) any {
-	if v == nil {
-		return nil
-	}
-	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
-		return nil
-	}
-	return v
 }
 
 // SearchResult is the structured output envelope returned by the FQL search
@@ -397,9 +385,8 @@ func normalizeMeta(v any) any {
 //     contract for invalid filters.
 //
 // Match counts and the pagination cursor are not surfaced as dedicated fields;
-// clients read them from the verbatim Meta object. The shape varies by endpoint.
-// Most endpoints put total at meta.pagination.total, with
-// query_time/powered_by/trace_id at the meta top level.
+// clients read them from Meta at meta.pagination.{total,next}, which carries the
+// same shape on every endpoint (see Meta).
 //
 // Some endpoints leave the total null, so clients must iterate until resources
 // comes back empty rather than relying on the count.
@@ -412,14 +399,14 @@ type SearchResult[T any] struct {
 	Errors     []FQLErrorDetail `json:"errors,omitempty"`
 	FQLGuide   string           `json:"fql_guide,omitempty"`
 	Hint       string           `json:"hint,omitempty"`
-	Meta       any              `json:"meta,omitempty"`
+	Meta       *Meta            `json:"meta,omitempty"`
 }
 
-// WithMeta returns r with the raw API meta object attached for verbatim
-// passthrough, carrying every field the API returned (pagination, query_time,
-// powered_by, trace_id, and endpoint-specific extras such as spotlight's
-// quota). A nil or nil-pointer meta leaves the field unset. See normalizeMeta
-// for the nil handling.
+// WithMeta returns r with the API's response metadata attached, normalized to the
+// fixed Meta shape: the pagination cursor and count, the query duration, the trace
+// ID, and the Spotlight quota. Endpoint-specific extras the caller cannot act on
+// are dropped. A nil or nil-pointer meta, or one carrying nothing reportable,
+// leaves the field unset. See normalizeMeta.
 func (r SearchResult[T]) WithMeta(meta any) SearchResult[T] {
 	r.Meta = normalizeMeta(meta)
 	return r

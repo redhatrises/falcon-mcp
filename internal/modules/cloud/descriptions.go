@@ -23,14 +23,21 @@ expressions. Returns the matching container count as an integer.`
 Use this to find CVEs affecting container images by severity, CVSS score, or
 CVE ID. Consult falcon://cloud/images-vulnerabilities/fql-guide before constructing
 filter expressions. Returns vulnerability details including CVE IDs, scores, and
-impacted image counts.`
+impacted image counts.
+` +
+		"Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	searchCSPMAssetsDescription = `Search for cloud assets in your CrowdStrike CSPM inventory.
 
 Use this to find cloud resources (EC2, VPCs, S3, etc.) by provider, region,
 resource type, or tags. Consult falcon://cloud/cspm-assets/fql-guide before
 constructing filter expressions. Returns slimmed asset details with security
-posture context (IOM/IOA counts, exposure, severity).`
+posture context (IOM/IOA counts, exposure, severity).
+` +
+		"Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions. " +
+		"For cursor-based paging, use `pagination.next` as the `after` parameter on the next call."
 
 	searchIOMFindingsDescription = `Search for CSPM Indicators of Misconfiguration (IOM) findings.
 
@@ -40,13 +47,19 @@ public write" on a named bucket). For aggregated risk posture combining multiple
 IOMs and IOAs across assets, use falcon_search_cloud_risks instead. For runtime
 behavioral threats, use falcon_search_detections. Consult
 falcon://cloud/cspm-iom-findings/fql-guide before constructing filter expressions.
-Returns IOM entities with cloud context, evaluation details, and resource information.`
+Returns IOM entities with cloud context, evaluation details, and resource information.
+` +
+		"Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	searchCSPMSuppressionRulesDescription = `Search for CSPM IOM suppression rules.
 
 Use this to review existing suppressions before creating new ones. Returns
 suppression rule objects including scope, reason, and expiration details.
-Returns an empty list if no rules exist.`
+Returns an empty list if no rules exist.
+` +
+		"Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	createCSPMSuppressionRuleDescription = `Create a CSPM IOM suppression rule to hide matching findings.
 
@@ -69,7 +82,10 @@ records and include threat intelligence attribution. For individual compliance r
 violations on specific resources, use falcon_search_iom_findings instead. Consult
 falcon://cloud/cloud-risks/fql-guide before constructing filter expressions.
 Returns full risk details including severity, lifecycle status, asset context, and
-threat intelligence attribution.`
+threat intelligence attribution.
+` +
+		"Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	searchCloudGroupsDescription = `List cloud groups in your CrowdStrike environment.
 

@@ -70,19 +70,21 @@ func (m *Module) Description() string {
 
 // searchIOCsSchema is the input schema for falcon_search_iocs. It is inferred
 // from SearchInput's struct tags, then a mutate func adds the limit
-// bounds/default and offset minimum the tag syntax cannot express.
+// bounds/default the tag syntax cannot express.
 var searchIOCsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Schema) {
 	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["limit"].Maximum = jsonschema.Ptr(500.0)
 	s.Properties["limit"].Default = json.RawMessage(`10`)
-	s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
 })
 
 // RegisterTools registers the three IOC tools into r.
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_iocs",
-		Description: "Search custom IOCs in CrowdStrike Falcon using IOC FQL (fields: type, value, action, source, severity_number, expiration, expired, applied_globally, metadata.filename.raw). Consult falcon://ioc/search/fql-guide before constructing filter expressions. Returns full indicator records.",
+		Name: "search_iocs",
+		Description: "Search custom IOCs in CrowdStrike Falcon using IOC FQL (fields: type, value, action, source, severity_number, expiration, expired, applied_globally, metadata.filename.raw). Consult falcon://ioc/search/fql-guide before constructing filter expressions. Returns full indicator records.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions. " +
+			"For cursor-based paging, use `pagination.next` as the `after` parameter on the next call.",
 		InputSchema: searchIOCsSchema,
 	}, m.searchIOCs)
 
@@ -115,12 +117,15 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 
 // SearchInput is the input for falcon_search_iocs.
+//
+// Pagination is cursor-only: pass pagination.next from the previous response as
+// after. The endpoint documents offset and after as mutually exclusive, and
+// reaching beyond 10,000 indicators requires the cursor.
 type SearchInput struct {
 	Filter     string `json:"filter,omitempty" jsonschema:"IOC FQL filter (e.g. type:'domain'+expired:false, source:'mcp'). See falcon://ioc/search/fql-guide for syntax."`
 	Limit      int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
-	Offset     int    `json:"offset,omitempty" jsonschema:"pagination offset; mutually exclusive with after"`
 	Sort       string `json:"sort,omitempty" jsonschema:"IOC FQL sort (e.g. modified_on.desc, severity_number.desc)"`
-	After      string `json:"after,omitempty" jsonschema:"pagination token from a previous search; mutually exclusive with offset"`
+	After      string `json:"after,omitempty" jsonschema:"Pagination token for large result sets. Use the pagination.next value returned by the previous search call."`
 	FromParent *bool  `json:"from_parent,omitempty" jsonschema:"return indicators from the MSSP parent when applicable"`
 }
 
@@ -130,16 +135,12 @@ func (m *Module) searchIOCs(ctx context.Context, _ *mcp.CallToolRequest, in Sear
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	m.Logger.Debug("search_iocs", "filter", in.Filter, "limit", limit, "offset", in.Offset, "sort", in.Sort, "after", in.After)
+	m.Logger.Debug("search_iocs", "filter", in.Filter, "limit", limit, "sort", in.Sort, "after", in.After)
 
 	params := ioc.NewIndicatorCombinedV1ParamsWithContext(ctx)
 	params.Limit = &limit
 	if in.Filter != "" {
 		params.Filter = &in.Filter
-	}
-	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

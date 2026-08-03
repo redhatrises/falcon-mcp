@@ -159,7 +159,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Search RTR sessions in your CrowdStrike environment by hostname, agent ID, user, " +
 			"origin, or creation time. Consult falcon://rtr/sessions/search/fql-guide before " +
 			"constructing filter expressions. Returns full session details including host info, " +
-			"commands executed, and status.",
+			"commands executed, and status.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchRTRSessionsSchema,
 	}, m.searchSessions)
 
@@ -168,7 +170,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Search RTR audit sessions for accountability and timeline evidence: who used RTR, " +
 			"when, against which host, and optionally which command activity Falcon recorded. This is " +
 			"read-only audit visibility; it does not open sessions or run commands. Consult " +
-			"falcon://rtr/audit/sessions/search/fql-guide before constructing filter expressions.",
+			"falcon://rtr/audit/sessions/search/fql-guide before constructing filter expressions.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchRTRAuditSessionsSchema,
 	}, m.searchAuditSessions)
 

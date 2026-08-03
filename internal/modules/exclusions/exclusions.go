@@ -139,7 +139,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"exclusions by name, value, scope, or timestamp. Select which API is queried with " +
 			"exclusion_type. Consult falcon://exclusions/search/fql-guide before constructing " +
 			"filter expressions — the available fields differ per type. Returns full exclusion " +
-			"records including id, scope, and timestamps.",
+			"records including id, scope, and timestamps." +
+			" Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchExclusionsSchema,
 	}, m.searchExclusions)
 

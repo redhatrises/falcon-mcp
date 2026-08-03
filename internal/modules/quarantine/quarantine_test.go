@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/quarantine"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -32,9 +37,14 @@ type fakeQuarantine struct {
 	getCalls      int
 	lastByIDsBody *models.DomainEntitiesPatchRequest
 	lastByQryBody *models.DomainQueriesPatchRequest
+
+	// lastQueryOffset records the offset the handler sent, so a test can assert
+	// the numeric input reaches the string-typed query param intact.
+	lastQueryOffset *string
 }
 
-func (f *fakeQuarantine) QueryQuarantineFiles(*quarantine.QueryQuarantineFilesParams, ...quarantine.ClientOption) (*quarantine.QueryQuarantineFilesOK, error) {
+func (f *fakeQuarantine) QueryQuarantineFiles(p *quarantine.QueryQuarantineFilesParams, _ ...quarantine.ClientOption) (*quarantine.QueryQuarantineFilesOK, error) {
+	f.lastQueryOffset = p.Offset
 	return f.queryResp, f.queryErr
 }
 
@@ -77,7 +87,7 @@ func TestSearchQuarantinedFilesSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeQuarantine{queryResp: queryOK("q1", "q2"), getResp: getOK("q1", "q2")}
-	f.queryResp.Payload.Meta = &models.MsaMetaInfo{}
+	f.queryResp.Payload.Meta = &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
 
 	_, out, err := m.searchQuarantinedFiles(context.Background(), nil, SearchInput{Filter: "hostname:'DC01'"})
@@ -87,9 +97,50 @@ func TestSearchQuarantinedFilesSuccess(t *testing.T) {
 	if len(out.Resources) != 2 || out.FilterUsed != "hostname:'DC01'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.queryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
+}
+
+// TestSearchQuarantinedFilesOffset covers the offset conversion. The tool takes a
+// numeric offset, matching the numeric offset the endpoint reports back in
+// meta.pagination, while the gofalcon query param is typed as a string; the handler
+// bridges the two. A zero offset must leave the param unset rather than sending "0".
+func TestSearchQuarantinedFilesOffset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		offset int
+		want   *string
+	}{
+		{"zero leaves the param unset", 0, nil},
+		{"positive offset is sent as digits", 25, str("25")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := &fakeQuarantine{queryResp: queryOK("q1"), getResp: getOK("q1")}
+			m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+			if _, _, err := m.searchQuarantinedFiles(context.Background(), nil, SearchInput{Offset: tt.offset}); err != nil {
+				t.Fatalf("searchQuarantinedFiles: %v", err)
+			}
+			if !reflect.DeepEqual(f.lastQueryOffset, tt.want) {
+				t.Errorf("query offset = %v, want %v", derefOrNil(f.lastQueryOffset), derefOrNil(tt.want))
+			}
+		})
+	}
+}
+
+// derefOrNil renders a *string for a test failure message without panicking on nil.
+func derefOrNil(p *string) string {
+	if p == nil {
+		return "<nil>"
+	}
+	return *p
 }
 
 func TestSearchQuarantinedFilesEmpty(t *testing.T) {
@@ -166,7 +217,7 @@ func TestPreviewQuarantineActionsSuccess(t *testing.T) {
 
 	f := &fakeQuarantine{countResp: &quarantine.ActionUpdateCountOK{Payload: &models.MsaAggregatesResponse{
 		Resources: []*models.MsaAggregationResult{{Name: str("release")}, {Name: str("delete")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -177,8 +228,8 @@ func TestPreviewQuarantineActionsSuccess(t *testing.T) {
 	if out.Total != 2 || len(out.Resources) != 2 {
 		t.Fatalf("expected 2 action counts, got %+v", out)
 	}
-	if out.Meta != any(f.countResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.countResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -236,7 +287,7 @@ func TestNormalizeRestoreAction(t *testing.T) {
 func TestUpdateQuarantinedFilesByIDs(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeQuarantine{byIDsResp: &quarantine.UpdateQuarantinedDetectsByIdsOK{Payload: &models.MsaReplyMetaOnly{Meta: &models.MsaMetaInfo{}}}}
+	f := &fakeQuarantine{byIDsResp: &quarantine.UpdateQuarantinedDetectsByIdsOK{Payload: &models.MsaReplyMetaOnly{Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}}}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.updateQuarantinedFiles(context.Background(), nil, UpdateInput{
@@ -259,8 +310,8 @@ func TestUpdateQuarantinedFilesByIDs(t *testing.T) {
 	if f.lastByQryBody != nil {
 		t.Fatalf("expected by-query path not taken when ids provided")
 	}
-	if out.Meta != any(f.byIDsResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.byIDsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -378,7 +429,7 @@ func TestDeleteQuarantinedFilesByIDs(t *testing.T) {
 func TestDeleteQuarantinedFilesByQuery(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeQuarantine{byQryResp: &quarantine.UpdateQfByQueryOK{Payload: &models.MsaReplyMetaOnly{Meta: &models.MsaMetaInfo{}}}}
+	f := &fakeQuarantine{byQryResp: &quarantine.UpdateQfByQueryOK{Payload: &models.MsaReplyMetaOnly{Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}}}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.deleteQuarantinedFiles(context.Background(), nil, DeleteInput{Filter: "hostname:'DC01'"})
@@ -394,8 +445,8 @@ func TestDeleteQuarantinedFilesByQuery(t *testing.T) {
 	if f.lastByQryBody.Filter != "hostname:'DC01'" {
 		t.Fatalf("expected filter passed through, got %+v", f.lastByQryBody)
 	}
-	if out.Meta != any(f.byQryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.byQryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 

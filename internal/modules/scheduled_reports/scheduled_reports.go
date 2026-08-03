@@ -135,7 +135,8 @@ const (
 
 Use this to find reports by status, type, creator, or creation date. Consult
 falcon://scheduled-reports/search/fql-guide before constructing filter expressions.
-Returns full report/search entity details including schedule configuration.`
+Returns full report/search entity details including schedule configuration.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	launchScheduledReportDescription = `Launch a scheduled report or search on demand.
 
@@ -148,7 +149,8 @@ falcon_download_report_execution when complete.`
 
 Use this to find executions by status, report ID, or completion date. Consult
 falcon://scheduled-reports/executions/search/fql-guide before constructing filter
-expressions. Returns full execution details including status and timestamps.`
+expressions. Returns full execution details including status and timestamps.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	downloadReportExecutionDescription = `Download the results of a completed report execution.
 

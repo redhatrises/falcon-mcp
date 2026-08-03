@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strconv"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/custom_ioa"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -97,6 +98,7 @@ var searchRuleGroupsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Sche
 	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["limit"].Maximum = jsonschema.Ptr(500.0)
 	s.Properties["limit"].Default = json.RawMessage(`10`)
+	s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
 })
 
 // ruleTypesSchema is the input schema for falcon_get_ioa_rule_types.
@@ -104,6 +106,7 @@ var ruleTypesSchema = base.SchemaFor[RuleTypesInput](func(s *jsonschema.Schema) 
 	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["limit"].Maximum = jsonschema.Ptr(500.0)
 	s.Properties["limit"].Default = json.RawMessage(`100`)
+	s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
 })
 
 // RegisterTools registers the nine Custom IOA tools into r.
@@ -113,7 +116,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Search Custom IOA rule groups by platform, name, or enabled state, and " +
 			"return their contained behavioral detection rules. Consult " +
 			"falcon://custom-ioa/rule-groups/fql-guide before constructing filter expressions. " +
-			"Returns full rule group records including their rules.",
+			"Returns full rule group records including their rules." +
+			" Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchRuleGroupsSchema,
 	}, m.searchRuleGroups)
 
@@ -216,7 +221,7 @@ func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 type SearchInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"rule-group FQL filter (e.g. platform:'windows'+enabled:true). See falcon://custom-ioa/rule-groups/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
-	Offset string `json:"offset,omitempty" jsonschema:"pagination offset token from a previous response"`
+	Offset int    `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
 	Sort   string `json:"sort,omitempty" jsonschema:"rule-group FQL sort (e.g. modified_on.desc, name.asc)"`
 	Q      string `json:"q,omitempty" jsonschema:"free-text match query across all filter string fields"`
 }
@@ -234,8 +239,12 @@ func (m *Module) searchRuleGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 	if in.Filter != "" {
 		params.Filter = &in.Filter
 	}
-	if in.Offset != "" {
-		params.Offset = &in.Offset
+	// This endpoint types its offset query param as a string while reporting a
+	// numeric offset back in meta.pagination, so the numeric input is formatted
+	// here rather than exposing the string form to callers.
+	if in.Offset != 0 {
+		offset := strconv.Itoa(in.Offset)
+		params.Offset = &offset
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -295,8 +304,8 @@ func (m *Module) getPlatforms(ctx context.Context, _ *mcp.CallToolRequest, _ str
 
 // RuleTypesInput is the input for falcon_get_ioa_rule_types.
 type RuleTypesInput struct {
-	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
-	Offset string `json:"offset,omitempty" jsonschema:"pagination offset token from a previous response"`
+	Limit  int `json:"limit,omitempty" jsonschema:"maximum results to return"`
+	Offset int `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
 }
 
 func (m *Module) getRuleTypes(ctx context.Context, _ *mcp.CallToolRequest, in RuleTypesInput) (*mcp.CallToolResult, base.EntitiesResult[*models.APIRuleTypeV1], error) {
@@ -309,8 +318,10 @@ func (m *Module) getRuleTypes(ctx context.Context, _ *mcp.CallToolRequest, in Ru
 
 	qp := custom_ioa.NewQueryRuleTypesParamsWithContext(ctx)
 	qp.Limit = &limit
-	if in.Offset != "" {
-		qp.Offset = &in.Offset
+	// Same string-typed offset param as the rule-groups query; see searchRuleGroups.
+	if in.Offset != 0 {
+		offset := strconv.Itoa(in.Offset)
+		qp.Offset = &offset
 	}
 
 	qresp, err := m.API.QueryRuleTypes(qp)

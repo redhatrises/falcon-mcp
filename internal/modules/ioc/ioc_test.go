@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/ioc"
@@ -28,9 +29,11 @@ type fakeIoc struct {
 	lastCreateBody *models.APIIndicatorCreateReqsV1
 	lastDeleteIDs  []string
 	lastDeleteReq  *ioc.IndicatorDeleteV1Params
+	lastSearchReq  *ioc.IndicatorCombinedV1Params
 }
 
-func (f *fakeIoc) IndicatorCombinedV1(*ioc.IndicatorCombinedV1Params, ...ioc.ClientOption) (*ioc.IndicatorCombinedV1OK, error) {
+func (f *fakeIoc) IndicatorCombinedV1(p *ioc.IndicatorCombinedV1Params, _ ...ioc.ClientOption) (*ioc.IndicatorCombinedV1OK, error) {
+	f.lastSearchReq = p
 	return f.searchResp, f.searchErr
 }
 
@@ -65,7 +68,7 @@ func TestSearchIocsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "type:'domain'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.searchResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.searchResp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
@@ -396,5 +399,39 @@ func assertDestructiveAnnotations(t *testing.T, name string, a *mcp.ToolAnnotati
 	}
 	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
 		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
+	}
+}
+
+// TestSearchIOCsPaginatesByCursorOnly pins the pagination surface. The endpoint
+// documents offset and after as mutually exclusive and requires the cursor to
+// reach beyond 10,000 indicators, so the tool advertises only the cursor and must
+// never forward an offset.
+func TestSearchIOCsPaginatesByCursorOnly(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := searchIOCsSchema.Properties["offset"]; ok {
+		t.Error("search_iocs must not advertise an offset input")
+	}
+	if _, ok := searchIOCsSchema.Properties["after"]; !ok {
+		t.Error("search_iocs must advertise an after cursor")
+	}
+
+	f := &fakeIoc{searchResp: &ioc.IndicatorCombinedV1OK{Payload: &models.APIIndicatorRespV1{
+		Resources: []*models.APIIndicatorV1{},
+	}}}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, _, err := m.searchIOCs(context.Background(), nil, SearchInput{After: "tok"})
+	if err != nil {
+		t.Fatalf("searchIOCs: %v", err)
+	}
+	if f.lastSearchReq == nil {
+		t.Fatal("search params must be recorded")
+	}
+	if f.lastSearchReq.Offset != nil {
+		t.Errorf("offset = %v, want unset", *f.lastSearchReq.Offset)
+	}
+	if f.lastSearchReq.After == nil || *f.lastSearchReq.After != "tok" {
+		t.Errorf("after = %v, want tok", f.lastSearchReq.After)
 	}
 }

@@ -93,7 +93,8 @@ summaries triggered by your monitoring rules. Consult
 This serves the external cyber risk monitoring capability of CrowdStrike Counter Adversary
 Operations (CAO). For endpoint, XDR, or NG-SIEM alerts, use ` + "`falcon_search_detections`" + `
 instead. Returns full notification records with a nested ` + "`notification`" + ` object
-containing status, rule metadata, breach_summary, and item details.`
+containing status, rule metadata, breach_summary, and item details.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	searchRulesDescription = `Search Falcon Intelligence Recon monitoring rules and return their full details.
 
@@ -102,7 +103,8 @@ topic (domain, email, typosquatting, brand), priority, status, or whether breach
 monitoring is enabled. Consult ` + "`falcon://recon/rules/search/fql-guide`" + ` before
 constructing filter expressions. These monitoring rules power the external cyber risk
 monitoring capability of CrowdStrike Counter Adversary Operations (CAO). Returns full
-rule definitions including topic, priority, filter expressions, and notification settings.`
+rule definitions including topic, priority, filter expressions, and notification settings.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	searchExposedDataRecordsDescription = `Search Falcon Intelligence Recon exposed-data records and return their full details.
 
@@ -111,7 +113,8 @@ emails, login IDs, password hashes, domains, and breach metadata. Consult
 ` + "`falcon://recon/exposed-data-records/search/fql-guide`" + ` before constructing filter
 expressions. These records are part of the external cyber risk monitoring capability of
 CrowdStrike Counter Adversary Operations (CAO). Returns full records including credential
-fields, location data, and associated notification context.`
+fields, location data, and associated notification context.
+Responses include ` + "`pagination.total`" + ` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.`
 
 	notificationsFilterDescription      = "FQL filter expression. See `falcon://recon/notifications/search/fql-guide` for syntax."
 	rulesFilterDescription              = "FQL filter expression. See `falcon://recon/rules/search/fql-guide` for syntax."

@@ -85,14 +85,18 @@ const (
 
 Use this to find applications by name, vendor, or installation details. Consult
 falcon://discover/applications/fql-guide before constructing filter expressions.
-Returns application entities with optional host info and usage data (based on facet).`
+Returns application entities with optional host info and usage data (based on facet).
+` + "Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	searchUnmanagedAssetsDescription = `Search for unmanaged assets (hosts without Falcon sensor) in your environment.
 
 Finds systems discovered by Falcon-managed hosts that lack a sensor themselves.
 Consult falcon://discover/hosts/fql-guide before constructing filter expressions.
 The tool automatically adds entity_type:'unmanaged' to all queries. Returns full
-asset details including platform, network, and criticality information.`
+asset details including platform, network, and criticality information.
+` + "Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	applicationsFilterDescription = "FQL filter expression (required). See `falcon://discover/applications/fql-guide` for syntax."
 

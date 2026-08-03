@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/intel"
@@ -82,7 +83,7 @@ func TestSearchActorsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "name:'FANCY BEAR'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.actorsResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.actorsResp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
@@ -136,7 +137,7 @@ func TestSearchIndicatorsSuccess(t *testing.T) {
 	if out.FilterUsed != "type:'domain'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.indicatorsResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.indicatorsResp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
@@ -175,7 +176,7 @@ func TestSearchReportsSuccess(t *testing.T) {
 	if out.FilterUsed != "type:'notice'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.reportsResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.reportsResp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }

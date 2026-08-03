@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/custom_ioa"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -53,9 +58,16 @@ type fakeCustomIOA struct {
 	lastDeleteRulesGrp  string
 	lastDeleteRulesIDs  []string
 	lastGetRuleTypeIDs  []string
+
+	// lastGroupsOffset and lastRuleTypesOffset record the offset each handler
+	// sent, so a test can assert the numeric input reaches the string-typed query
+	// param intact.
+	lastGroupsOffset    *string
+	lastRuleTypesOffset *string
 }
 
-func (f *fakeCustomIOA) QueryRuleGroupsFull(*custom_ioa.QueryRuleGroupsFullParams, ...custom_ioa.ClientOption) (*custom_ioa.QueryRuleGroupsFullOK, error) {
+func (f *fakeCustomIOA) QueryRuleGroupsFull(p *custom_ioa.QueryRuleGroupsFullParams, _ ...custom_ioa.ClientOption) (*custom_ioa.QueryRuleGroupsFullOK, error) {
+	f.lastGroupsOffset = p.Offset
 	return f.queryGroupsResp, f.queryGroupsErr
 }
 
@@ -63,7 +75,8 @@ func (f *fakeCustomIOA) QueryPlatformsMixin0(*custom_ioa.QueryPlatformsMixin0Par
 	return f.queryPlatformsResp, f.queryPlatformsErr
 }
 
-func (f *fakeCustomIOA) QueryRuleTypes(*custom_ioa.QueryRuleTypesParams, ...custom_ioa.ClientOption) (*custom_ioa.QueryRuleTypesOK, error) {
+func (f *fakeCustomIOA) QueryRuleTypes(p *custom_ioa.QueryRuleTypesParams, _ ...custom_ioa.ClientOption) (*custom_ioa.QueryRuleTypesOK, error) {
+	f.lastRuleTypesOffset = p.Offset
 	return f.queryRuleTypesResp, f.queryRuleTypesErr
 }
 
@@ -128,7 +141,7 @@ func TestSearchRuleGroupsSuccess(t *testing.T) {
 
 	f := &fakeCustomIOA{queryGroupsResp: &custom_ioa.QueryRuleGroupsFullOK{Payload: &models.APIRuleGroupsResponse{
 		Resources: []*models.APIRuleGroupV1{{ID: str("g1"), Name: str("Suspicious")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -139,8 +152,8 @@ func TestSearchRuleGroupsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "platform:'windows'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.queryGroupsResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryGroupsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -159,6 +172,66 @@ func TestSearchRuleGroupsEmpty(t *testing.T) {
 	if len(out.Resources) != 0 || out.Resources == nil {
 		t.Fatalf("expected non-nil empty slice, got %+v", out)
 	}
+}
+
+// TestQueryOffsetConversion covers the offset conversion in both paginated Custom
+// IOA tools. Each takes a numeric offset, matching the numeric offset the endpoint
+// reports back in meta.pagination, while the gofalcon query params are typed as
+// strings; the handlers bridge the two. A zero offset must leave the param unset
+// rather than sending "0".
+func TestQueryOffsetConversion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		offset int
+		want   *string
+	}{
+		{"zero leaves the param unset", 0, nil},
+		{"positive offset is sent as digits", 25, str("25")},
+	}
+
+	for _, tt := range tests {
+		t.Run("search_ioa_rule_groups/"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := &fakeCustomIOA{queryGroupsResp: &custom_ioa.QueryRuleGroupsFullOK{Payload: &models.APIRuleGroupsResponse{
+				Resources: []*models.APIRuleGroupV1{},
+			}}}
+			m := &Module{API: f, Logger: testLogger}
+
+			if _, _, err := m.searchRuleGroups(context.Background(), nil, SearchInput{Offset: tt.offset}); err != nil {
+				t.Fatalf("searchRuleGroups: %v", err)
+			}
+			if !reflect.DeepEqual(f.lastGroupsOffset, tt.want) {
+				t.Errorf("query offset = %v, want %v", derefOrNil(f.lastGroupsOffset), derefOrNil(tt.want))
+			}
+		})
+
+		t.Run("get_ioa_rule_types/"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := &fakeCustomIOA{queryRuleTypesResp: &custom_ioa.QueryRuleTypesOK{Payload: &models.MsaQueryResponse{
+				Resources: []string{},
+			}}}
+			m := &Module{API: f, Logger: testLogger}
+
+			if _, _, err := m.getRuleTypes(context.Background(), nil, RuleTypesInput{Offset: tt.offset}); err != nil {
+				t.Fatalf("getRuleTypes: %v", err)
+			}
+			if !reflect.DeepEqual(f.lastRuleTypesOffset, tt.want) {
+				t.Errorf("query offset = %v, want %v", derefOrNil(f.lastRuleTypesOffset), derefOrNil(tt.want))
+			}
+		})
+	}
+}
+
+// derefOrNil renders a *string for a test failure message without panicking on nil.
+func derefOrNil(p *string) string {
+	if p == nil {
+		return "<nil>"
+	}
+	return *p
 }
 
 func TestSearchRuleGroupsFQLError(t *testing.T) {
@@ -203,7 +276,7 @@ func TestGetPlatforms(t *testing.T) {
 
 	f := &fakeCustomIOA{queryPlatformsResp: &custom_ioa.QueryPlatformsMixin0OK{Payload: &models.MsaQueryResponse{
 		Resources: []string{"windows", "mac", "linux"},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -214,8 +287,8 @@ func TestGetPlatforms(t *testing.T) {
 	if out.Total != 3 || out.Resources[0].ID != "windows" {
 		t.Fatalf("unexpected platforms: %+v", out)
 	}
-	if out.Meta != any(f.queryPlatformsResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryPlatformsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -244,7 +317,7 @@ func TestGetRuleTypesTwoStep(t *testing.T) {
 	f := &fakeCustomIOA{
 		queryRuleTypesResp: &custom_ioa.QueryRuleTypesOK{Payload: &models.MsaQueryResponse{
 			Resources: []string{"1", "2"},
-			Meta:      &models.MsaMetaInfo{},
+			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getRuleTypesResp: &custom_ioa.GetRuleTypesOK{Payload: &models.APIRuleTypesResponse{
 			// Returned out of query order to exercise reordering.
@@ -266,8 +339,8 @@ func TestGetRuleTypesTwoStep(t *testing.T) {
 	if f.lastGetRuleTypeIDs[0] != "1" || f.lastGetRuleTypeIDs[1] != "2" {
 		t.Fatalf("expected get called with query IDs, got %v", f.lastGetRuleTypeIDs)
 	}
-	if out.Meta != any(f.queryRuleTypesResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryRuleTypesResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -327,7 +400,7 @@ func TestCreateRuleGroupBody(t *testing.T) {
 
 	f := &fakeCustomIOA{createGroupResp: &custom_ioa.CreateRuleGroupMixin0Created{Payload: &models.APIRuleGroupsResponse{
 		Resources: []*models.APIRuleGroupV1{{ID: str("new")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -340,8 +413,8 @@ func TestCreateRuleGroupBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	if out.Meta != any(f.createGroupResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createGroupResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	b := f.lastCreateGroupBody
 	if *b.Name != "Grp" || *b.Platform != "windows" || b.Description == nil || *b.Description != "desc" || b.Comment == nil || *b.Comment != "why" {
@@ -382,7 +455,7 @@ func TestUpdateRuleGroup(t *testing.T) {
 		t.Parallel()
 		f := &fakeCustomIOA{updateGroupResp: &custom_ioa.UpdateRuleGroupMixin0OK{Payload: &models.APIRuleGroupsResponse{
 			Resources: []*models.APIRuleGroupV1{{ID: str("g1")}},
-			Meta:      &models.MsaMetaInfo{},
+			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := &Module{API: f, Logger: testLogger}
 		enabled := false
@@ -395,8 +468,8 @@ func TestUpdateRuleGroup(t *testing.T) {
 		if out.Total != 1 {
 			t.Fatalf("expected updated record, got %+v", out)
 		}
-		if out.Meta != any(f.updateGroupResp.Payload.Meta) {
-			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.updateGroupResp.Payload.Meta)) {
+			t.Fatalf("expected normalized meta, got %+v", out.Meta)
 		}
 		b := f.lastUpdateGroupBody
 		if *b.ID != "g1" || *b.RulegroupVersion != 7 || b.Name == nil || *b.Name != "renamed" {
@@ -437,7 +510,7 @@ func TestDeleteRuleGroups(t *testing.T) {
 
 	t.Run("success with comment", func(t *testing.T) {
 		t.Parallel()
-		f := &fakeCustomIOA{deleteGroupsMeta: &models.MsaMetaInfo{}}
+		f := &fakeCustomIOA{deleteGroupsMeta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}
 		m := &Module{API: f, Logger: testLogger}
 		_, out, err := m.deleteRuleGroups(context.Background(), nil, DeleteGroupsInput{IDs: []string{"g1", "g2"}, Comment: "cleanup"})
 		if err != nil {
@@ -452,8 +525,8 @@ func TestDeleteRuleGroups(t *testing.T) {
 		if f.lastDeleteGroupCmt == nil || *f.lastDeleteGroupCmt != "cleanup" {
 			t.Fatalf("expected comment passed, got %v", f.lastDeleteGroupCmt)
 		}
-		if out.Meta != any(f.deleteGroupsMeta) {
-			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteGroupsMeta)) {
+			t.Fatalf("expected normalized meta, got %+v", out.Meta)
 		}
 	})
 }
@@ -494,7 +567,7 @@ func TestCreateRuleBody(t *testing.T) {
 
 	f := &fakeCustomIOA{createRuleResp: &custom_ioa.CreateRuleCreated{Payload: &models.APIRulesResponse{
 		Resources: []*models.APIRuleV1{{InstanceID: str("r1")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -511,8 +584,8 @@ func TestCreateRuleBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	if out.Meta != any(f.createRuleResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createRuleResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	b := f.lastCreateRuleBody
 	if *b.RulegroupID != "g1" || *b.Name != "Block" || *b.RuletypeID != "5" || *b.DispositionID != 30 || *b.PatternSeverity != "critical" {
@@ -560,7 +633,7 @@ func TestUpdateRuleBody(t *testing.T) {
 
 	f := &fakeCustomIOA{updateRulesResp: &custom_ioa.UpdateRulesV2OK{Payload: &models.APIRulesResponse{
 		Resources: []*models.APIRuleV1{{InstanceID: str("r1")}},
-		Meta:      &models.MsaMetaInfo{},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -577,8 +650,8 @@ func TestUpdateRuleBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected updated record, got %+v", out)
 	}
-	if out.Meta != any(f.updateRulesResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.updateRulesResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	b := f.lastUpdateRulesBody
 	if *b.RulegroupID != "g1" || *b.RulegroupVersion != 3 {
@@ -640,7 +713,7 @@ func TestDeleteRules(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		f := &fakeCustomIOA{deleteRulesMeta: &models.MsaMetaInfo{}}
+		f := &fakeCustomIOA{deleteRulesMeta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}
 		m := &Module{API: f, Logger: testLogger}
 		_, out, err := m.deleteRules(context.Background(), nil, DeleteRulesInput{RuleGroupID: "g1", IDs: []string{"r1", "r2"}})
 		if err != nil {
@@ -652,8 +725,8 @@ func TestDeleteRules(t *testing.T) {
 		if f.lastDeleteRulesGrp != "g1" || len(f.lastDeleteRulesIDs) != 2 {
 			t.Fatalf("expected group g1 and 2 ids, got grp=%q ids=%v", f.lastDeleteRulesGrp, f.lastDeleteRulesIDs)
 		}
-		if out.Meta != any(f.deleteRulesMeta) {
-			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteRulesMeta)) {
+			t.Fatalf("expected normalized meta, got %+v", out.Meta)
 		}
 	})
 }

@@ -211,9 +211,9 @@ func TestSearchServerlessVulnerabilitiesEmitsDebugLog(t *testing.T) {
 	}
 }
 
-// TestDecodeRuns covers the SARIF body decode helper directly, including the
+// TestDecodeSARIF covers the SARIF body decode helper directly, including the
 // live-shape single-object resources field and the empty/absent cases.
-func TestDecodeRuns(t *testing.T) {
+func TestDecodeSARIF(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -229,9 +229,9 @@ func TestDecodeRuns(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			runs, err := decodeRuns(tc.body)
+			runs, _, err := decodeSARIF(tc.body)
 			if err != nil {
-				t.Fatalf("decodeRuns: %v", err)
+				t.Fatalf("decodeSARIF: %v", err)
 			}
 			if len(runs) != tc.want {
 				t.Fatalf("len(runs) = %d, want %d", len(runs), tc.want)
@@ -240,11 +240,68 @@ func TestDecodeRuns(t *testing.T) {
 	}
 }
 
-// TestDecodeRunsInvalidJSON verifies a malformed body is a hard error, not a
-// silent empty result.
-func TestDecodeRunsInvalidJSON(t *testing.T) {
+// TestDecodeSARIFSurfacesMeta proves the meta sibling of resources is decoded
+// rather than discarded, and that it survives a response carrying no resources —
+// the trace ID is what a caller quotes in a support request, so it must outlive
+// an empty result.
+func TestDecodeSARIFSurfacesMeta(t *testing.T) {
 	t.Parallel()
-	if _, err := decodeRuns([]byte(`{not json`)); err == nil {
+
+	tests := []struct {
+		name string
+		body []byte
+	}{
+		{"with resources", []byte(`{"resources":{"version":"2.1.0","runs":[{}]},"meta":{"query_time":0.42,"trace_id":"trace-abc"}}`)},
+		{"resources absent", []byte(`{"resources":null,"meta":{"query_time":0.42,"trace_id":"trace-abc"}}`)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, meta, err := decodeSARIF(tc.body)
+			if err != nil {
+				t.Fatalf("decodeSARIF: %v", err)
+			}
+			if meta == nil {
+				t.Fatal("meta is nil; the meta sibling of resources was discarded")
+			}
+			if meta.TraceID == nil || *meta.TraceID != "trace-abc" {
+				t.Errorf("trace_id = %v, want trace-abc", meta.TraceID)
+			}
+			if meta.QueryTime == nil || *meta.QueryTime != 0.42 {
+				t.Errorf("query_time = %v, want 0.42", meta.QueryTime)
+			}
+		})
+	}
+}
+
+// TestSearchServerlessVulnerabilitiesAttachesMeta verifies the handler chains the
+// decoded meta onto the result envelope rather than dropping it.
+func TestSearchServerlessVulnerabilitiesAttachesMeta(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{"resources":{"version":"2.1.0","runs":[{}]},"meta":{"query_time":0.42,"trace_id":"trace-abc"}}`)
+	m := &Module{API: &fakeServerless{body: body}, Logger: testLogger}
+
+	_, out, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{Filter: "cloud_provider:'aws'"})
+	if err != nil {
+		t.Fatalf("searchServerlessVulnerabilities: %v", err)
+	}
+	if out.Meta == nil {
+		t.Fatal("out.Meta is nil; the handler dropped the response metadata")
+	}
+	if out.Meta.TraceID != "trace-abc" {
+		t.Errorf("trace_id = %q, want trace-abc", out.Meta.TraceID)
+	}
+	if out.Meta.QueryTime == nil || *out.Meta.QueryTime != 0.42 {
+		t.Errorf("query_time = %v, want 0.42", out.Meta.QueryTime)
+	}
+}
+
+// TestDecodeSARIFInvalidJSON verifies a malformed body is a hard error, not a
+// silent empty result.
+func TestDecodeSARIFInvalidJSON(t *testing.T) {
+	t.Parallel()
+	if _, _, err := decodeSARIF([]byte(`{not json`)); err == nil {
 		t.Fatal("expected an error decoding malformed body")
 	}
 }

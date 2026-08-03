@@ -92,7 +92,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"tactic/technique. Consult falcon://correlation-rules/search/fql-guide before " +
 			"constructing filter expressions. Returns full rule objects; use the `rule_id` " +
 			"field when passing results to update or delete tools. Filter with state:'published' " +
-			"to get one result per rule.",
+			"to get one result per rule." +
+			" Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchCorrelationRulesSchema,
 	}, m.searchCorrelationRules)
 

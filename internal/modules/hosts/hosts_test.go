@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/hosts"
 	"github.com/crowdstrike/gofalcon/falcon/models"
+
+	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
 // testLogger discards output; modules require a non-nil logger.
@@ -123,7 +126,7 @@ func TestSearchHostsFetchesDetails(t *testing.T) {
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 fetched resources, got %+v", out)
 	}
-	if out.Meta != any(f.queryResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the query meta", out.Meta)
 	}
 	if got := *out.Resources[0].DeviceID; got != "d1" {

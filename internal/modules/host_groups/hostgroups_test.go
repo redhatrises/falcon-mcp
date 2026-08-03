@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/host_group"
@@ -90,7 +91,7 @@ func TestSearchHostGroupsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "group_type:'static'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.searchResp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.searchResp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }
@@ -171,7 +172,7 @@ func TestSearchHostGroupMembers(t *testing.T) {
 		if out.FilterUsed != "platform_name:'Windows'" {
 			t.Fatalf("unexpected result: %+v", out)
 		}
-		if out.Meta != any(f.membersResp.Payload.Meta) {
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.membersResp.Payload.Meta)) {
 			t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 		}
 	})
@@ -304,7 +305,7 @@ func TestDeleteHostGroups(t *testing.T) {
 		if len(f.lastDeleteIDs) != 2 {
 			t.Fatalf("expected 2 ids passed, got %v", f.lastDeleteIDs)
 		}
-		if out.Meta != any(meta) {
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
 			t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 		}
 	})

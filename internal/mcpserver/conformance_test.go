@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 
@@ -23,8 +24,20 @@ import (
 // drive tools/list, resources/list, and a read-only tools/call end-to-end.
 type stubHosts struct{}
 
+// stubQueryMeta is the response meta stubHosts reports, carrying the fields a
+// client acts on so the end-to-end tests can assert the trimmed meta shape.
+var stubQueryMeta = &models.MsaMetaInfo{
+	Pagination: &models.MsaPaging{Total: ptrTo(int64(120)), Limit: ptrTo(int32(50)), Offset: ptrTo(int32(10))},
+	QueryTime:  ptrTo(0.02),
+	TraceID:    ptrTo("trace-conformance"),
+	PoweredBy:  "crowdstrike-api",
+}
+
+// ptrTo returns a pointer to v, for populating gofalcon's pointer-typed fields.
+func ptrTo[T any](v T) *T { return &v }
+
 func (stubHosts) QueryDevicesByFilter(*gofalconhosts.QueryDevicesByFilterParams, ...gofalconhosts.ClientOption) (*gofalconhosts.QueryDevicesByFilterOK, error) {
-	return &gofalconhosts.QueryDevicesByFilterOK{Payload: &models.MsaQueryResponse{Resources: []string{}}}, nil
+	return &gofalconhosts.QueryDevicesByFilterOK{Payload: &models.MsaQueryResponse{Resources: []string{}, Meta: stubQueryMeta}}, nil
 }
 func (stubHosts) PostDeviceDetailsV2(*gofalconhosts.PostDeviceDetailsV2Params, ...gofalconhosts.ClientOption) (*gofalconhosts.PostDeviceDetailsV2OK, error) {
 	return &gofalconhosts.PostDeviceDetailsV2OK{Payload: &models.DeviceapiDeviceDetailsResponseSwagger{}}, nil
@@ -164,6 +177,187 @@ func TestCallToolEndToEnd(t *testing.T) {
 	if _, ok := obj["resources"]; !ok {
 		t.Fatalf("structured content missing resources field: %v", obj)
 	}
+}
+
+// TestMetaShapeEndToEnd drives a real tools/call over the in-memory transport and
+// asserts the trimmed meta arrives as native structured JSON: the pagination
+// block, query duration, and trace ID a client acts on, with the endpoint-specific
+// extras (powered_by here) dropped. It also pins the advertised output schema so a
+// client can discover the pagination contract from tools/list rather than guessing
+// a per-endpoint shape.
+func TestMetaShapeEndToEnd(t *testing.T) {
+	cs := connectTestServer(t)
+	ctx := context.Background()
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "falcon_search_hosts",
+		Arguments: map[string]any{"filter": "platform_name:'Windows'"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned error result: %+v", res.Content)
+	}
+	obj, ok := res.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content should be a JSON object, got %T", res.StructuredContent)
+	}
+	meta, ok := obj["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("result must carry a meta object, got %#v", obj["meta"])
+	}
+
+	pagination, ok := meta["pagination"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta must carry a pagination object, got %#v", meta["pagination"])
+	}
+	if got := pagination["total"]; got != float64(120) {
+		t.Errorf("meta.pagination.total = %#v, want 120", got)
+	}
+	if got := pagination["limit"]; got != float64(50) {
+		t.Errorf("meta.pagination.limit = %#v, want 50", got)
+	}
+	// A numeric offset stays numeric end to end, so a caller can feed it back into an
+	// integer-typed offset input without a type conversion. Endpoints returning an
+	// opaque cursor instead emit a string; the advertised schema admits both.
+	if got := pagination["offset"]; got != float64(10) {
+		t.Errorf("meta.pagination.offset = %#v, want 10", got)
+	}
+	if got := meta["query_time"]; got != 0.02 {
+		t.Errorf("meta.query_time = %#v, want 0.02", got)
+	}
+	if got := meta["trace_id"]; got != "trace-conformance" {
+		t.Errorf("meta.trace_id = %#v, want trace-conformance", got)
+	}
+	for _, dropped := range []string{"powered_by", "writes", "errors"} {
+		if _, ok := meta[dropped]; ok {
+			t.Errorf("meta must not carry %q, got %#v", dropped, meta)
+		}
+	}
+
+	// The advertised schema must describe meta rather than accept anything, so a
+	// client can learn the contract from tools/list.
+	tools, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	var rawSchema any
+	for _, tool := range tools.Tools {
+		if tool.Name == "falcon_search_hosts" {
+			rawSchema = tool.OutputSchema
+			break
+		}
+	}
+	if rawSchema == nil {
+		t.Fatal("falcon_search_hosts must advertise an output schema")
+	}
+	// The schema crosses the wire as JSON, so walk it as decoded data: that is
+	// exactly what a client sees.
+	encoded, err := json.Marshal(rawSchema)
+	if err != nil {
+		t.Fatalf("marshal output schema: %v", err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(encoded, &schema); err != nil {
+		t.Fatalf("unmarshal output schema: %v", err)
+	}
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("output schema must have properties, got %s", encoded)
+	}
+	metaSchema, ok := props["meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("output schema must describe the meta property, got %s", encoded)
+	}
+	metaProps, ok := metaSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta schema must describe its properties rather than accept anything, got %v", metaSchema)
+	}
+	pagingSchema, ok := metaProps["pagination"].(map[string]any)
+	if !ok {
+		t.Fatalf("meta schema must describe pagination, got %v", metaProps)
+	}
+	pagingProps, ok := pagingSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("pagination schema must describe its properties, got %v", pagingSchema)
+	}
+	for _, field := range []string{"total", "limit", "offset", "next"} {
+		if _, ok := pagingProps[field]; !ok {
+			t.Errorf("pagination schema must describe %q, got %v", field, pagingProps)
+		}
+	}
+}
+
+// TestOffsetInputsAreIntegers walks every tool a fully-enabled server advertises and
+// asserts each one taking an offset declares it as a non-negative integer. The
+// offset a tool reports in meta.pagination is numeric, so a caller must be able to
+// hand that value straight back; a string-typed offset input rejects it and breaks
+// the documented paging round-trip.
+//
+// This is deliberately fleet-wide rather than per-module: the tools taking an offset
+// span two dozen modules, and a per-module assertion only covers whichever ones
+// somebody remembered to write. A new paginated tool is checked here the moment it
+// is registered.
+func TestOffsetInputsAreIntegers(t *testing.T) {
+	cs := connectNewServer(t, &config.Config{})
+
+	tools, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	if len(tools.Tools) == 0 {
+		t.Fatal("no tools advertised; the fleet-wide sweep would be vacuous")
+	}
+
+	var checked int
+	for _, tool := range tools.Tools {
+		if tool.InputSchema == nil {
+			continue
+		}
+		// The schema crosses the wire as JSON, so walk it as decoded data: that is
+		// exactly what a client validates against.
+		encoded, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Errorf("%s: marshal input schema: %v", tool.Name, err)
+			continue
+		}
+		var schema struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		}
+		if err := json.Unmarshal(encoded, &schema); err != nil {
+			t.Errorf("%s: unmarshal input schema: %v", tool.Name, err)
+			continue
+		}
+		rawOffset, ok := schema.Properties["offset"]
+		if !ok {
+			continue
+		}
+		// Only the offset property is decoded into a typed shape. Other properties
+		// legitimately carry a type array (e.g. ["null","array"]), which a single
+		// string field could not hold.
+		var offset struct {
+			Type    string   `json:"type"`
+			Minimum *float64 `json:"minimum"`
+		}
+		if err := json.Unmarshal(rawOffset, &offset); err != nil {
+			t.Errorf("%s: unmarshal offset property: %v", tool.Name, err)
+			continue
+		}
+		checked++
+		if offset.Type != "integer" {
+			t.Errorf("%s: offset input type = %q, want integer", tool.Name, offset.Type)
+		}
+		if offset.Minimum == nil || *offset.Minimum != 0 {
+			t.Errorf("%s: offset input minimum = %v, want 0", tool.Name, offset.Minimum)
+		}
+	}
+	// A refactor that stops advertising offset inputs would otherwise make every
+	// assertion above vacuously pass.
+	if checked == 0 {
+		t.Error("no tool advertised an offset input; expected the paginated search tools")
+	}
+	t.Logf("checked %d offset-taking tools of %d advertised", checked, len(tools.Tools))
 }
 
 // TestModuleSelectionEndToEnd drives a real New-built server over the in-memory

@@ -4,14 +4,20 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/firewall_management"
 	"github.com/crowdstrike/gofalcon/falcon/models"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -102,7 +108,7 @@ func TestSearchFirewallRulesSuccess(t *testing.T) {
 	f := &fakeFirewall{
 		queryRulesResp: &firewall_management.QueryRulesOK{Payload: &models.FwmgrAPIQueryResponse{
 			Resources: []string{"r1", "r2"},
-			Meta:      &models.FwmgrAPIMetaInfo{},
+			Meta:      &models.FwmgrAPIMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getRulesResp: &firewall_management.GetRulesOK{Payload: &models.FwmgrAPIRulesResponse{
 			Resources: []*models.FwmgrFirewallRuleV1{{ID: str("r1")}, {ID: str("r2")}},
@@ -120,8 +126,8 @@ func TestSearchFirewallRulesSuccess(t *testing.T) {
 	if f.getRulesCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.getRulesCalls)
 	}
-	if out.Meta != any(f.queryRulesResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryRulesResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -213,7 +219,7 @@ func TestSearchFirewallRulesPassesParams(t *testing.T) {
 	m := newModule(f)
 
 	_, _, err := m.searchFirewallRules(context.Background(), nil, SearchRulesInput{
-		Filter: "enabled:true", Limit: 25, Offset: 50, Sort: "name.asc", Q: "block", After: "tok",
+		Filter: "enabled:true", Limit: 25, Sort: "name.asc", Q: "block", After: "tok",
 	})
 	if err != nil {
 		t.Fatalf("searchFirewallRules: %v", err)
@@ -222,8 +228,9 @@ func TestSearchFirewallRulesPassesParams(t *testing.T) {
 	if p.Limit == nil || *p.Limit != 25 {
 		t.Errorf("limit = %v, want 25", p.Limit)
 	}
-	if p.Offset == nil || *p.Offset != "50" {
-		t.Errorf("offset = %v, want \"50\"", p.Offset)
+	// The tool paginates by cursor only, so it must never send an offset.
+	if p.Offset != nil {
+		t.Errorf("offset = %v, want unset", *p.Offset)
 	}
 	if p.Sort == nil || *p.Sort != "name.asc" {
 		t.Errorf("sort = %v, want name.asc", p.Sort)
@@ -261,7 +268,7 @@ func TestSearchFirewallRuleGroupsSuccess(t *testing.T) {
 	f := &fakeFirewall{
 		queryGroupsResp: &firewall_management.QueryRuleGroupsOK{Payload: &models.FwmgrAPIQueryResponse{
 			Resources: []string{"g1"},
-			Meta:      &models.FwmgrAPIMetaInfo{},
+			Meta:      &models.FwmgrAPIMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getGroupsResp: &firewall_management.GetRuleGroupsOK{Payload: &models.FwmgrAPIRuleGroupsResponse{
 			Resources: []*models.FwmgrAPIRuleGroupV1{{ID: str("g1")}},
@@ -279,8 +286,8 @@ func TestSearchFirewallRuleGroupsSuccess(t *testing.T) {
 	if f.getGroupsCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.getGroupsCalls)
 	}
-	if out.Meta != any(f.queryGroupsResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryGroupsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -350,7 +357,7 @@ func TestSearchFirewallPolicyRulesSuccess(t *testing.T) {
 	f := &fakeFirewall{
 		queryPolicyResp: &firewall_management.QueryPolicyRulesOK{Payload: &models.FwmgrAPIQueryResponse{
 			Resources: []string{"r1"},
-			Meta:      &models.FwmgrAPIMetaInfo{},
+			Meta:      &models.FwmgrAPIMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getRulesResp: &firewall_management.GetRulesOK{Payload: &models.FwmgrAPIRulesResponse{
 			Resources: []*models.FwmgrFirewallRuleV1{{ID: str("r1")}},
@@ -371,8 +378,8 @@ func TestSearchFirewallPolicyRulesSuccess(t *testing.T) {
 	if f.getRulesCalls != 1 {
 		t.Fatalf("expected rule detail fetch via GetRules, got %d", f.getRulesCalls)
 	}
-	if out.Meta != any(f.queryPolicyResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryPolicyResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -442,7 +449,7 @@ func TestCreateFirewallRuleGroupBody(t *testing.T) {
 
 	f := &fakeFirewall{createResp: &firewall_management.CreateRuleGroupCreated{Payload: &models.FwmgrAPIQueryResponse{
 		Resources: []string{"new-group"},
-		Meta:      &models.FwmgrAPIMetaInfo{},
+		Meta:      &models.FwmgrAPIMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(f)
 
@@ -459,8 +466,8 @@ func TestCreateFirewallRuleGroupBody(t *testing.T) {
 	if out.Total != 1 || out.Resources[0] != "new-group" {
 		t.Fatalf("expected created id returned, got %+v", out)
 	}
-	if out.Meta != any(f.createResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	body := f.lastCreateParams.Body
 	if body.Name == nil || *body.Name != "Prod Outbound" {
@@ -545,7 +552,7 @@ func TestDeleteFirewallRuleGroupsSuccess(t *testing.T) {
 
 	f := &fakeFirewall{deleteResp: &firewall_management.DeleteRuleGroupsOK{Payload: &models.FwmgrAPIQueryResponse{
 		Resources: []string{"g1", "g2"},
-		Meta:      &models.FwmgrAPIMetaInfo{},
+		Meta:      &models.FwmgrAPIMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(f)
 
@@ -556,8 +563,8 @@ func TestDeleteFirewallRuleGroupsSuccess(t *testing.T) {
 	if out.Total != 2 {
 		t.Fatalf("expected 2 deleted ids, got %+v", out)
 	}
-	if out.Meta != any(f.deleteResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	if len(f.lastDeleteParams.Ids) != 2 {
 		t.Fatalf("expected 2 ids passed, got %v", f.lastDeleteParams.Ids)
@@ -717,5 +724,31 @@ func assertDestructiveAnnotations(t *testing.T, name string, a *mcp.ToolAnnotati
 	}
 	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
 		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
+	}
+}
+
+// TestCursorToolsAdvertiseNoOffset pins the pagination input surface. The rules
+// and rule-groups tools page by cursor, so offering an offset alongside it would
+// give a caller two ways to page the same results with no way to choose. Policy
+// rules has no cursor, so it keeps its offset — which is also what keeps the
+// shared schema's offset lookup guarded rather than indexed.
+func TestCursorToolsAdvertiseNoOffset(t *testing.T) {
+	t.Parallel()
+
+	cursorOnly := map[string]*jsonschema.Schema{
+		"search_firewall_rules":       searchRulesSchema,
+		"search_firewall_rule_groups": searchRuleGroupsSchema,
+	}
+	for name, s := range cursorOnly {
+		if _, ok := s.Properties["offset"]; ok {
+			t.Errorf("%s must not advertise an offset input", name)
+		}
+		if _, ok := s.Properties["after"]; !ok {
+			t.Errorf("%s must advertise an after cursor", name)
+		}
+	}
+
+	if _, ok := searchPolicyRulesSchema.Properties["offset"]; !ok {
+		t.Error("search_firewall_policy_rules has no cursor, so it must keep its offset input")
 	}
 }

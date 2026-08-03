@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -112,7 +113,7 @@ func allTypesModule(fb backend) *Module {
 
 func TestSearchPoliciesSuccess(t *testing.T) {
 	t.Parallel()
-	meta := &models.MsaMetaInfo{}
+	meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	fb := &fakeBackend{
 		searchRecords: []map[string]any{{"id": "a", "name": "n"}},
 		searchMeta:    meta,
@@ -126,8 +127,8 @@ func TestSearchPoliciesSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "enabled:true" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	if fb.lastQuery.limit != 50 {
 		t.Fatalf("limit = %d, want 50", fb.lastQuery.limit)
@@ -264,7 +265,7 @@ func TestSearchPolicyMembers(t *testing.T) {
 	t.Run("success passes id and returns devices", func(t *testing.T) {
 		t.Parallel()
 		did := "d1"
-		meta := &models.MsaMetaInfo{}
+		meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 		fb := &fakeBackend{memberDevices: []*models.DeviceDevice{{DeviceID: &did}}, membersMeta: meta}
 		m := moduleWith("prevention", fb)
 		_, out, err := m.searchPolicyMembers(context.Background(), nil, MembersInput{PolicyType: "prevention", ID: "p1", Limit: 10})
@@ -277,7 +278,7 @@ func TestSearchPolicyMembers(t *testing.T) {
 		if fb.lastMembersID != "p1" {
 			t.Fatalf("expected id p1 passed, got %q", fb.lastMembersID)
 		}
-		if out.Meta != any(meta) {
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
 			t.Fatalf("expected meta passthrough, got %+v", out.Meta)
 		}
 	})
@@ -330,7 +331,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 
 func TestCreatePolicySuccess(t *testing.T) {
 	t.Parallel()
-	meta := &models.MsaMetaInfo{}
+	meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	fb := &fakeBackend{createRecords: []map[string]any{{"id": "new", "name": "n"}}, createMeta: meta}
 	m := moduleWith("prevention", fb)
 	_, out, err := m.createPolicy(context.Background(), nil, CreateInput{PolicyType: "prevention", Name: "n", PlatformName: "Windows", CloneID: "c1"})
@@ -340,7 +341,7 @@ func TestCreatePolicySuccess(t *testing.T) {
 	if out.Total != 1 || out.Resources[0]["id"] != "new" {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	if out.Meta != any(meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
 		t.Fatalf("expected meta passthrough, got %+v", out.Meta)
 	}
 	if fb.lastCreate.name != "n" || fb.lastCreate.platformName != "Windows" || fb.lastCreate.cloneID != "c1" {
@@ -413,7 +414,7 @@ func TestDeletePolicies(t *testing.T) {
 
 	t.Run("success passes ids", func(t *testing.T) {
 		t.Parallel()
-		meta := &models.MsaMetaInfo{}
+		meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 		fb := &fakeBackend{deleteMeta: meta}
 		m := moduleWith("prevention", fb)
 		_, out, err := m.deletePolicies(context.Background(), nil, DeleteInput{PolicyType: "prevention", IDs: []string{"a", "b"}})
@@ -423,7 +424,7 @@ func TestDeletePolicies(t *testing.T) {
 		if !out.Ok {
 			t.Fatalf("expected Ok, got %+v", out)
 		}
-		if out.Meta != any(meta) {
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
 			t.Fatalf("expected meta passthrough, got %+v", out.Meta)
 		}
 		if len(fb.lastDeleteIDs) != 2 {
