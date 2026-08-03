@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/recon"
@@ -13,6 +14,20 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+)
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
+
+// The rules endpoint's monitoring-rule allowance, in the shape the live API
+// reports it. Pending is genuinely zero, so the handler exercises a real zero
+// rather than only populated fields. The projected JSON is asserted in
+// base.TestNormalizeMetaRealTypes.
+var (
+	quotaTotal   = int32(500)
+	quotaActive  = int32(371)
+	quotaPending = int32(0)
 )
 
 // testLogger discards output; modules require a non-nil logger.
@@ -81,7 +96,7 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 	f := &fakeRecon{
 		notifQueryResp: &recon.QueryNotificationsV1OK{Payload: &models.DomainQueryResponse{
 			Resources: []string{"n1", "n2"},
-			Meta:      &models.DomainMsaMetaInfo{},
+			Meta:      &models.DomainMsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		notifGetResp: &recon.GetNotificationsDetailedV1OK{Payload: &models.DomainNotificationDetailsResponseV1{
 			// Returned out of query order to exercise reordering by id.
@@ -110,8 +125,8 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 	if out.FilterUsed != "status:'new'" {
 		t.Errorf("FilterUsed = %q", out.FilterUsed)
 	}
-	if out.Meta != any(f.notifQueryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.notifQueryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -190,7 +205,10 @@ func TestSearchRulesSuccess(t *testing.T) {
 	f := &fakeRecon{
 		rulesQueryResp: &recon.QueryRulesV1OK{Payload: &models.DomainRuleQueryResponseV1{
 			Resources: []string{"r1"},
-			Meta:      &models.DomainRuleMetaInfo{},
+			Meta: &models.DomainRuleMetaInfo{
+				QueryTime: &metaQueryTime,
+				Quota:     &models.DomainRuleQuota{Total: &quotaTotal, Active: &quotaActive, Pending: &quotaPending},
+			},
 		}},
 		rulesGetResp: &recon.GetRulesV1OK{Payload: &models.DomainRulesEntitiesResponseV1{
 			Resources: []*models.SadomainRule{{ID: str("r1")}},
@@ -208,8 +226,8 @@ func TestSearchRulesSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || *out.Resources[0].ID != "r1" {
 		t.Fatalf("unexpected result %+v", out)
 	}
-	if out.Meta != any(f.rulesQueryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.rulesQueryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -242,7 +260,7 @@ func TestSearchExposedDataRecordsSuccess(t *testing.T) {
 	f := &fakeRecon{
 		edrQueryResp: &recon.QueryNotificationsExposedDataRecordsV1OK{Payload: &models.DomainQueryResponse{
 			Resources: []string{"e1", "e2"},
-			Meta:      &models.DomainMsaMetaInfo{},
+			Meta:      &models.DomainMsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		edrGetResp: &recon.GetNotificationsExposedDataRecordsV1OK{Payload: &models.APINotificationExposedDataRecordEntitiesResponseV1{
 			Resources: []*models.APINotificationExposedDataRecordV1{
@@ -263,8 +281,8 @@ func TestSearchExposedDataRecordsSuccess(t *testing.T) {
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 resources, got %+v", out)
 	}
-	if out.Meta != any(f.edrQueryResp.Payload.Meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.edrQueryResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 

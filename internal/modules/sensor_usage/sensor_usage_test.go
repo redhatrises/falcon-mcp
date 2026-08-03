@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/sensor_usage_api"
 	"github.com/crowdstrike/gofalcon/falcon/models"
+
+	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
 // testLogger discards output; modules require a non-nil logger.
@@ -58,7 +61,7 @@ func TestSearchSensorUsageSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "period:'30'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if out.Meta != any(f.resp.Payload.Meta) {
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.resp.Payload.Meta)) {
 		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
 	}
 }

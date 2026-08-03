@@ -169,7 +169,9 @@ func (m *Module) getShieldCheckCompliance(ctx context.Context, _ *mcp.CallToolRe
 const getActivityDescription = "Get events from the Falcon Shield (SaaS Security) activity monitor; data is retained for 180 days.\n\n" +
 	"Use this to investigate user activity, threats, or IoC events across connected SaaS platforms; " +
 	"when filtering by integration_id, category, or actor, the date range must be within 24 hours. " +
-	"Returns activity event objects including timestamp, event name, actor identity, integration, category, and location details."
+	"Returns activity event objects including timestamp, event name, actor identity, integration, category, and location details. " +
+	"This endpoint does not report a total count, so `pagination.total` is always null — " +
+	"page through results with `pagination.next`/`skip` rather than asking \"how many\"."
 
 // GetActivityInput is the input for falcon_get_shield_activity_monitor.
 type GetActivityInput struct {
