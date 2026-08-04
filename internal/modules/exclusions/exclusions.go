@@ -219,8 +219,7 @@ func (m *Module) searchExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 		limit:  clampLimit(in.ExclusionType, in.Limit),
 	}
 	if in.Offset != 0 {
-		off := int64(in.Offset)
-		args.offset = &off
+		args.offset = new(int64(in.Offset))
 	}
 
 	ids, meta, err := b.query(ctx, args)

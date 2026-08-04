@@ -178,8 +178,7 @@ func (m *Module) searchQuarantinedFiles(ctx context.Context, req *mcp.CallToolRe
 	// numeric offset back in meta.pagination, so the numeric input is formatted
 	// here rather than exposing the string form to callers.
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

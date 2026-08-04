@@ -58,8 +58,7 @@ func (m *Module) createFirewallRuleGroup(ctx context.Context, _ *mcp.CallToolReq
 		params.Comment = &in.Comment
 	}
 	if in.Library {
-		library := "true"
-		params.Library = &library
+		params.Library = new("true")
 	}
 
 	resp, err := m.API.CreateRuleGroup(params)

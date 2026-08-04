@@ -248,8 +248,7 @@ func (m *Module) searchReconNotifications(ctx context.Context, req *mcp.CallTool
 		params.Q = &in.Q
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -303,8 +302,7 @@ func (m *Module) searchReconRules(ctx context.Context, req *mcp.CallToolRequest,
 		params.Q = &in.Q
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -359,8 +357,7 @@ func (m *Module) searchReconExposedDataRecords(ctx context.Context, req *mcp.Cal
 		params.Q = &in.Q
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
