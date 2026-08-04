@@ -131,8 +131,7 @@ func (m *Module) searchDetections(ctx context.Context, req *mcp.CallToolRequest,
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Q != "" {
 		params.Q = &in.Q

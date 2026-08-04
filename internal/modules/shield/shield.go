@@ -90,8 +90,7 @@ func int64Ptr(v int) *int64 {
 	if v == 0 {
 		return nil
 	}
-	n := int64(v)
-	return &n
+	return new(int64(v))
 }
 
 // strPtr returns a pointer to s when non-empty, else nil.
@@ -99,7 +98,7 @@ func strPtr(s string) *string {
 	if s == "" {
 		return nil
 	}
-	return &s
+	return new(s)
 }
 
 // boolPtr returns b unchanged; it exists so callers can pass the *bool inputs
