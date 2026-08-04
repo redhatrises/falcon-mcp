@@ -147,7 +147,7 @@ func (m *Module) performHostGroupAction(ctx context.Context, _ *mcp.CallToolRequ
 	params.Body = &models.MsaEntityActionRequestV2{
 		Ids: in.IDs,
 		ActionParameters: []*models.MsaspecActionParameter{
-			{Name: ptr("filter"), Value: &in.Filter},
+			{Name: new("filter"), Value: &in.Filter},
 		},
 	}
 
@@ -176,6 +176,3 @@ func (in ActionInput) validate() error {
 func wrapInvalid(op, detail string) error {
 	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }
-
-// ptr returns a pointer to v.
-func ptr[T any](v T) *T { return &v }

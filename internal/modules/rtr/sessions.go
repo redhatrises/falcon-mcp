@@ -54,8 +54,7 @@ func (m *Module) searchSessions(ctx context.Context, req *mcp.CallToolRequest, i
 	}
 	if in.Offset != 0 {
 		// RTRListAllSessions types offset as an opaque *string token, not an int.
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -102,14 +101,12 @@ func (m *Module) searchAuditSessions(ctx context.Context, _ *mcp.CallToolRequest
 
 	params := real_time_response_audit.NewRTRAuditSessionsParamsWithContext(ctx)
 	// RTRAuditSessions types both limit and offset as opaque *string, not int.
-	limitStr := strconv.Itoa(limit)
-	params.Limit = &limitStr
+	params.Limit = new(strconv.Itoa(limit))
 	if in.Filter != "" {
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
