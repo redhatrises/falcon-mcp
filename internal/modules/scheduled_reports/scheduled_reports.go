@@ -264,8 +264,7 @@ func (m *Module) searchScheduledReports(ctx context.Context, req *mcp.CallToolRe
 		params.Q = &in.Q
 	}
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -338,8 +337,7 @@ func (m *Module) searchReportExecutions(ctx context.Context, req *mcp.CallToolRe
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

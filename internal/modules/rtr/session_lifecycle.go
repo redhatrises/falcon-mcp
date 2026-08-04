@@ -47,8 +47,7 @@ func (m *Module) initSession(ctx context.Context, _ *mcp.CallToolRequest, in Ini
 		QueueOffline: &in.QueueOffline,
 	}
 	if in.Timeout != 0 {
-		timeout := int64(in.Timeout)
-		params.Timeout = &timeout
+		params.Timeout = new(int64(in.Timeout))
 	}
 	if in.TimeoutDuration != "" {
 		params.TimeoutDuration = &in.TimeoutDuration

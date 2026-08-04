@@ -233,8 +233,7 @@ func (m *Module) searchClassifications(ctx context.Context, req *mcp.CallToolReq
 		params.Sort = &in.Sort
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 
 	qresp, err := m.API.QueriesClassificationGetV2(params)
@@ -297,8 +296,7 @@ func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, i
 		params.Sort = &in.Sort
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 
 	qresp, err := m.API.QueriesPolicyGetV2(params)
@@ -355,8 +353,7 @@ func (m *Module) searchContentPatterns(ctx context.Context, req *mcp.CallToolReq
 		params.Sort = &in.Sort
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 
 	qresp, err := m.API.QueriesContentPatternGetV2(params)

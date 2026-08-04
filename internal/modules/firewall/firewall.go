@@ -313,8 +313,7 @@ func (m *Module) searchFirewallPolicyRules(ctx context.Context, req *mcp.CallToo
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

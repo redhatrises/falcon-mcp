@@ -80,10 +80,10 @@ func buildEvidence(alertIDs, eventIDs []string) *models.OperationsCreateCaseRequ
 	}
 	evidence := &models.OperationsCreateCaseRequestEvidence{}
 	for _, aid := range alertIDs {
-		evidence.Alerts = append(evidence.Alerts, &models.SdkAlertEvidenceSelector{ID: ptr(aid)})
+		evidence.Alerts = append(evidence.Alerts, &models.SdkAlertEvidenceSelector{ID: new(aid)})
 	}
 	for _, eid := range eventIDs {
-		evidence.Events = append(evidence.Events, &models.SdkEventEvidenceSelector{ID: ptr(eid)})
+		evidence.Events = append(evidence.Events, &models.SdkEventEvidenceSelector{ID: new(eid)})
 	}
 	return evidence
 }
@@ -128,8 +128,7 @@ func (m *Module) updateCase(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 		hasField = true
 	}
 	if in.Severity != nil {
-		sev := int64(*in.Severity)
-		fields.Severity = &sev
+		fields.Severity = new(int64(*in.Severity))
 		hasField = true
 	}
 	if in.AssignedToUserUUID != "" {
@@ -185,7 +184,7 @@ func (m *Module) addCaseAlertEvidence(ctx context.Context, _ *mcp.CallToolReques
 
 	body := &models.OperationsAddAlertsToCaseRequest{ID: &in.ID}
 	for _, aid := range in.AlertIDs {
-		body.Alerts = append(body.Alerts, &models.SdkAlertEvidenceSelector{ID: ptr(aid)})
+		body.Alerts = append(body.Alerts, &models.SdkAlertEvidenceSelector{ID: new(aid)})
 	}
 
 	params := cases.NewEntitiesAlertEvidencePostV1ParamsWithContext(ctx)
@@ -216,7 +215,7 @@ func (m *Module) addCaseEventEvidence(ctx context.Context, _ *mcp.CallToolReques
 
 	body := &models.OperationsAddEventsToCaseRequest{ID: &in.ID}
 	for _, eid := range in.EventIDs {
-		body.Events = append(body.Events, &models.SdkEventEvidenceSelector{ID: ptr(eid)})
+		body.Events = append(body.Events, &models.SdkEventEvidenceSelector{ID: new(eid)})
 	}
 
 	params := cases.NewEntitiesEventEvidencePostV1ParamsWithContext(ctx)
@@ -274,6 +273,3 @@ func (m *Module) manageCaseTags(ctx context.Context, _ *mcp.CallToolRequest, in 
 func wrapInvalid(op, detail string) error {
 	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }
-
-// ptr returns a pointer to v.
-func ptr[T any](v T) *T { return &v }

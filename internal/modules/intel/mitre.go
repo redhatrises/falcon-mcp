@@ -99,11 +99,9 @@ func (m *Module) resolveActorID(ctx context.Context, actor string) (string, erro
 	}
 
 	m.Logger.Debug("get_mitre_report resolving actor by name", "actor", actor)
-	filter := fmt.Sprintf("name:'%s'", actor)
-	limit := int64(1)
 	params := intel.NewQueryIntelActorEntitiesParamsWithContext(ctx)
-	params.Filter = &filter
-	params.Limit = &limit
+	params.Filter = new(fmt.Sprintf("name:'%s'", actor))
+	params.Limit = new(int64(1))
 
 	resp, err := m.API.QueryIntelActorEntities(params)
 	if e := base.APIError(err, resp, scopeActors); e != nil {

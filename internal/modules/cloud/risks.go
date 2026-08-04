@@ -53,8 +53,7 @@ func (m *Module) searchCloudRisks(ctx context.Context, _ *mcp.CallToolRequest, i
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -98,14 +97,12 @@ func (m *Module) searchCloudGroups(ctx context.Context, _ *mcp.CallToolRequest, 
 	if limit == 0 {
 		limit = 100
 	}
-	limitStr := strconv.Itoa(limit)
-	params.Limit = &limitStr
+	params.Limit = new(strconv.Itoa(limit))
 	if in.Filter != "" {
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offsetStr := strconv.Itoa(in.Offset)
-		params.Offset = &offsetStr
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

@@ -244,8 +244,7 @@ func (m *Module) errorResult(msg string, entityCount int, investigationTypes []s
 		},
 	}
 	if criteria != nil && criteria.hasAny() {
-		c := *criteria
-		res.SearchCriteria = &c
+		res.SearchCriteria = new(*criteria)
 	}
 	return res
 }
@@ -262,8 +261,7 @@ func (m *Module) synthesize(entityIDs, investigationTypes []string, criteria Sea
 		Status:             "completed",
 	}
 	if criteria.hasAny() {
-		c := criteria
-		summary.SearchCriteria = &c
+		summary.SearchCriteria = new(criteria)
 	}
 
 	res := InvestigationResult{Summary: summary, Entities: entityIDs}

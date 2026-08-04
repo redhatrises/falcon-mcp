@@ -88,7 +88,7 @@ func (in UpdateInput) actionParameters() ([]*models.MsaspecActionParameter, erro
 
 	var actions []*models.MsaspecActionParameter
 	add := func(name, value string) {
-		actions = append(actions, &models.MsaspecActionParameter{Name: ptr(name), Value: ptr(value)})
+		actions = append(actions, &models.MsaspecActionParameter{Name: new(name), Value: new(value)})
 	}
 
 	if in.Status != "" {
@@ -160,5 +160,3 @@ func (in UpdateInput) hasResolutionTag() bool {
 	}
 	return false
 }
-
-func ptr[T any](v T) *T { return &v }

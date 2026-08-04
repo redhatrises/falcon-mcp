@@ -257,8 +257,7 @@ func (m *Module) searchCases(ctx context.Context, req *mcp.CallToolRequest, in S
 		params.Q = &in.Q
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -322,8 +321,7 @@ func (m *Module) listCaseTemplates(ctx context.Context, req *mcp.CallToolRequest
 	params := case_management.NewQueriesTemplatesGetV1ParamsWithContext(ctx)
 	params.Limit = &limit
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 
 	queryResp, err := m.Templates.QueriesTemplatesGetV1(params)

@@ -55,8 +55,7 @@ func (m *Module) searchCSPMSuppressionRules(ctx context.Context, _ *mcp.CallTool
 	}
 	qparams.Limit = &limit
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		qparams.Offset = &offset
+		qparams.Offset = new(int64(in.Offset))
 	}
 
 	qresp, err := m.Policies.QuerySuppressionRules(qparams)
@@ -194,13 +193,13 @@ func (m *Module) createCSPMSuppressionRule(ctx context.Context, _ *mcp.CallToolR
 	}
 
 	body := &models.SuppressionrulesCreateSuppressionRuleRequest{
-		Name:                strPtr(in.Name),
-		Domain:              strPtr("CSPM"),
-		Subdomain:           strPtr("IOM"),
-		SuppressionReason:   strPtr(in.SuppressionReason),
-		RuleSelectionType:   strPtr("rule_selection_filter"),
+		Name:                new(in.Name),
+		Domain:              new("CSPM"),
+		Subdomain:           new("IOM"),
+		SuppressionReason:   new(in.SuppressionReason),
+		RuleSelectionType:   new("rule_selection_filter"),
 		RuleSelectionFilter: ruleFilter,
-		ScopeType:           strPtr(scopeType),
+		ScopeType:           new(scopeType),
 	}
 	if hasAssetFilter {
 		body.ScopeAssetFilter = assetFilter
@@ -255,9 +254,6 @@ func (m *Module) deleteCSPMSuppressionRules(ctx context.Context, _ *mcp.CallTool
 	}
 	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
 }
-
-// strPtr returns a pointer to s. Used for the gofalcon required *string body fields.
-func strPtr(s string) *string { return &s }
 
 // validReasonsList renders the accepted suppression reasons as a sorted,
 // comma-separated string for error messages.

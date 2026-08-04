@@ -162,8 +162,7 @@ func (m *Module) searchActors(ctx context.Context, _ *mcp.CallToolRequest, in Ac
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -213,8 +212,7 @@ func (m *Module) searchIndicators(ctx context.Context, _ *mcp.CallToolRequest, i
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -267,8 +265,7 @@ func (m *Module) searchReports(ctx context.Context, _ *mcp.CallToolRequest, in R
 		params.Filter = &in.Filter
 	}
 	if in.Offset != 0 {
-		offset := int64(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(int64(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

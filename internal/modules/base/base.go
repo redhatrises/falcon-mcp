@@ -84,10 +84,6 @@ var ErrEmptyResult = errors.New("base: no matching results")
 // as "search_detections" is exposed as "falcon_search_detections".
 const namePrefix = "falcon_"
 
-// ptr returns a pointer to v. Used for the *bool annotation fields whose spec
-// default is true, where a nil pointer would mean "true".
-func ptr[T any](v T) *T { return &v }
-
 // SchemaFor infers In's schema from its struct tags, then applies mutate to add
 // constraints and defaults the tag syntax can't express. Panics on a schema
 // error (a programming error caught at startup).
@@ -143,8 +139,8 @@ func readOnlyAnnotations() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{
 		ReadOnlyHint:    true,
 		IdempotentHint:  true,
-		OpenWorldHint:   ptr(true),
-		DestructiveHint: ptr(false),
+		OpenWorldHint:   new(true),
+		DestructiveHint: new(false),
 	}
 }
 
@@ -158,8 +154,8 @@ func MutatingAnnotations() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{
 		ReadOnlyHint:    false,
 		IdempotentHint:  false,
-		OpenWorldHint:   ptr(true),
-		DestructiveHint: ptr(false),
+		OpenWorldHint:   new(true),
+		DestructiveHint: new(false),
 	}
 }
 
@@ -173,8 +169,8 @@ func DestructiveAnnotations(idempotent bool) *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{
 		ReadOnlyHint:    false,
 		IdempotentHint:  idempotent,
-		OpenWorldHint:   ptr(true),
-		DestructiveHint: ptr(true),
+		OpenWorldHint:   new(true),
+		DestructiveHint: new(true),
 	}
 }
 

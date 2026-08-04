@@ -197,8 +197,8 @@ func idempotentMutatingAnnotations() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{
 		ReadOnlyHint:    false,
 		IdempotentHint:  true,
-		OpenWorldHint:   ptr(true),
-		DestructiveHint: ptr(false),
+		OpenWorldHint:   new(true),
+		DestructiveHint: new(false),
 	}
 }
 
@@ -243,8 +243,7 @@ func (m *Module) searchRuleGroups(ctx context.Context, _ *mcp.CallToolRequest, i
 	// numeric offset back in meta.pagination, so the numeric input is formatted
 	// here rather than exposing the string form to callers.
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
+		params.Offset = new(strconv.Itoa(in.Offset))
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -320,8 +319,7 @@ func (m *Module) getRuleTypes(ctx context.Context, _ *mcp.CallToolRequest, in Ru
 	qp.Limit = &limit
 	// Same string-typed offset param as the rule-groups query; see searchRuleGroups.
 	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		qp.Offset = &offset
+		qp.Offset = new(strconv.Itoa(in.Offset))
 	}
 
 	qresp, err := m.API.QueryRuleTypes(qp)
@@ -398,6 +396,3 @@ func ruleGroupsFQLBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 		Message: "The request was rejected with HTTP 400, which for this endpoint indicates an invalid FQL filter expression.",
 	}}, true
 }
-
-// ptr returns a pointer to v.
-func ptr[T any](v T) *T { return &v }
