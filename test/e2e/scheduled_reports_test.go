@@ -12,10 +12,10 @@ import (
 // mutate/trigger and are not driven here to avoid side effects) and tolerate an
 // empty tenant. Both search tools follow the two-step query->get-by-id chain and
 // return entities with a flat "id" field, so the presence of "id" confirms the
-// detail fetch ran rather than returning bare identifiers. Label("scheduled_reports")
-// selects just this module with --label-filter="scheduled_reports"; Label("integration")
+// detail fetch ran rather than returning bare identifiers. Label("scheduledreports")
+// selects just this module with --label-filter="scheduledreports"; Label("integration")
 // marks the live tier.
-var _ = Describe("scheduled_reports module", Label("integration", "scheduled_reports"), func() {
+var _ = Describe("scheduledreports module", Label("integration", "scheduledreports"), func() {
 	var ctx context.Context
 
 	BeforeEach(func() {

@@ -12,9 +12,9 @@ import (
 // spec creates a disposable static group, confirms it via search, and deletes
 // it, cleaning up with DeferCleanup even if an assertion fails; it carries
 // Label("mutating") so it can be excluded with --label-filter="!mutating" and
-// skips when the write scope is absent. Label("host_groups") selects just this
+// skips when the write scope is absent. Label("hostgroups") selects just this
 // module; Label("integration") marks the live tier.
-var _ = Describe("host_groups module", Label("integration", "host_groups"), func() {
+var _ = Describe("hostgroups module", Label("integration", "hostgroups"), func() {
 	var ctx context.Context
 
 	BeforeEach(func() {

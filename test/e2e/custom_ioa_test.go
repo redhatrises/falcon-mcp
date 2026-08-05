@@ -11,9 +11,9 @@ import (
 // tenant: searching rule groups (with their rules), discovering platforms, and
 // listing rule types. They use small limits and tolerate an empty tenant. The
 // mutating tools (create/update/delete rule groups and rules) are not exercised
-// here to avoid altering tenant state. Label("custom_ioa") selects just this
+// here to avoid altering tenant state. Label("customioa") selects just this
 // module.
-var _ = Describe("custom_ioa module", Label("integration", "custom_ioa"), func() {
+var _ = Describe("customioa module", Label("integration", "customioa"), func() {
 	var ctx context.Context
 
 	BeforeEach(func() {

@@ -119,7 +119,7 @@ type Module struct {
 }
 
 // Name reports the module name.
-func (m *Module) Name() string { return "scheduled_reports" }
+func (m *Module) Name() string { return "scheduledreports" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {

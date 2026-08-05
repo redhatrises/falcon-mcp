@@ -85,7 +85,7 @@ type Module struct {
 }
 
 // Name reports the module name.
-func (m *Module) Name() string { return "data_protection" }
+func (m *Module) Name() string { return "dataprotection" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {

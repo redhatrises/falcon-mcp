@@ -10,9 +10,9 @@ import (
 // The data_protection specs exercise the Data Protection search tools
 // (classifications, policies, content patterns) against the live tenant. This
 // is a distinct module from shield (SaaS Security). The specs are read-only,
-// use a small limit, and tolerate an empty tenant. Label("data_protection")
+// use a small limit, and tolerate an empty tenant. Label("dataprotection")
 // allows selecting just this module; Label("integration") marks the live tier.
-var _ = Describe("data_protection module", Label("integration", "data_protection"), func() {
+var _ = Describe("dataprotection module", Label("integration", "dataprotection"), func() {
 	var ctx context.Context
 
 	BeforeEach(func() {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -30,7 +31,8 @@ var excludedModuleDirs = map[string]bool{
 // The expected set is derived at runtime from the module directories rather than
 // a hardcoded literal, so adding a module never edits this file (avoiding the
 // merge conflicts a shared list produced). The invariant it relies on: every
-// module's Name() equals its directory under internal/modules/.
+// module's Name() equals its directory under internal/modules/ with underscores
+// removed (e.g. host_groups -> hostgroups).
 func TestModuleFactoriesDiscovered(t *testing.T) {
 	modules := registry.Build(registry.Deps{
 		API: &client.CrowdStrikeAPISpecification{},
@@ -52,8 +54,10 @@ func TestModuleFactoriesDiscovered(t *testing.T) {
 	}
 }
 
-// discoverModuleDirs returns the sorted names of the tool-module directories
-// under ../modules, excluding the non-module packages.
+// discoverModuleDirs returns the sorted module tokens derived from the
+// tool-module directories under ../modules, excluding the non-module packages.
+// The token is the directory name with underscores removed, matching the
+// module's Name().
 func discoverModuleDirs(t *testing.T) []string {
 	t.Helper()
 
@@ -70,5 +74,10 @@ func discoverModuleDirs(t *testing.T) []string {
 		dirs = append(dirs, e.Name())
 	}
 	sort.Strings(dirs)
-	return dirs
+
+	tokens := make([]string, len(dirs))
+	for i, d := range dirs {
+		tokens[i] = strings.ReplaceAll(d, "_", "")
+	}
+	return tokens
 }
