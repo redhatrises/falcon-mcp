@@ -14,12 +14,13 @@ const toolNamePrefix = "falcon_"
 
 // paramSummary describes one tool parameter for search results. It mirrors
 // upstream falcon-mcp's per-parameter summary: type, whether it is required,
-// and its description.
+// its description, and any example values the schema advertises.
 type paramSummary struct {
 	Name        string `json:"name"`
 	Type        string `json:"type,omitempty"`
 	Required    bool   `json:"required"`
 	Description string `json:"description,omitempty"`
+	Examples    []any  `json:"examples,omitempty"`
 }
 
 // paramSummaries extracts the top-level parameters from a tool's inferred input
@@ -50,6 +51,9 @@ func paramSummaries(schema *jsonschema.Schema) []paramSummary {
 		if p != nil {
 			summary.Type = p.Type
 			summary.Description = p.Description
+			if len(p.Examples) > 0 {
+				summary.Examples = append([]any(nil), p.Examples...)
+			}
 		}
 		out = append(out, summary)
 	}

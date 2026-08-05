@@ -59,11 +59,23 @@ func (m *MetaModule) RegisterPrompts(_ *mcp.Server) {}
 
 // searchToolsSchema is the input schema for falcon_search_tools. It is inferred
 // from SearchToolsInput's struct tags, then a mutate func adds the limit
-// bounds/default the tag syntax cannot express, reusing the clamp constants.
+// bounds/default the tag syntax cannot express, reusing the clamp constants, and
+// advertises example values agents can copy.
 var searchToolsSchema = base.SchemaFor[SearchToolsInput](func(s *jsonschema.Schema) {
 	s.Properties["limit"].Minimum = jsonschema.Ptr(float64(minSearchLimit))
 	s.Properties["limit"].Maximum = jsonschema.Ptr(float64(maxSearchLimit))
 	s.Properties["limit"].Default = json.RawMessage(strconv.Itoa(defaultSearchLimit))
+	base.Examples(s, "query", "quarantine release", "search hosts")
+	base.Examples(s, "module", "hosts", "detections")
+	base.Examples(s, "limit", 10, 50)
+})
+
+// executeToolSchema is the input schema for falcon_execute_tool. It is inferred
+// from ExecuteToolInput's struct tags, then a mutate func advertises example
+// values: a concrete target tool name and a parameters object agents can adapt.
+var executeToolSchema = base.SchemaFor[ExecuteToolInput](func(s *jsonschema.Schema) {
+	base.Examples(s, "tool_name", "falcon_search_hosts", "falcon_search_detections")
+	base.Examples(s, "parameters", map[string]any{"filter": "platform_name:'Windows'"})
 })
 
 // RegisterTools registers the dynamic-mode discovery/execution meta-tools into
@@ -96,6 +108,7 @@ func (m *MetaModule) RegisterTools(r base.Registrar) {
 		// tools. Agents must use falcon_search_tools' read_only/destructive
 		// fields to assess risk per target tool.
 		Annotations: base.MutatingAnnotations(),
+		InputSchema: executeToolSchema,
 	}, m.executeTool)
 }
 
@@ -116,19 +129,24 @@ type ToolSummary struct {
 	Destructive bool           `json:"destructive"`
 }
 
-// SearchToolsResult is the falcon_search_tools output envelope. Hint is set only
-// when Tools is empty, carrying recovery guidance; it is omitted otherwise so a
-// successful search keeps the same shape minus the noise.
+// SearchToolsResult is the falcon_search_tools output envelope. Total is the
+// full number of matching tools, which can exceed len(Tools) when the limit
+// caps the returned set; Truncated reports exactly that, so a capped list is
+// never mistaken for a complete one. Hint is set only when there are no matches,
+// carrying recovery guidance; it is omitted otherwise so a successful search
+// keeps the same shape minus the noise.
 type SearchToolsResult struct {
-	Tools []ToolSummary `json:"tools"`
-	Total int           `json:"total"`
-	Hint  string        `json:"hint,omitempty"`
+	Tools     []ToolSummary `json:"tools"`
+	Total     int           `json:"total"`
+	Truncated bool          `json:"truncated"`
+	Hint      string        `json:"hint,omitempty"`
 }
 
 // searchTools implements falcon_search_tools. It filters the catalog by exact
 // module (when given), then keeps entries whose search corpus contains every
-// lowercased query token (AND substring match), and returns the first Limit
-// results — matching upstream falcon-mcp's algorithm.
+// lowercased query token (AND substring match). It counts every match but
+// returns only the first Limit as summaries, reporting the full count in Total
+// and setting Truncated when the two differ — matching upstream falcon-mcp.
 func (m *MetaModule) searchTools(_ context.Context, _ *mcp.CallToolRequest, in SearchToolsInput) (*mcp.CallToolResult, SearchToolsResult, error) {
 	limit := in.Limit
 	switch {
@@ -142,6 +160,7 @@ func (m *MetaModule) searchTools(_ context.Context, _ *mcp.CallToolRequest, in S
 
 	tokens := strings.Fields(strings.ToLower(in.Query))
 
+	total := 0
 	tools := make([]ToolSummary, 0, limit)
 	for _, ce := range m.catalog.entries {
 		if in.Module != "" && ce.module != in.Module {
@@ -150,28 +169,39 @@ func (m *MetaModule) searchTools(_ context.Context, _ *mcp.CallToolRequest, in S
 		if !matchesAll(ce.corpus, tokens) {
 			continue
 		}
-		tools = append(tools, summarize(ce))
-		if len(tools) == limit {
-			break
+		total++
+		if len(tools) < limit {
+			tools = append(tools, summarize(ce))
 		}
 	}
-	res := SearchToolsResult{Tools: tools, Total: len(tools)}
-	if len(tools) == 0 {
-		res.Hint = m.noMatchHint()
+	res := SearchToolsResult{Tools: tools, Total: total, Truncated: total > len(tools)}
+	if total == 0 {
+		res.Hint = m.noMatchHint(in.Query, in.Module)
 	}
 	return nil, res, nil
 }
 
 // noMatchHint returns the recovery guidance attached to an empty
-// falcon_search_tools result: the modules this server actually exposes (sorted
-// for a stable message) plus the next things to try. Without it a search for a
-// module the deployment does not enable is indistinguishable from a typo.
-func (m *MetaModule) noMatchHint() string {
+// falcon_search_tools result. It leads with the caller's own query and module,
+// so a search that narrowed to a module the deployment does not enable reads
+// differently from a genuine typo, then lists the modules this server exposes
+// (sorted for a stable message) plus the next things to try.
+func (m *MetaModule) noMatchHint(query, module string) string {
+	var subject strings.Builder
+	subject.WriteString("No tool")
+	if query != "" {
+		fmt.Fprintf(&subject, " matching %q", query)
+	}
+	if module != "" {
+		fmt.Fprintf(&subject, " in module %q", module)
+	}
+	subject.WriteString(" is available on this server.")
+
 	mods := m.catalog.Modules()
 	slices.Sort(mods)
 	return fmt.Sprintf(
-		"No tools matched. Available modules: %s. Try a broader query, drop the module filter, or call falcon_list_enabled_modules.",
-		strings.Join(mods, ", "),
+		"%s Available modules: %s. Try a broader query, drop the module filter, or call falcon_list_enabled_modules.",
+		subject.String(), strings.Join(mods, ", "),
 	)
 }
 

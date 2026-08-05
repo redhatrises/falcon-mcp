@@ -137,6 +137,22 @@ func Enum(s *jsonschema.Schema, property string, allowed []string, def string) {
 	prop.Default = encoded
 }
 
+// Examples advertises example values for a schema property. The values populate
+// the property's JSON Schema "examples" array, which falcon_search_tools surfaces
+// per parameter so agents see concrete inputs before executing a tool. Panics
+// when the property is absent or no values are given (programming errors caught
+// at startup).
+func Examples(s *jsonschema.Schema, property string, values ...any) {
+	prop, ok := s.Properties[property]
+	if !ok {
+		panic(fmt.Sprintf("base.Examples: no property %q in schema", property))
+	}
+	if len(values) == 0 {
+		panic(fmt.Sprintf("base.Examples: property %q has no example values", property))
+	}
+	prop.Examples = append([]any(nil), values...)
+}
+
 // readOnlyAnnotations returns the default annotations applied to query tools:
 // readOnlyHint=true, idempotentHint=true, openWorldHint=true, destructiveHint=false.
 func readOnlyAnnotations() *mcp.ToolAnnotations {

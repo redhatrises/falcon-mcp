@@ -822,3 +822,49 @@ func TestEnumPanics(t *testing.T) {
 		})
 	}
 }
+
+func TestExamplesPopulatesProperty(t *testing.T) {
+	t.Parallel()
+
+	want := []any{"quarantine release", "search hosts"}
+	s := SchemaFor[enumIn](func(s *jsonschema.Schema) {
+		Examples(s, "mode", want...)
+	})
+
+	got := s.Properties["mode"].Examples
+	if len(got) != len(want) {
+		t.Fatalf("examples = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("examples[%d] = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestExamplesPanics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		property string
+		values   []any
+	}{
+		{"unknown property", "nope", []any{"x"}},
+		{"no example values", "mode", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("Examples(%q, %v): expected panic", tc.property, tc.values)
+				}
+			}()
+			SchemaFor[enumIn](func(s *jsonschema.Schema) {
+				Examples(s, tc.property, tc.values...)
+			})
+		})
+	}
+}

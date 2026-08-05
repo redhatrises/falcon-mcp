@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -152,14 +153,16 @@ func TestSearchToolsLimit(t *testing.T) {
 	m := buildCatalog(t, mods...)
 
 	tests := []struct {
-		name     string
-		limit    int
-		wantSize int
+		name          string
+		limit         int
+		wantSize      int
+		wantTotal     int
+		wantTruncated bool
 	}{
-		{name: "zero uses default 20", limit: 0, wantSize: 5}, // only 5 exist
-		{name: "explicit truncates", limit: 2, wantSize: 2},
-		{name: "negative clamps to 1", limit: -3, wantSize: 1},
-		{name: "over max still bounded by count", limit: 500, wantSize: 5},
+		{name: "zero uses default 20", limit: 0, wantSize: 5, wantTotal: 5, wantTruncated: false}, // only 5 exist
+		{name: "explicit truncates", limit: 2, wantSize: 2, wantTotal: 5, wantTruncated: true},
+		{name: "negative clamps to 1", limit: -3, wantSize: 1, wantTotal: 5, wantTruncated: true},
+		{name: "over max still bounded by count", limit: 500, wantSize: 5, wantTotal: 5, wantTruncated: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,8 +171,12 @@ func TestSearchToolsLimit(t *testing.T) {
 			if len(got.Tools) != tt.wantSize {
 				t.Errorf("got %d tools, want %d", len(got.Tools), tt.wantSize)
 			}
-			if got.Total != len(got.Tools) {
-				t.Errorf("Total = %d, want %d", got.Total, len(got.Tools))
+			// Total is the full match count, independent of the limit cap.
+			if got.Total != tt.wantTotal {
+				t.Errorf("Total = %d, want %d", got.Total, tt.wantTotal)
+			}
+			if got.Truncated != tt.wantTruncated {
+				t.Errorf("Truncated = %v, want %v", got.Truncated, tt.wantTruncated)
 			}
 		})
 	}
@@ -191,15 +198,18 @@ func TestSearchToolsNoMatchIsEmptyNotNil(t *testing.T) {
 // recovery hint naming the available modules, so an agent that searched a
 // module this server does not expose can tell why and what to try next. Both
 // no-match routes are covered: an unmatched query token and a module filter
-// naming a module the deployment does not enable.
+// naming a module the deployment does not enable. The hint must also echo the
+// caller's own query/module so a narrowed miss reads differently from a typo.
 func TestSearchToolsNoMatchHint(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		in   SearchToolsInput
+		name     string
+		in       SearchToolsInput
+		wantEcho []string // caller terms the hint must quote back
 	}{
-		{name: "unmatched query", in: SearchToolsInput{Query: "nonexistent"}},
-		{name: "unknown module", in: SearchToolsInput{Module: "nonexistent"}},
+		{name: "unmatched query", in: SearchToolsInput{Query: "nonexistent"}, wantEcho: []string{"nonexistent"}},
+		{name: "unknown module", in: SearchToolsInput{Module: "phantom"}, wantEcho: []string{"phantom"}},
+		{name: "query and module", in: SearchToolsInput{Query: "nonexistent", Module: "phantom"}, wantEcho: []string{"nonexistent", "phantom"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -218,12 +228,20 @@ func TestSearchToolsNoMatchHint(t *testing.T) {
 					t.Errorf("Hint %q missing %q", got.Hint, want)
 				}
 			}
+			// The caller's own narrowing terms must appear, so a module-scoped
+			// miss is distinguishable from a typo or an empty server.
+			for _, want := range tt.wantEcho {
+				if !strings.Contains(got.Hint, want) {
+					t.Errorf("Hint %q does not echo caller term %q", got.Hint, want)
+				}
+			}
 		})
 	}
 }
 
 // TestSearchToolsMatchHasNoHint checks the hint stays absent when results exist,
-// so it never adds noise to a successful search.
+// so it never adds noise to a successful search, and that a complete result set
+// reports Truncated=false.
 func TestSearchToolsMatchHasNoHint(t *testing.T) {
 	t.Parallel()
 	m := buildCatalog(t, fakeToolModule{name: "hosts"})
@@ -233,6 +251,9 @@ func TestSearchToolsMatchHasNoHint(t *testing.T) {
 	}
 	if got.Hint != "" {
 		t.Errorf("Hint = %q on a successful search, want empty", got.Hint)
+	}
+	if got.Truncated {
+		t.Errorf("Truncated = true on a complete result set, want false")
 	}
 }
 
@@ -306,6 +327,64 @@ func TestSearchToolsParameterSummaries(t *testing.T) {
 	}
 	if !sawID {
 		t.Fatalf("update_hosts params missing id: %+v", update.Parameters)
+	}
+}
+
+// --- examples ----------------------------------------------------------------
+
+// TestParamSummariesCarriesExamples checks the schema-to-summary plumbing: a
+// property with schema examples surfaces them in its paramSummary, and one
+// without omits the field.
+func TestParamSummariesCarriesExamples(t *testing.T) {
+	t.Parallel()
+
+	byName := map[string]paramSummary{}
+	for _, p := range paramSummaries(searchToolsSchema) {
+		byName[p.Name] = p
+	}
+
+	query, ok := byName["query"]
+	if !ok {
+		t.Fatalf("query param missing: %+v", byName)
+	}
+	if len(query.Examples) == 0 {
+		t.Error("query.Examples is empty, want the advertised examples")
+	}
+}
+
+// TestMetaToolSchemasAdvertiseExamples checks the meta-tools named in the issue
+// carry example values on their parameters, so an agent inspecting them sees
+// concrete inputs.
+func TestMetaToolSchemasAdvertiseExamples(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		schema *jsonschema.Schema
+		params []string
+	}{
+		{"search_tools", searchToolsSchema, []string{"query", "module", "limit"}},
+		{"execute_tool", executeToolSchema, []string{"tool_name", "parameters"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			byName := map[string]paramSummary{}
+			for _, p := range paramSummaries(tt.schema) {
+				byName[p.Name] = p
+			}
+			for _, name := range tt.params {
+				p, ok := byName[name]
+				if !ok {
+					t.Errorf("%s: param %q missing", tt.name, name)
+					continue
+				}
+				if len(p.Examples) == 0 {
+					t.Errorf("%s: param %q has no examples", tt.name, name)
+				}
+			}
+		})
 	}
 }
 

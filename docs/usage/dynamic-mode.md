@@ -113,9 +113,14 @@ avoid large responses.
 { "query": "quarantine release" }
 ```
 
-When nothing matches, the response carries an empty `tools` array plus a `hint` field naming the
-modules this server actually exposes — useful for telling a typo apart from a module the deployment
-does not enable. The `hint` field is omitted when there are matches.
+Every response reports `total`, the full number of matching tools, and `truncated`, which is
+`true` when `limit` capped the returned set below `total` — so a capped list is never mistaken
+for a complete one.
+
+When nothing matches, the response carries an empty `tools` array plus a `hint` field. The hint
+names the caller's own `query` and `module` back, then lists the modules this server actually
+exposes — useful for telling a typo apart from a module the deployment does not enable. The
+`hint` field is omitted when there are matches.
 
 ## When to Use Dynamic Mode
 
