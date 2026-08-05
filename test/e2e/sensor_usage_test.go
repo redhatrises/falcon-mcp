@@ -11,9 +11,9 @@ import (
 // tenant. Unlike the entity-search modules, this tool returns weekly usage
 // rollups (date plus per-category counts), not entities with an id, so the
 // specs assert on the usage fields rather than using expectSearchReturnsDetails.
-// They are read-only and tolerate an empty response. Label("sensor_usage")
+// They are read-only and tolerate an empty response. Label("sensorusage")
 // allows selecting just this module; Label("integration") marks the live tier.
-var _ = Describe("sensor_usage module", Label("integration", "sensor_usage"), func() {
+var _ = Describe("sensorusage module", Label("integration", "sensorusage"), func() {
 	var ctx context.Context
 
 	BeforeEach(func() {

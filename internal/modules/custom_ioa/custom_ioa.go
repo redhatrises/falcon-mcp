@@ -84,7 +84,7 @@ type Module struct {
 }
 
 // Name reports the module name.
-func (m *Module) Name() string { return "custom_ioa" }
+func (m *Module) Name() string { return "customioa" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {

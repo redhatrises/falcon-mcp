@@ -69,7 +69,7 @@ type Module struct {
 }
 
 // Name reports the module name.
-func (m *Module) Name() string { return "host_groups" }
+func (m *Module) Name() string { return "hostgroups" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
