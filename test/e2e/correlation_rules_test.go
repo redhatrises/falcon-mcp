@@ -10,8 +10,8 @@ import (
 // The correlation_rules specs exercise falcon_search_correlation_rules against
 // the live tenant. They are read-only (create/update/delete are mutating and are
 // not driven here), use a small limit, and tolerate an empty tenant.
-// Label("correlation_rules") allows selecting just this module.
-var _ = Describe("correlation_rules module", Label("integration", "correlation_rules"), func() {
+// Label("correlationrules") allows selecting just this module.
+var _ = Describe("correlationrules module", Label("integration", "correlationrules"), func() {
 	var ctx context.Context
 
 	BeforeEach(func() {
