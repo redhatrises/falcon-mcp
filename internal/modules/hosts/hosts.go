@@ -66,7 +66,9 @@ const (
 Use this to find devices by hostname, platform, IP, sensor version, or other
 attributes. Consult falcon://hosts/search/fql-guide before constructing filter
 expressions. Returns full host details including device info, OS, and network
-context.`
+context.
+` + "Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
 
 	getHostDetailsDescription = `Retrieve detailed information for one or more host device IDs.
 

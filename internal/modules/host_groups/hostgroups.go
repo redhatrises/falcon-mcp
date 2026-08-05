@@ -99,14 +99,18 @@ var (
 // RegisterTools registers the six host-group tools into r.
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_host_groups",
-		Description: "Search host groups in CrowdStrike Falcon using host-group FQL (fields: name, group_type, created_by, created_timestamp, modified_by, modified_timestamp). Consult falcon://host-groups/search/fql-guide before constructing filter expressions. Returns full group records.",
+		Name: "search_host_groups",
+		Description: "Search host groups in CrowdStrike Falcon using host-group FQL (fields: name, group_type, created_by, created_timestamp, modified_by, modified_timestamp). Consult falcon://host-groups/search/fql-guide before constructing filter expressions. Returns full group records.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchHostGroupsSchema,
 	}, m.searchHostGroups)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "search_host_group_members",
-		Description: "List the member devices of a host group. The filter and sort operate on HOST/DEVICE attributes (e.g. platform_name, hostname), not group attributes. Consult falcon://hosts/search/fql-guide before constructing filter expressions. Returns full host device records.",
+		Name: "search_host_group_members",
+		Description: "List the member devices of a host group. The filter and sort operate on HOST/DEVICE attributes (e.g. platform_name, hostname), not group attributes. Consult falcon://hosts/search/fql-guide before constructing filter expressions. Returns full host device records.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchHostGroupMembersSchema,
 	}, m.searchHostGroupMembers)
 

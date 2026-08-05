@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
+
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
 
 // testLogger discards output; modules require a non-nil logger.
 var testLogger = slog.New(slog.DiscardHandler)
@@ -81,7 +86,7 @@ func moduleWith(exclusionType string, fb backend) *Module {
 
 func TestSearchExclusionsSuccess(t *testing.T) {
 	t.Parallel()
-	meta := &models.MsaMetaInfo{}
+	meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	fb := &fakeBackend{
 		queryIDs:  []string{"b", "a"},
 		queryMeta: meta,
@@ -101,8 +106,8 @@ func TestSearchExclusionsSuccess(t *testing.T) {
 		t.Fatalf("expected query-order [b,a], got %v / %v", out.Resources[0]["id"], out.Resources[1]["id"])
 	}
 	// Meta comes from the query step and is passed through verbatim.
-	if out.Meta != any(meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 }
 
@@ -220,7 +225,7 @@ func TestCreateExclusionInvalidType(t *testing.T) {
 
 func TestCreateExclusionSuccess(t *testing.T) {
 	t.Parallel()
-	meta := &models.MsaMetaInfo{}
+	meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	fb := &fakeBackend{
 		createRecs: []map[string]any{{"id": "new", "value": "/x"}},
 		createMeta: meta,
@@ -234,8 +239,8 @@ func TestCreateExclusionSuccess(t *testing.T) {
 		t.Fatalf("expected created record, got %+v", out)
 	}
 	// The response meta object is passed through verbatim from the backend.
-	if out.Meta != any(meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	body, ok := fb.lastCreateBody.(*models.DomainExclusionsCreateReqV2)
 	if !ok {
@@ -328,7 +333,7 @@ func TestUpdateExclusionRequiresID(t *testing.T) {
 // and that the response meta object is passed through on update.
 func TestUpdateExclusionMLSingularBody(t *testing.T) {
 	t.Parallel()
-	meta := &models.MsaMetaInfo{}
+	meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 	fb := &fakeBackend{
 		updateRecs: []map[string]any{{"id": "e1"}},
 		updateMeta: meta,
@@ -339,8 +344,8 @@ func TestUpdateExclusionMLSingularBody(t *testing.T) {
 		t.Fatalf("updateExclusion: %v", err)
 	}
 	// The response meta object is passed through verbatim from the backend.
-	if out.Meta != any(meta) {
-		t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
 	}
 	body, ok := fb.lastUpdateBody.(*models.DomainExclusionUpdateReqV2)
 	if !ok {
@@ -492,7 +497,7 @@ func TestDeleteExclusions(t *testing.T) {
 
 	t.Run("success passes ids and comment", func(t *testing.T) {
 		t.Parallel()
-		meta := &models.MsaMetaInfo{}
+		meta := &models.MsaMetaInfo{QueryTime: &metaQueryTime}
 		fb := &fakeBackend{deleteMeta: meta}
 		m := moduleWith("ml", fb)
 		_, out, err := m.deleteExclusions(context.Background(), nil, DeleteInput{ExclusionType: "ml", IDs: []string{"a", "b"}, Comment: "cleanup"})
@@ -502,8 +507,8 @@ func TestDeleteExclusions(t *testing.T) {
 		if !out.Ok {
 			t.Fatalf("expected Ok, got %+v", out)
 		}
-		if out.Meta != any(meta) {
-			t.Fatalf("expected verbatim meta passthrough, got %+v", out.Meta)
+		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
+			t.Fatalf("expected normalized meta, got %+v", out.Meta)
 		}
 		if len(fb.lastDeleteIDs) != 2 || fb.lastComment != "cleanup" {
 			t.Fatalf("unexpected delete args: ids=%v comment=%q", fb.lastDeleteIDs, fb.lastComment)

@@ -10,6 +10,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// metaQueryTime is a non-zero query_time for test fakes, so a handler's
+// normalized meta is a populated value rather than nil.
+var metaQueryTime = 0.02
+
 // These tests exercise the remaining single-call search/get handlers, which all
 // share the shape: map params -> one API call -> foundOrGuided. Each is checked
 // for the success path (records + meta pass through, no guide) and the empty
@@ -32,7 +36,7 @@ func TestSearchDevicesSuccess(t *testing.T) {
 	f := &fakeShield{devicesResp: &saas_security.GetDeviceInventoryV3OK{
 		Payload: &models.GetDeviceInventory{
 			Resources: []*models.DeviceGetDeviceInventory{{ID: str("dev-1")}},
-			Meta:      &models.MetaGetDeviceInventory{},
+			Meta:      &models.MetaGetDeviceInventory{QueryTime: &metaQueryTime},
 		},
 	}}
 	m := newModule(f)

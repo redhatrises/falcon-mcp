@@ -82,13 +82,17 @@ func (m *Module) Description() string {
 
 // searchSchema builds the input schema for a firewall search Input type,
 // applying the limit bounds/default and offset minimum the tag syntax cannot
-// express. The three search tools share these numeric constraints.
+// express. The three search tools share these numeric constraints, but only
+// search_firewall_policy_rules still takes an offset: the other two paginate by
+// cursor, so the offset lookup is guarded rather than indexed.
 func searchSchema[In any]() *jsonschema.Schema {
 	return base.SchemaFor[In](func(s *jsonschema.Schema) {
 		s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 		s.Properties["limit"].Maximum = jsonschema.Ptr(5000.0)
 		s.Properties["limit"].Default = json.RawMessage(`10`)
-		s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
+		if p, ok := s.Properties["offset"]; ok {
+			p.Minimum = jsonschema.Ptr(0.0)
+		}
 	})
 }
 
@@ -105,7 +109,10 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Search firewall rules and return full rule details.\n\n" +
 			"Use this to find firewall rules by name, platform, or enabled state. Consult\n" +
 			"falcon://firewall/rules/fql-guide before constructing filter expressions.\n" +
-			"Returns complete rule objects including conditions and actions.",
+			"Returns complete rule objects including conditions and actions.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions. " +
+			"For cursor-based paging, use `pagination.next` as the `after` parameter on the next call.",
 		InputSchema: searchRulesSchema,
 	}, m.searchFirewallRules)
 
@@ -114,7 +121,10 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Search firewall rule groups and return full rule group details.\n\n" +
 			"Use this to find rule groups by name, platform, or enabled state. Consult\n" +
 			"falcon://firewall/rules/fql-guide before constructing filter expressions.\n" +
-			"Returns rule group objects including their contained rules.",
+			"Returns rule group objects including their contained rules.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions. " +
+			"For cursor-based paging, use `pagination.next` as the `after` parameter on the next call.",
 		InputSchema: searchRuleGroupsSchema,
 	}, m.searchFirewallRuleGroups)
 
@@ -123,7 +133,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Search firewall rules within a specific policy container.\n\n" +
 			"Use this when you need rules scoped to a particular policy. Consult\n" +
 			"falcon://firewall/rules/fql-guide before constructing filter expressions.\n" +
-			"Returns full rule details for the specified policy.",
+			"Returns full rule details for the specified policy.\n" +
+			"Responses include `pagination.total` (the total number of records matching the filter, " +
+			"or null when the API does not report a count) — use it to answer \"how many\" questions.",
 		InputSchema: searchPolicyRulesSchema,
 	}, m.searchFirewallPolicyRules)
 
@@ -160,13 +172,15 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 
 // SearchRulesInput is the input for falcon_search_firewall_rules.
+//
+// Pagination is cursor-only: pass pagination.next from the previous response as
+// after.
 type SearchRulesInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter expression. See falcon://firewall/rules/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of rule IDs to return (max 5000)"`
-	Offset int    `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. modified_on.desc, name.asc)"`
 	Q      string `json:"q,omitempty" jsonschema:"free-text query string across rule fields"`
-	After  string `json:"after,omitempty" jsonschema:"pagination token from a previous query response"`
+	After  string `json:"after,omitempty" jsonschema:"Pagination token from a previous query response."`
 }
 
 func (m *Module) searchFirewallRules(ctx context.Context, req *mcp.CallToolRequest, in SearchRulesInput) (*mcp.CallToolResult, base.SearchResult[*models.FwmgrFirewallRuleV1], error) {
@@ -175,16 +189,12 @@ func (m *Module) searchFirewallRules(ctx context.Context, req *mcp.CallToolReque
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	m.Logger.Debug("search_firewall_rules", "filter", in.Filter, "limit", limit, "offset", in.Offset, "sort", in.Sort)
+	m.Logger.Debug("search_firewall_rules", "filter", in.Filter, "limit", limit, "sort", in.Sort, "after", in.After)
 
 	params := firewall_management.NewQueryRulesParamsWithContext(ctx)
 	params.Limit = &limit
 	if in.Filter != "" {
 		params.Filter = &in.Filter
-	}
-	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
@@ -219,13 +229,15 @@ func (m *Module) searchFirewallRules(ctx context.Context, req *mcp.CallToolReque
 }
 
 // SearchRuleGroupsInput is the input for falcon_search_firewall_rule_groups.
+//
+// Pagination is cursor-only: pass pagination.next from the previous response as
+// after.
 type SearchRuleGroupsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter expression. See falcon://firewall/rules/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of rule group IDs to return (max 5000)"`
-	Offset int    `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. modified_on.desc, name.asc)"`
 	Q      string `json:"q,omitempty" jsonschema:"free-text query string across rule group fields"`
-	After  string `json:"after,omitempty" jsonschema:"pagination token from a previous query response"`
+	After  string `json:"after,omitempty" jsonschema:"Pagination token from a previous query response."`
 }
 
 func (m *Module) searchFirewallRuleGroups(ctx context.Context, req *mcp.CallToolRequest, in SearchRuleGroupsInput) (*mcp.CallToolResult, base.SearchResult[*models.FwmgrAPIRuleGroupV1], error) {
@@ -234,16 +246,12 @@ func (m *Module) searchFirewallRuleGroups(ctx context.Context, req *mcp.CallTool
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	m.Logger.Debug("search_firewall_rule_groups", "filter", in.Filter, "limit", limit, "offset", in.Offset, "sort", in.Sort)
+	m.Logger.Debug("search_firewall_rule_groups", "filter", in.Filter, "limit", limit, "sort", in.Sort, "after", in.After)
 
 	params := firewall_management.NewQueryRuleGroupsParamsWithContext(ctx)
 	params.Limit = &limit
 	if in.Filter != "" {
 		params.Filter = &in.Filter
-	}
-	if in.Offset != 0 {
-		offset := strconv.Itoa(in.Offset)
-		params.Offset = &offset
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort

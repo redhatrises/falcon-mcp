@@ -126,8 +126,10 @@ func (r *sarifReader) ReadResponse(resp runtime.ClientResponse, c runtime.Consum
 
 // sarifResponse is the on-the-wire shape of the combined SARIF response. Unlike
 // the gofalcon model, resources is a single SARIF document, not an array — this
-// is why the typed method cannot decode a real response.
+// is why the typed method cannot decode a real response. Meta is the standard
+// sibling of resources and carries query_time and trace_id.
 type sarifResponse struct {
+	Meta      *models.MsaMetaInfo              `json:"meta"`
 	Resources *models.ModelsVulnerabilitySARIF `json:"resources"`
 }
 
@@ -274,31 +276,33 @@ func (m *Module) searchServerlessVulnerabilities(ctx context.Context, _ *mcp.Cal
 	}
 
 	body, _ := raw.([]byte)
-	runs, err := decodeRuns(body)
+	runs, meta, err := decodeSARIF(body)
 	if err != nil {
 		return nil, zero, err
 	}
 	m.Logger.Debug("search_serverless_vulnerabilities query complete", "runs", len(runs))
-	// No meta is attached: the combined-SARIF body is decoded for its runs
-	// only (see sarifResponse), and the endpoint carries no pagination cursor.
-	return nil, base.Found(runs, in.Filter), nil
+	// The endpoint carries no pagination cursor, but meta still reports the query
+	// duration and the trace ID quoted in support requests.
+	return nil, base.Found(runs, in.Filter).WithMeta(meta), nil
 }
 
-// decodeRuns extracts the SARIF "runs" array from a raw combined-SARIF response
-// body, mirroring the Python module's response["runs"]. An empty body or a
-// response with no resources yields an empty slice, not an error.
-func decodeRuns(body []byte) ([]*models.ModelsRun, error) {
+// decodeSARIF extracts the SARIF "runs" array and the response metadata from a
+// raw combined-SARIF response body, mirroring the Python module's
+// response["runs"]. An empty body or a response with no resources yields an
+// empty slice, not an error; metadata is returned whenever the body decodes, so
+// query_time and trace_id survive a result-less response.
+func decodeSARIF(body []byte) ([]*models.ModelsRun, *models.MsaMetaInfo, error) {
 	if len(body) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var resp sarifResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode serverless SARIF response: %w", err)
+		return nil, nil, fmt.Errorf("decode serverless SARIF response: %w", err)
 	}
 	if resp.Resources == nil {
-		return nil, nil
+		return nil, resp.Meta, nil
 	}
-	return resp.Resources.Runs, nil
+	return resp.Resources.Runs, resp.Meta, nil
 }
 
 // fqlBadRequest reports whether err is a 400-class combined SARIF query error

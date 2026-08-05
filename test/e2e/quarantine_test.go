@@ -47,6 +47,11 @@ var _ = Describe("quarantine module", Label("integration", "quarantine"), func()
 		expectSearchReturnsDetails(res, "id")
 	})
 
+	It("pages quarantined files by advancing the reported offset", func() {
+		cs := newSession(ctx)
+		expectOffsetPaginates(ctx, cs, "falcon_search_quarantined_files", map[string]any{"limit": 2})
+	})
+
 	It("previews quarantine actions for a filter", func() {
 		cs := newSession(ctx)
 		// preview_quarantine_actions is a read-only aggregation over a filter; an
