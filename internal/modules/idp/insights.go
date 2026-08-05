@@ -1,13 +1,11 @@
 package idp
 
-// This file mirrors the Python idp module's cross-investigation insight helpers:
-// _generate_investigation_insights, _analyze_activity_relationships, and
-// _analyze_multi_entity_patterns.
+// This file derives cross-investigation insights: correlations that only exist
+// once two or more investigation types have run against the same entities.
 
 // generateInsights derives cross-investigation insights from the per-type
-// results, mirroring _generate_investigation_insights. It returns nil when no
-// insight applies (matching the Python "if insights" guard that omits an empty
-// dict).
+// results. It returns nil when no insight applies, so the key is omitted from
+// the response entirely rather than serialized as an empty object.
 func generateInsights(results map[string]any, entityIDs []string) map[string]any {
 	insights := map[string]any{}
 
@@ -30,8 +28,8 @@ func generateInsights(results map[string]any, entityIDs []string) map[string]any
 	return insights
 }
 
-// analyzeActivityRelationships mirrors _analyze_activity_relationships: it counts
-// timelines and relationships and returns the basic correlation structure.
+// analyzeActivityRelationships counts timelines and relationships and returns
+// the basic correlation structure.
 func analyzeActivityRelationships(timelineAnalysis, relationshipAnalysis map[string]any) map[string]any {
 	timelines := asArray(timelineAnalysis["timelines"])
 	relationships := asArray(relationshipAnalysis["relationships"])
@@ -43,9 +41,9 @@ func analyzeActivityRelationships(timelineAnalysis, relationshipAnalysis map[str
 	}
 }
 
-// analyzeMultiEntityPatterns mirrors _analyze_multi_entity_patterns: it tallies
-// risk factor types across entities and surfaces those present in more than one
-// entity as common_risk_factors, with the count and percentage.
+// analyzeMultiEntityPatterns tallies risk factor types across entities and
+// surfaces those present in more than one entity as common_risk_factors, with
+// the count and percentage.
 func analyzeMultiEntityPatterns(results map[string]any, entityIDs []string) map[string]any {
 	patterns := map[string]any{
 		"common_risk_factors":    []any{},
@@ -60,8 +58,8 @@ func analyzeMultiEntityPatterns(results map[string]any, entityIDs []string) map[
 
 	assessments := asArray(risk["risk_assessments"])
 	// Count occurrences of each risk factor type across assessments. Insertion
-	// order is tracked so the output order is deterministic (Python dict
-	// preserves insertion order; a Go map does not).
+	// order is tracked separately because a Go map does not preserve it, and the
+	// output order must be deterministic.
 	counts := map[string]int{}
 	var typeOrder []string
 	for _, a := range assessments {
@@ -106,11 +104,9 @@ func asMap(v any) map[string]any {
 	return m
 }
 
-// roundTo1 rounds x to one decimal place, mirroring Python round(x, 1).
+// roundTo1 rounds x to one decimal place, half away from zero.
 func roundTo1(x float64) float64 {
 	scaled := x * 10
-	// Round half away from zero to match Python's round-half-to-even only loosely;
-	// percentages here are exact tenths in practice, so simple rounding suffices.
 	if scaled >= 0 {
 		scaled = float64(int64(scaled + 0.5))
 	} else {
