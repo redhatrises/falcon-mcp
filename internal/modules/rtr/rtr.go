@@ -129,6 +129,7 @@ var (
 		s.Properties["size"].Minimum = jsonschema.Ptr(1.0)
 		s.Properties["size"].Maximum = jsonschema.Ptr(1000.0)
 		s.Properties["size"].Default = json.RawMessage(`10`)
+		base.Enum(s, "aggregate_type", validAggregateTypes, defaultAggregateType)
 	})
 
 	checkCommandStatusSchema = base.SchemaFor[CheckStatusInput](func(s *jsonschema.Schema) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -344,6 +345,26 @@ func TestAggregateSessionsRejectsBadType(t *testing.T) {
 	_, _, err := m.aggregateSessions(context.Background(), nil, AggregateInput{Field: "hostname", AggregateType: "term"})
 	if !errors.Is(err, errInvalidInput) {
 		t.Fatalf("expected errInvalidInput for bad aggregate_type, got %v", err)
+	}
+}
+
+func TestAggregateSchemaAdvertisesAggregateType(t *testing.T) {
+	t.Parallel()
+
+	prop, ok := aggregateRTRSessionsSchema.Properties["aggregate_type"]
+	if !ok {
+		t.Fatal("aggregate_type missing from schema properties")
+	}
+	if got := len(prop.Enum); got != 2 {
+		t.Fatalf("enum has %d values, want 2: %v", got, prop.Enum)
+	}
+	for _, want := range []string{"terms", "date_range"} {
+		if !slices.Contains(prop.Enum, any(want)) {
+			t.Errorf("enum missing %q: %v", want, prop.Enum)
+		}
+	}
+	if string(prop.Default) != `"terms"` {
+		t.Errorf("default = %s, want \"terms\"", prop.Default)
 	}
 }
 
