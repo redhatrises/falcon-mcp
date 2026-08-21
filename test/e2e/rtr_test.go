@@ -19,30 +19,22 @@ var _ = Describe("rtr module", Label("integration", "rtr"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises the RTR tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		for _, want := range []string{
-			"falcon_search_rtr_sessions",
-			"falcon_search_rtr_audit_sessions",
-			"falcon_aggregate_rtr_sessions",
-			"falcon_get_rtr_session_details",
-			"falcon_check_rtr_command_status",
-			"falcon_list_rtr_session_files",
-			"falcon_init_rtr_session",
-			"falcon_pulse_rtr_session",
-			"falcon_execute_rtr_read_only_command",
-			"falcon_run_rtr_read_only_command_and_wait",
-			"falcon_delete_rtr_session",
-		} {
-			Expect(names).To(ContainElement(want), "missing RTR tool %s", want)
-		}
-	})
+	itAdvertisesTools(
+		"falcon_search_rtr_sessions",
+		"falcon_search_rtr_audit_sessions",
+		"falcon_aggregate_rtr_sessions",
+		"falcon_get_rtr_session_details",
+		"falcon_check_rtr_command_status",
+		"falcon_list_rtr_session_files",
+		"falcon_init_rtr_session",
+		"falcon_pulse_rtr_session",
+		"falcon_execute_rtr_read_only_command",
+		"falcon_run_rtr_read_only_command_and_wait",
+		"falcon_delete_rtr_session",
+	)
 
 	It("searches RTR sessions and returns full session records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_rtr_sessions", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_rtr_sessions", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no RTR sessions to validate details against")
 		// id is the field the module keys detail results on, confirming the
 		// two-step query->details fetch returned full records, not bare IDs.
@@ -50,51 +42,43 @@ var _ = Describe("rtr module", Label("integration", "rtr"), func() {
 	})
 
 	It("searches RTR sessions with a time-bound FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_rtr_sessions", map[string]any{
+		res := callOK(ctx, "falcon_search_rtr_sessions", map[string]any{
 			"filter": "created_at:>'now-3650d'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no RTR sessions in the last decade")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("returns an FQL error result for an invalid filter, not a protocol error", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_rtr_sessions", map[string]any{
-			"filter": "not_a_real_field:'x'",
-			"limit":  3,
-		})
 		// RTRListAllSessions validates filter keys and returns a typed 400; the
 		// module surfaces it as an FQL data result (errors + fql_guide populated),
 		// not an in-band tool error.
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_rtr_sessions", map[string]any{
+			"filter": "not_a_real_field:'x'",
+			"limit":  3,
+		})
 		obj := structured(res)
 		Expect(obj).To(HaveKey("errors"), "expected FQL errors surfaced in result")
 		Expect(obj["fql_guide"]).NotTo(BeEmpty(), "expected fql_guide echoed for correction")
 	})
 
 	It("searches RTR audit sessions", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_rtr_audit_sessions", map[string]any{
+		res := callOK(ctx, "falcon_search_rtr_audit_sessions", map[string]any{
 			"filter": "created_at:>'now-3650d'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		// Audit search is a single call; records carry an id when present.
 		skipIfEmpty(res, "tenant has no RTR audit sessions")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("aggregates RTR sessions by base_command", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_aggregate_rtr_sessions", map[string]any{
+		res := callOK(ctx, "falcon_aggregate_rtr_sessions", map[string]any{
 			"field":  "base_command",
 			"filter": "created_at:>'now-3650d'",
 			"size":   5,
 		})
-		expectNoToolError(res)
 		// Aggregation returns bucket results; an empty tenant yields an empty set.
 		_ = resources(res)
 	})
@@ -123,12 +107,10 @@ var _ = Describe("rtr module", Label("integration", "rtr"), func() {
 	// check is about field acceptance, not data presence.
 	DescribeTable("accepts documented FQL filter fields",
 		func(filter string) {
-			cs := newSession(ctx)
-			res := callTool(ctx, cs, "falcon_search_rtr_sessions", map[string]any{
+			res := callOK(ctx, "falcon_search_rtr_sessions", map[string]any{
 				"filter": filter,
 				"limit":  1,
 			})
-			expectNoToolError(res)
 			Expect(structured(res)).NotTo(HaveKey("errors"), "FQL field rejected: %s", filter)
 		},
 		Entry("string field id", "id:'NONEXISTENT_VALUE_XYZZY12345'"),

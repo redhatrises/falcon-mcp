@@ -3,7 +3,6 @@ package detections
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"testing"
 
@@ -12,10 +11,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeAlerts is a configurable test double for the alertsAPI interface.
 type fakeAlerts struct {
@@ -47,9 +46,6 @@ func (f *fakeAlerts) UpdateV3(p *alerts.UpdateV3Params, _ ...alerts.ClientOption
 	return &alerts.UpdateV3OK{Payload: &models.DetectsapiResponseFields{}}, f.updateErr
 }
 
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-
 func TestSearchDetectionsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -75,7 +71,7 @@ func TestSearchDetectionsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &alerts.QueryV2BadRequest{Payload: &models.DetectsapiAlertQueryResponse{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	f := &fakeAlerts{queryErr: badReq}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -106,8 +102,8 @@ func TestSearchDetectionsFetchesDetails(t *testing.T) {
 			Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: &matchTotal}},
 		}},
 		getResp: &alerts.GetV2OK{Payload: &models.DetectsapiPostEntitiesAlertsV2Response{Resources: []*models.DetectsAlert{
-			{CompositeID: str("id2")},
-			{CompositeID: str("id1")},
+			{CompositeID: new("id2")},
+			{CompositeID: new("id1")},
 		}}},
 	}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -209,7 +205,7 @@ func TestUpdateDetectionsCloseWithoutResolutionHint(t *testing.T) {
 func TestUpdateDetectionsMetaPassthrough(t *testing.T) {
 	t.Parallel()
 
-	meta := &models.MsaMetaInfo{Writes: &models.MsaResources{ResourcesAffected: i32(1)}}
+	meta := &models.MsaMetaInfo{Writes: &models.MsaResources{ResourcesAffected: new(int32(1))}}
 	f := &fakeAlerts{updateResp: &alerts.UpdateV3OK{Payload: &models.DetectsapiResponseFields{Meta: meta}}}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
 	_, out, err := m.updateDetections(context.Background(), nil, UpdateInput{IDs: []string{"x"}, Status: "in_progress"})
@@ -226,42 +222,11 @@ func TestUpdateDetectionsMetaPassthrough(t *testing.T) {
 // Python-matching name, and that reading it returns the embedded guide text.
 func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 	t.Parallel()
-
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	(&Module{API: &fakeAlerts{}, Concurrency: 4, Logger: testLogger}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(list.Resources))
-	}
-	if got := list.Resources[0]; got.Name != "falcon_search_detections_fql_guide" || got.URI != fqlGuideURI {
-		t.Fatalf("resource = {name:%q uri:%q}, want falcon_search_detections_fql_guide / %s", got.Name, got.URI, fqlGuideURI)
-	}
-
-	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: fqlGuideURI})
-	if err != nil {
-		t.Fatalf("ReadResource: %v", err)
-	}
-	if len(read.Contents) != 1 || read.Contents[0].Text != fqlGuide {
-		t.Fatalf("read content does not match embedded guide")
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t, (&Module{API: &fakeAlerts{}, Concurrency: 4, Logger: testLogger}).RegisterResources, testutil.FQLGuideExpectation{
+		Name: "falcon_search_detections_fql_guide",
+		URI:  fqlGuideURI,
+		Body: fqlGuide,
+	})
 }
 
 // TestRegisterToolsAnnotations verifies mutator tools use complete annotations
@@ -270,7 +235,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeAlerts{}, Concurrency: 4, Logger: testLogger}
 	m.RegisterTools(reg)
 
@@ -285,46 +250,12 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing tool %s", name)
 		}
-		assertReadOnlyAnnotations(t, name, tool.Annotations)
+		testutil.AssertReadOnlyAnnotations(t, name, tool.Annotations)
 	}
 
 	update := byName["falcon_update_detections"]
 	if update == nil {
 		t.Fatal("missing falcon_update_detections")
 	}
-	assertMutatingAnnotations(t, "falcon_update_detections", update.Annotations)
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil || !a.ReadOnlyHint {
-		t.Errorf("%s: want read-only annotations, got %+v", name, a)
-	}
-	if a != nil && (a.DestructiveHint == nil || *a.DestructiveHint) {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
-	}
-}
-
-func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint {
-		t.Errorf("%s: IdempotentHint = true, want false", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false (MCP defaults omitted to true)", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
+	testutil.AssertMutatingAnnotations(t, "falcon_update_detections", update.Annotations, false)
 }

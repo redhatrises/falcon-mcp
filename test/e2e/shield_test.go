@@ -21,44 +21,34 @@ var _ = Describe("shield module", Label("integration", "shield"), func() {
 	})
 
 	It("lists integrations and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_shield_integrations", map[string]any{})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_get_shield_integrations", map[string]any{})
 		skipIfEmpty(res, "tenant has no Shield integrations")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches posture checks and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_shield_checks", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_shield_checks", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no Shield posture checks")
 		expectSearchReturnsDetails(res, "id", "status")
 	})
 
 	It("searches posture checks filtered by impact (title-case normalized)", func() {
-		cs := newSession(ctx)
 		// "high" must be normalized to "High" for the endpoint to match; a
 		// wrong-case value silently returns empty rather than erroring.
-		res := callTool(ctx, cs, "falcon_search_shield_checks", map[string]any{
+		res := callOK(ctx, "falcon_search_shield_checks", map[string]any{
 			"impact": "high",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no high-impact Shield checks")
 		expectSearchReturnsDetails(res, "id", "impact")
 	})
 
 	It("gets aggregated posture metrics", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_shield_posture_metrics", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		callOK(ctx, "falcon_get_shield_posture_metrics", map[string]any{"limit": 3})
 	})
 
 	It("searches apps and returns full records with object scopes", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_shield_apps", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_shield_apps", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no Shield apps")
 		// item_id is required to chain into get_shield_app_users; its presence
 		// confirms the app records decoded (the scopes array-of-object fix).
@@ -66,57 +56,41 @@ var _ = Describe("shield module", Label("integration", "shield"), func() {
 	})
 
 	It("searches devices and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_shield_devices", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_shield_devices", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no Shield devices")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches users and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_shield_users", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_shield_users", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no Shield users")
 		expectSearchReturnsDetails(res, "email")
 	})
 
 	It("searches data shares and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_shield_data_shares", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		callOK(ctx, "falcon_search_shield_data_shares", map[string]any{"limit": 3})
 	})
 
 	It("searches alerts and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_shield_alerts", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		callOK(ctx, "falcon_search_shield_alerts", map[string]any{"limit": 3})
 	})
 
 	It("gets activity monitor events", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_shield_activity_monitor", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		callOK(ctx, "falcon_get_shield_activity_monitor", map[string]any{"limit": 3})
 	})
 
 	It("lists system users", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_shield_system_users", map[string]any{})
-		expectNoToolError(res)
+		callOK(ctx, "falcon_get_shield_system_users", map[string]any{})
 	})
 
 	It("lists supported SaaS platforms", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_shield_supported_saas", map[string]any{})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_get_shield_supported_saas", map[string]any{})
 		skipIfEmpty(res, "no supported SaaS platforms returned")
 		expectSearchReturnsDetails(res, "id", "name")
 	})
 
 	It("gets system logs", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_shield_system_logs", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		callOK(ctx, "falcon_get_shield_system_logs", map[string]any{"limit": 3})
 	})
 
 	It("gets affected entities for a check found by search", func() {

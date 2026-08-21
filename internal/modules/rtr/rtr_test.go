@@ -3,7 +3,6 @@ package rtr
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"slices"
 	"testing"
@@ -15,18 +14,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-func b(v bool) *bool       { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // fakeRTR is a configurable test double for the rtrAPI interface. Each field
 // pairs a canned response with an error; call counters and captured params
@@ -156,7 +151,7 @@ func TestSearchSessionsTwoStep(t *testing.T) {
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		listResp: &real_time_response.RTRListSessionsOK{Payload: &models.DomainSessionResponseWrapper{
-			Resources: []*models.DomainSession{{ID: str("s1"), Hostname: str("H1")}, {ID: str("s2"), Hostname: str("H2")}},
+			Resources: []*models.DomainSession{{ID: new("s1"), Hostname: new("H1")}, {ID: new("s2"), Hostname: new("H2")}},
 		}},
 	}
 	m := newModule(f, nil)
@@ -187,7 +182,7 @@ func TestSearchSessionsReordersByQueryOrder(t *testing.T) {
 			Resources: []string{"s1", "s2"},
 		}},
 		listResp: &real_time_response.RTRListSessionsOK{Payload: &models.DomainSessionResponseWrapper{
-			Resources: []*models.DomainSession{{ID: str("s2")}, {ID: str("s1")}},
+			Resources: []*models.DomainSession{{ID: new("s2")}, {ID: new("s1")}},
 		}},
 	}
 	m := newModule(f, nil)
@@ -223,7 +218,7 @@ func TestSearchSessionsFQLError(t *testing.T) {
 	t.Parallel()
 	// RTRListAllSessions returns a typed 400 with a DomainAPIError payload.
 	badReq := &real_time_response.RTRListAllSessionsBadRequest{Payload: &models.DomainAPIError{
-		Code: i32(400), Message: str("invalid filter"),
+		Code: new(int32(400)), Message: new("invalid filter"),
 	}}
 	f := &fakeRTR{listAllErr: badReq}
 	m := newModule(f, nil)
@@ -258,7 +253,7 @@ func TestSearchSessionsAPIError(t *testing.T) {
 func TestSearchAuditSessions(t *testing.T) {
 	t.Parallel()
 	f := &fakeAudit{resp: &real_time_response_audit.RTRAuditSessionsOK{Payload: &models.DomainSessionResponseWrapper{
-		Resources: []*models.DomainSession{{ID: str("a1")}},
+		Resources: []*models.DomainSession{{ID: new("a1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(&fakeRTR{}, f)
@@ -278,7 +273,7 @@ func TestSearchAuditSessions(t *testing.T) {
 func TestSearchAuditSessionsFQLError(t *testing.T) {
 	t.Parallel()
 	badReq := &real_time_response_audit.RTRAuditSessionsBadRequest{Payload: &models.DomainAPIError{
-		Code: i32(400), Message: str("bad audit filter"),
+		Code: new(int32(400)), Message: new("bad audit filter"),
 	}}
 	m := newModule(&fakeRTR{}, &fakeAudit{err: badReq})
 
@@ -296,7 +291,7 @@ func TestSearchAuditSessionsFQLError(t *testing.T) {
 func TestAggregateSessions(t *testing.T) {
 	t.Parallel()
 	f := &fakeRTR{aggResp: &real_time_response.RTRAggregateSessionsOK{Payload: &models.MsaAggregatesResponse{
-		Resources: []*models.MsaAggregationResult{{Name: str("rtr_session_aggregation")}},
+		Resources: []*models.MsaAggregationResult{{Name: new("rtr_session_aggregation")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(f, nil)
@@ -389,7 +384,7 @@ func TestGetSessionDetailsEmpty(t *testing.T) {
 func TestGetSessionDetails(t *testing.T) {
 	t.Parallel()
 	f := &fakeRTR{listResp: &real_time_response.RTRListSessionsOK{Payload: &models.DomainSessionResponseWrapper{
-		Resources: []*models.DomainSession{{ID: str("s1")}},
+		Resources: []*models.DomainSession{{ID: new("s1")}},
 	}}}
 	m := newModule(f, nil)
 	_, out, err := m.getSessionDetails(context.Background(), nil, GetSessionDetailsInput{IDs: []string{"s1"}})
@@ -418,7 +413,7 @@ func TestListSessionFiles(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{filesResp: &real_time_response.RTRListFilesV2OK{Payload: &models.DomainListFilesV2ResponseWrapper{
-			Resources: []*models.DomainFileV2{{ID: str("f1")}},
+			Resources: []*models.DomainFileV2{{ID: new("f1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, nil)
@@ -452,7 +447,7 @@ func TestInitSession(t *testing.T) {
 	t.Run("defaults origin and sends body", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{initResp: &real_time_response.RTRInitSessionCreated{Payload: &models.DomainInitResponseWrapper{
-			Resources: []*models.DomainInitResponse{{SessionID: str("s1")}},
+			Resources: []*models.DomainInitResponse{{SessionID: new("s1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, nil)
@@ -478,7 +473,7 @@ func TestInitSession(t *testing.T) {
 func TestPulseSession(t *testing.T) {
 	t.Parallel()
 	f := &fakeRTR{pulseResp: &real_time_response.RTRPulseSessionCreated{Payload: &models.DomainInitResponseWrapper{
-		Resources: []*models.DomainInitResponse{{SessionID: str("s1")}},
+		Resources: []*models.DomainInitResponse{{SessionID: new("s1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(f, nil)
@@ -550,7 +545,7 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 	t.Run("sends body and returns records", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{execResp: &real_time_response.RTRExecuteCommandCreated{Payload: &models.DomainCommandExecuteResponseWrapper{
-			Resources: []*models.DomainCommandExecuteResponse{{CloudRequestID: str("crid1")}},
+			Resources: []*models.DomainCommandExecuteResponse{{CloudRequestID: new("crid1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, nil)
@@ -589,7 +584,7 @@ func TestCheckCommandStatus(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeRTR{statusResps: []*real_time_response.RTRCheckCommandStatusOK{
-			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{{Complete: b(true), Stdout: str("out")}}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
+			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{{Complete: new(true), Stdout: new("out")}}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		}}
 		m := newModule(f, nil)
 		_, out, err := m.checkCommandStatus(context.Background(), nil, CheckStatusInput{CloudRequestID: "crid1", SequenceID: 2})
@@ -612,7 +607,7 @@ func TestCheckCommandStatus(t *testing.T) {
 
 func execOK() *real_time_response.RTRExecuteCommandCreated {
 	return &real_time_response.RTRExecuteCommandCreated{Payload: &models.DomainCommandExecuteResponseWrapper{
-		Resources: []*models.DomainCommandExecuteResponse{{CloudRequestID: str("crid1")}},
+		Resources: []*models.DomainCommandExecuteResponse{{CloudRequestID: new("crid1")}},
 	}}
 }
 
@@ -622,7 +617,7 @@ func TestWaitCompletesFirstPoll(t *testing.T) {
 		execResp: execOK(),
 		statusResps: []*real_time_response.RTRCheckCommandStatusOK{
 			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
-				{Complete: b(true), Stdout: str("hello"), Stderr: str("")},
+				{Complete: new(true), Stdout: new("hello"), Stderr: new("")},
 			}}},
 		},
 	}
@@ -651,10 +646,10 @@ func TestWaitAggregatesChunksAcrossPolls(t *testing.T) {
 		execResp: execOK(),
 		statusResps: []*real_time_response.RTRCheckCommandStatusOK{
 			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
-				{Complete: b(false), Stdout: str("part1"), SequenceID: 42},
+				{Complete: new(false), Stdout: new("part1"), SequenceID: 42},
 			}}},
 			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
-				{Complete: b(true), Stdout: str("part2"), SequenceID: 43},
+				{Complete: new(true), Stdout: new("part2"), SequenceID: 43},
 			}}},
 		},
 	}
@@ -706,7 +701,7 @@ func TestWaitTimesOut(t *testing.T) {
 		execResp: execOK(),
 		statusResps: []*real_time_response.RTRCheckCommandStatusOK{
 			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
-				{Complete: b(false), Stdout: str("waiting")},
+				{Complete: new(false), Stdout: new("waiting")},
 			}}},
 		},
 	}
@@ -731,7 +726,7 @@ func TestWaitRespectsContextCancel(t *testing.T) {
 		execResp: execOK(),
 		statusResps: []*real_time_response.RTRCheckCommandStatusOK{
 			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
-				{Complete: b(false)},
+				{Complete: new(false)},
 			}}},
 		},
 	}
@@ -777,15 +772,10 @@ func TestWaitMissingCloudRequestID(t *testing.T) {
 
 // --- registration ------------------------------------------------------------
 
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	newModule(&fakeRTR{}, nil).RegisterTools(reg)
 
 	byName := map[string]*mcp.Tool{}
@@ -808,7 +798,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing tool %s", name)
 		}
-		assertMutatingAnnotations(t, name, tool.Annotations)
+		testutil.AssertMutatingAnnotations(t, name, tool.Annotations, false)
 	}
 
 	// Destructive delete.
@@ -816,7 +806,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	if del == nil {
 		t.Fatal("missing falcon_delete_rtr_session")
 	}
-	assertDestructiveAnnotations(t, "falcon_delete_rtr_session", del.Annotations, true)
+	testutil.AssertDestructiveAnnotations(t, "falcon_delete_rtr_session", del.Annotations, true)
 
 	// Read-only tools keep default read-only annotations.
 	for _, name := range []string{
@@ -837,41 +827,6 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	}
 }
 
-func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint {
-		t.Errorf("%s: IdempotentHint = true, want false", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
-}
-
-func assertDestructiveAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations, idempotent bool) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint != idempotent {
-		t.Errorf("%s: IdempotentHint = %v, want %v", name, a.IdempotentHint, idempotent)
-	}
-	if a.DestructiveHint == nil || !*a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil true", name, a.DestructiveHint)
-	}
-}
-
 // TestRegisterResourcesServesGuides verifies the module publishes its four RTR
 // resources with the Python-matching URIs and names.
 func TestRegisterResourcesServesGuides(t *testing.T) {
@@ -881,18 +836,7 @@ func TestRegisterResourcesServesGuides(t *testing.T) {
 	newModule(&fakeRTR{}, nil).RegisterResources(srv)
 
 	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv)
 
 	list, err := cs.ListResources(ctx, nil)
 	if err != nil {

@@ -14,13 +14,12 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
-func str(s string) *string { return &s }
-func boolp(b bool) *bool   { return &b }
+func boolp(b bool) *bool { return &b }
 
 // call records the arguments of one API call so tests can assert on what the
 // handler submitted (operation, repository, job id, body).
@@ -85,7 +84,7 @@ func newModule(f *fakeNGSIEM) *Module {
 }
 
 func startOK(id string) *ngsiem.StartSearchV1OK {
-	return &ngsiem.StartSearchV1OK{Payload: &models.APIQueryJobResponse{ID: str(id)}}
+	return &ngsiem.StartSearchV1OK{Payload: &models.APIQueryJobResponse{ID: new(id)}}
 }
 
 func pollDone(events ...any) *ngsiem.GetSearchStatusV1OK {

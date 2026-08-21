@@ -150,6 +150,20 @@ func expectNoToolError(res *mcp.CallToolResult) {
 	Expect(res.IsError).To(BeFalse(), "tool returned an error result: %+v", res.Content)
 }
 
+// callOK opens a session, invokes the named tool, and asserts it produced
+// neither a protocol error nor an in-band tool error, returning the successful
+// result for further assertions. It fuses the session-open, call, and
+// error-check that every single-call read spec repeats. Specs that reuse a
+// session across calls — a search feeding a get-by-id, or pagination — stay on
+// newSession plus callTool so the session is threaded explicitly.
+func callOK(ctx context.Context, name string, args map[string]any) *mcp.CallToolResult {
+	GinkgoHelper()
+	cs := newSession(ctx)
+	res := callTool(ctx, cs, name, args)
+	expectNoToolError(res)
+	return res
+}
+
 // structured returns the tool result's structured content as a JSON object. Our
 // result envelopes (SearchResult, EntitiesResult) are always JSON objects, and
 // the SDK delivers them to the client side as a map[string]any.
@@ -233,6 +247,19 @@ func toolNames(ctx context.Context, cs *mcp.ClientSession) []string {
 		names = append(names, t.Name)
 	}
 	return names
+}
+
+// itAdvertisesTools registers a spec asserting the module advertises every named
+// tool over a live session. It replaces the near-identical tool-advertisement
+// spec each module otherwise hand-writes. The spec builds its own context and
+// session so it is self-contained and independent of the enclosing Describe's
+// setup. Gomega's ContainElements unpacks the single slice argument.
+func itAdvertisesTools(names ...string) {
+	It("advertises its tools with the falcon_ prefix", func() {
+		ctx := newSpecContext()
+		cs := newSession(ctx)
+		Expect(toolNames(ctx, cs)).To(ContainElements(names))
+	})
 }
 
 // uniqueTestName builds a collision-resistant, obviously-disposable name for a

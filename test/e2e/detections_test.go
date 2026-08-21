@@ -18,20 +18,14 @@ var _ = Describe("detections module", Label("integration", "detections"), func()
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_detections",
-			"falcon_get_detection_details",
-			"falcon_update_detections",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_detections",
+		"falcon_get_detection_details",
+		"falcon_update_detections",
+	)
 
 	It("searches detections and returns full alert records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_detections", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_detections", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no detections to validate details against")
 		// composite_id is the field the module keys detail results on, so its
 		// presence confirms the two-step query->details fetch returned full
@@ -40,23 +34,19 @@ var _ = Describe("detections module", Label("integration", "detections"), func()
 	})
 
 	It("searches detections with an FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_detections", map[string]any{
+		res := callOK(ctx, "falcon_search_detections", map[string]any{
 			"filter": "status:'new'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no new detections in tenant")
 		expectSearchReturnsDetails(res, "composite_id", "severity", "status")
 	})
 
 	It("searches detections sorted by severity", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_detections", map[string]any{
+		res := callOK(ctx, "falcon_search_detections", map[string]any{
 			"sort":  "severity.desc",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no detections to sort")
 		expectSearchReturnsDetails(res, "composite_id", "severity", "status")
 	})

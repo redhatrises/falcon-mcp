@@ -25,30 +25,24 @@ var _ = Describe("policies module", Label("integration", "policies"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_policies",
-			"falcon_search_policy_members",
-			"falcon_create_policy",
-			"falcon_update_policy",
-			"falcon_delete_policies",
-			"falcon_perform_policy_action",
-			"falcon_set_policy_precedence",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_policies",
+		"falcon_search_policy_members",
+		"falcon_create_policy",
+		"falcon_update_policy",
+		"falcon_delete_policies",
+		"falcon_perform_policy_action",
+		"falcon_set_policy_precedence",
+	)
 
 	// Every policy type of each tenant has at least a Default policy, so these
 	// searches should return full records including the id field.
 	DescribeTable("searches each policy type and returns full records",
 		func(policyType string) {
-			cs := newSession(ctx)
-			res := callTool(ctx, cs, "falcon_search_policies", map[string]any{
+			res := callOK(ctx, "falcon_search_policies", map[string]any{
 				"policy_type": policyType,
 				"limit":       3,
 			})
-			expectNoToolError(res)
 			skipIfEmpty(res, "tenant has no "+policyType+" policies")
 			expectSearchReturnsDetails(res, "id", "name")
 		},
@@ -61,13 +55,11 @@ var _ = Describe("policies module", Label("integration", "policies"), func() {
 	)
 
 	It("applies the enabled boolean FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_policies", map[string]any{
+		res := callOK(ctx, "falcon_search_policies", map[string]any{
 			"policy_type": "prevention",
 			"filter":      "enabled:true",
 			"limit":       3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no enabled prevention policies in tenant")
 		expectSearchReturnsDetails(res, "id", "name")
 	})
@@ -75,24 +67,20 @@ var _ = Describe("policies module", Label("integration", "policies"), func() {
 	It("matches a policy name with the contains operator", func() {
 		// name:~'value' is the correct operator for prevention; a glob returns
 		// nothing. 'default' matches the built-in Default policy on most tenants.
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_policies", map[string]any{
+		res := callOK(ctx, "falcon_search_policies", map[string]any{
 			"policy_type": "prevention",
 			"filter":      "name:~'default'",
 			"limit":       3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no prevention policy name contains 'default'")
 		expectSearchReturnsDetails(res, "id", "name")
 	})
 
 	It("surfaces the raw API meta object on a populated search", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_policies", map[string]any{
+		res := callOK(ctx, "falcon_search_policies", map[string]any{
 			"policy_type": "prevention",
 			"limit":       3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no prevention policies")
 		obj := structured(res)
 		meta, ok := obj["meta"].(map[string]any)
@@ -103,13 +91,11 @@ var _ = Describe("policies module", Label("integration", "policies"), func() {
 	It("sorts by modified_timestamp without the platform_name sort trap", func() {
 		// Sorting by platform_name returns HTTP 500; modified_timestamp is a safe
 		// sort field. A passing call confirms the tool built a valid sort.
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_policies", map[string]any{
+		res := callOK(ctx, "falcon_search_policies", map[string]any{
 			"policy_type": "prevention",
 			"sort":        "modified_timestamp.desc",
 			"limit":       3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no prevention policies to sort")
 		expectSearchReturnsDetails(res, "id")
 	})

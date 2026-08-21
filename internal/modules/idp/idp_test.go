@@ -2,7 +2,6 @@ package idp
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -11,10 +10,10 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fixedNow pins the timestamp so summary output is deterministic in tests.
 func fixedNow() time.Time { return time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC) }
@@ -388,12 +387,12 @@ func TestToolRegistersReadOnly(t *testing.T) {
 	t.Parallel()
 	f := &fakeIDP{}
 	m := newModule(f)
-	r := &captureRegistrar{}
-	m.RegisterTools(r)
-	if len(r.tools) != 1 {
-		t.Fatalf("expected 1 tool, got %d", len(r.tools))
+	var entries []base.ToolEntry
+	m.RegisterTools(testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) }))
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(entries))
 	}
-	tool := r.tools[0].Tool
+	tool := entries[0].Tool
 	if tool.Name != "falcon_idp_investigate_entity" {
 		t.Fatalf("expected falcon_ prefixed name, got %q", tool.Name)
 	}
@@ -401,8 +400,3 @@ func TestToolRegistersReadOnly(t *testing.T) {
 		t.Fatalf("expected read-only annotations, got %+v", tool.Annotations)
 	}
 }
-
-// captureRegistrar records registered tools for annotation assertions.
-type captureRegistrar struct{ tools []base.ToolEntry }
-
-func (c *captureRegistrar) Add(e base.ToolEntry) { c.tools = append(c.tools, e) }

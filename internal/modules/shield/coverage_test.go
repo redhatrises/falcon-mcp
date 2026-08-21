@@ -35,7 +35,7 @@ func TestSearchDevicesSuccess(t *testing.T) {
 	t.Parallel()
 	f := &fakeShield{devicesResp: &saas_security.GetDeviceInventoryV3OK{
 		Payload: &models.GetDeviceInventory{
-			Resources: []*models.DeviceGetDeviceInventory{{ID: str("dev-1")}},
+			Resources: []*models.DeviceGetDeviceInventory{{ID: new("dev-1")}},
 			Meta:      &models.MetaGetDeviceInventory{QueryTime: &metaQueryTime},
 		},
 	}}
@@ -53,7 +53,7 @@ func TestSearchAppsSuccess(t *testing.T) {
 	t.Parallel()
 	f := &fakeShield{appsResp: &saas_security.GetAppInventoryOK{
 		Payload: &models.AppInventory{
-			Resources: []*models.AppAppInventory{{ItemID: str("app|||i")}},
+			Resources: []*models.AppAppInventory{{ItemID: new("app|||i")}},
 		},
 	}}
 	m := newModule(f)

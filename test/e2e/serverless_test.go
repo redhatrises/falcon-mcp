@@ -4,7 +4,6 @@ import (
 	"context"
 
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
 // The serverless specs exercise falcon_search_serverless_vulnerabilities against
@@ -21,18 +20,13 @@ var _ = Describe("serverless module", Label("integration", "serverless"), func()
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		Expect(toolNames(ctx, cs)).To(ContainElement("falcon_search_serverless_vulnerabilities"))
-	})
+	itAdvertisesTools("falcon_search_serverless_vulnerabilities")
 
 	It("searches serverless vulnerabilities and returns SARIF runs", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_serverless_vulnerabilities", map[string]any{
+		res := callOK(ctx, "falcon_search_serverless_vulnerabilities", map[string]any{
 			"filter": "cloud_provider:'aws'",
 			"limit":  5,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no AWS serverless vulnerabilities to validate against")
 		// tool and results are the SARIF run fields, so their presence confirms
 		// the combined query returned full SARIF runs rather than bare
@@ -41,24 +35,20 @@ var _ = Describe("serverless module", Label("integration", "serverless"), func()
 	})
 
 	It("searches serverless vulnerabilities with a severity filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_serverless_vulnerabilities", map[string]any{
+		res := callOK(ctx, "falcon_search_serverless_vulnerabilities", map[string]any{
 			"filter": "severity:'HIGH'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no HIGH severity serverless vulnerabilities in tenant")
 		expectSearchReturnsDetails(res, "tool", "results")
 	})
 
 	It("searches serverless vulnerabilities sorted by severity", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_serverless_vulnerabilities", map[string]any{
+		res := callOK(ctx, "falcon_search_serverless_vulnerabilities", map[string]any{
 			"filter": "cloud_provider:'aws'",
 			"sort":   "severity",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no AWS serverless vulnerabilities to sort")
 		expectSearchReturnsDetails(res, "tool", "results")
 	})
