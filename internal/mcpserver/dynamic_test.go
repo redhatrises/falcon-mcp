@@ -3,11 +3,14 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/crowdstrike/falcon-mcp/internal/metrics"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
@@ -82,7 +85,7 @@ func (m fakeToolModule) RegisterTools(r base.Registrar) {
 // catalog and a MetaModule over it. The session is closed on test cleanup.
 func buildCatalog(t *testing.T, modules ...fakeToolModule) *MetaModule {
 	t.Helper()
-	cat := NewCatalog()
+	cat := NewCatalog(nil)
 	mods := make([]base.Module, 0, len(modules))
 	for _, m := range modules {
 		m.RegisterTools(cat.ForModule(m.Name()))
@@ -577,5 +580,66 @@ func TestExecuteToolThroughServer(t *testing.T) {
 	}
 	if out.Total != 1 || len(out.Resources) != 1 || out.Resources[0].Filter != "platform:'Windows'" {
 		t.Errorf("got %+v, want the filter echoed back", out)
+	}
+}
+
+// TestMetricsMiddlewareRecordsUnderlyingToolInDynamicMode proves that the
+// tool-call metrics middleware, attached to the catalog's internal server the
+// way NewCatalog wires it in dynamic mode, records the real underlying tool
+// name (falcon_search_hosts) — not just the falcon_execute_tool meta-tool it is
+// dispatched through. The served server here carries no middleware, so the only
+// counter that can move is the one recorded on the internal dispatch. It scrapes
+// the public exposition handler so the assertion rides the package's API.
+func TestMetricsMiddlewareRecordsUnderlyingToolInDynamicMode(t *testing.T) {
+	t.Parallel()
+
+	m := metrics.New()
+
+	cat := NewCatalog(m.ToolMiddleware(nil))
+	mod := fakeToolModule{name: "hosts"}
+	mod.RegisterTools(cat.ForModule(mod.Name()))
+	if err := cat.Connect(context.Background()); err != nil {
+		t.Fatalf("catalog connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cat.Close() })
+	meta := NewMetaModule(cat, []base.Module{mod})
+
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	meta.RegisterTools(base.ServerRegistrar(srv))
+
+	ctx := context.Background()
+	clientT, serverT := mcp.NewInMemoryTransports()
+	ss, err := srv.Connect(ctx, serverT, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Wait() })
+
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name: "falcon_execute_tool",
+		Arguments: map[string]any{
+			"tool_name":  "falcon_search_hosts",
+			"parameters": map[string]any{"filter": "platform:'Windows'"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("execute through server returned error: %v", res.Content)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if !strings.Contains(body, `falcon_mcp_tool_calls_total{status="ok",tool="falcon_search_hosts"} 1`) {
+		t.Errorf("metrics missing underlying-tool counter; got:\n%s", body)
 	}
 }

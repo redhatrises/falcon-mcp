@@ -76,7 +76,7 @@ falcon-mcp --help
 | `--proxy` | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy for outbound API connections |
 | `--dynamic` | `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools instead of all module tools to reduce context usage |
 | `--health-addr` | `FALCON_MCP_HEALTH_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/healthz` liveness probe. Empty disables it. |
-| `--metrics-addr` | `FALCON_MCP_METRICS_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/metrics` (expvar) endpoint. Empty disables it. |
+| `--metrics-addr` | `FALCON_MCP_METRICS_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the Prometheus `/metrics` endpoint. Empty disables it. |
 | `--pprof-addr` | `FALCON_MCP_PPROF_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/debug/pprof/` profiling endpoints. Empty disables it. |
 
 ## Operational Endpoints
@@ -89,7 +89,7 @@ each works under any transport, including `stdio`.
 | Endpoint | Flag / Env | Path | Purpose |
 |----------|------------|------|---------|
 | Health | `--health-addr` / `FALCON_MCP_HEALTH_ADDR` | `/healthz` | Liveness probe. Returns `200 ok` when the process is up. It does **not** check that CrowdStrike APIs are reachable. |
-| Metrics | `--metrics-addr` / `FALCON_MCP_METRICS_ADDR` | `/metrics` | Go runtime metrics (`memstats`) as JSON via the stdlib `expvar` package. |
+| Metrics | `--metrics-addr` / `FALCON_MCP_METRICS_ADDR` | `/metrics` | Prometheus text-format exposition covering Go runtime and process stats, per-tool call counts and durations, and outbound Falcon API request counts and latency. |
 | Profiling | `--pprof-addr` / `FALCON_MCP_PPROF_ADDR` | `/debug/pprof/` | `net/http/pprof` profiling (heap, CPU, goroutine, trace). |
 
 Each endpoint binds a **separate listener** so operators can expose, firewall,

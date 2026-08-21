@@ -87,11 +87,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 // buildServer constructs the live gofalcon client and the falcon-mcp server from
 // cfg. It is separated from the suite hook so the hook stays declarative.
 func buildServer(cfg *config.Config) (*mcpserver.Server, error) {
-	api, err := falconapi.New(context.Background(), cfg)
+	api, err := falconapi.New(context.Background(), cfg, nil)
 	if err != nil {
 		return nil, err
 	}
-	return mcpserver.New(cfg, api)
+	return mcpserver.New(mcpserver.Options{Config: cfg, API: api})
 }
 
 var _ = AfterSuite(func() {
