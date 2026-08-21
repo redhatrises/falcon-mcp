@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -155,16 +156,7 @@ func joinFields(set map[string]struct{}) string {
 	for f := range set {
 		fields = append(fields, f)
 	}
-	// Stable order for deterministic queries; sort is cheap for a handful of fields.
-	sortStrings(fields)
+	// Stable order for deterministic queries.
+	slices.Sort(fields)
 	return strings.Join(fields, "\n")
-}
-
-// sortStrings sorts s in place (small helper to avoid importing sort at each use).
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j-1] > s[j]; j-- {
-			s[j-1], s[j] = s[j], s[j-1]
-		}
-	}
 }
