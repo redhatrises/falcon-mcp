@@ -3,7 +3,6 @@ package shield
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/saas_security"
@@ -11,12 +10,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
+var testLogger = testutil.DiscardLogger()
 
 // fakeShield is a configurable test double for the shieldAPI interface. Each
 // handler under test touches one method; the fake records the params it received
@@ -195,8 +192,8 @@ func TestSearchChecksSuccess(t *testing.T) {
 	t.Parallel()
 	f := &fakeShield{checksResp: &saas_security.GetSecurityChecksV3OK{
 		Payload: &models.GetSecurityChecks{
-			Resources: []*models.SecurityCheckWithComplianceGetSecurityChecks{{ID: str("chk-1")}},
-			Meta:      &models.MetaGetSecurityChecks{TraceID: str("t-1")},
+			Resources: []*models.SecurityCheckWithComplianceGetSecurityChecks{{ID: new("chk-1")}},
+			Meta:      &models.MetaGetSecurityChecks{TraceID: new("t-1")},
 		},
 	}}
 	m := newModule(f)
@@ -267,9 +264,9 @@ func TestImpactNormalization(t *testing.T) {
 		in   string
 		want *string
 	}{
-		{"low", str("Low")},
-		{"MEDIUM", str("Medium")},
-		{"High", str("High")},
+		{"low", new("Low")},
+		{"MEDIUM", new("Medium")},
+		{"High", new("High")},
 		{"", nil},
 		{"bogus", nil},
 	}
@@ -433,25 +430,20 @@ func TestDismissBlankEntitiesFallsBackToWholeCheck(t *testing.T) {
 
 // --- registration / annotations ---
 
-// captureRegistrar records registered tool entries for assertion.
-type captureRegistrar struct{ tools []base.ToolEntry }
-
-func (c *captureRegistrar) Add(e base.ToolEntry) { c.tools = append(c.tools, e) }
-
 func TestRegisterToolsNamesAndAnnotations(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
-	r := &captureRegistrar{}
-	m.RegisterTools(r)
+	var entries []base.ToolEntry
+	m.RegisterTools(testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) }))
 
 	byName := map[string]*mcp.Tool{}
-	for _, e := range r.tools {
+	for _, e := range entries {
 		byName[e.Tool.Name] = e.Tool
 	}
 
 	// 16 tools total, all prefixed with falcon_
-	if len(r.tools) != 16 {
-		t.Fatalf("expected 16 tools, got %d", len(r.tools))
+	if len(entries) != 16 {
+		t.Fatalf("expected 16 tools, got %d", len(entries))
 	}
 	wantReadOnly := []string{
 		"falcon_search_shield_checks", "falcon_search_shield_alerts",

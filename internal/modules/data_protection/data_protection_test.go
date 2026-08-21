@@ -3,7 +3,6 @@ package data_protection
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"slices"
 	"testing"
@@ -13,17 +12,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // fakeAPI is a configurable test double for the dataProtectionAPI interface. It
 // records the IDs each get call received so tests can assert the two-step search
@@ -107,8 +103,8 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 		classQueryResp: &dp.QueriesClassificationGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"c1", "c2"}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		classGetResp: &dp.EntitiesClassificationGetV2OK{Payload: &models.PolicymanagerClassificationsResponse{
 			Resources: []*models.PolicymanagerExternalClassification{
-				{ID: str("c1"), Name: str("Credit Cards")},
-				{ID: str("c2"), Name: str("SSNs")},
+				{ID: new("c1"), Name: new("Credit Cards")},
+				{ID: new("c2"), Name: new("SSNs")},
 			},
 		}},
 	}
@@ -136,7 +132,7 @@ func TestSearchClassificationsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &dp.QueriesClassificationGetV2BadRequest{Payload: &models.ResponsesPolicySearchV1{
-		Errors: []*models.ResponsesError{{Code: i32(400), Message: str("invalid classification filter key: bogus")}},
+		Errors: []*models.ResponsesError{{Code: new(int32(400)), Message: new("invalid classification filter key: bogus")}},
 	}}
 	f := &fakeAPI{classQueryErr: badReq}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -215,7 +211,7 @@ func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	f := &fakeAPI{
 		policyQueryResp: &dp.QueriesPolicyGetV2OK{Payload: &models.ResponsesPolicySearchV1{Resources: []string{"p1"}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		policyGetResp: &dp.EntitiesPolicyGetV2OK{Payload: &models.PolicymanagerPoliciesResponse{
-			Resources: []*models.PolicymanagerExternalPolicy{{ID: str("p1"), Name: str("Default")}},
+			Resources: []*models.PolicymanagerExternalPolicy{{ID: new("p1"), Name: new("Default")}},
 		}},
 	}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -260,7 +256,7 @@ func TestSearchPoliciesFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &dp.QueriesPolicyGetV2BadRequest{Payload: &models.ResponsesPolicySearchV1{
-		Errors: []*models.ResponsesError{{Code: i32(400), Message: str("invalid policy filter key: bogus")}},
+		Errors: []*models.ResponsesError{{Code: new(int32(400)), Message: new("invalid policy filter key: bogus")}},
 	}}
 	f := &fakeAPI{policyQueryErr: badReq}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -282,7 +278,7 @@ func TestSearchContentPatternsReturnsDetails(t *testing.T) {
 	f := &fakeAPI{
 		patternQueryResp: &dp.QueriesContentPatternGetV2OK{Payload: &models.MsaspecQueryResponse{Resources: []string{"x1"}, Meta: &models.MsaMetaInfo{QueryTime: &metaQueryTime}}},
 		patternGetResp: &dp.EntitiesContentPatternGetOK{Payload: &models.APIContentPatternMSAResponseV1{
-			Resources: []*models.APIContentPatternV1{{ID: str("x1"), Name: "AWS Key", Type: str("custom")}},
+			Resources: []*models.APIContentPatternV1{{ID: new("x1"), Name: "AWS Key", Type: new("custom")}},
 		}},
 	}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -306,7 +302,7 @@ func TestSearchContentPatternsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &dp.QueriesContentPatternGetV2BadRequest{Payload: &models.MsaspecResponseFields{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid fql filter properties: [bogus]")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid fql filter properties: [bogus]")}},
 	}}
 	f := &fakeAPI{patternQueryErr: badReq}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
@@ -343,25 +339,19 @@ func TestSearchContentPatternsEmpty(t *testing.T) {
 
 // --- Registration ---
 
-// captureRegistrar records every tool registered via base.AddTool so tests can
-// assert names and annotations without a live server.
-type captureRegistrar struct{ tools []*mcp.Tool }
-
-func (c *captureRegistrar) Add(e base.ToolEntry) { c.tools = append(c.tools, e.Tool) }
-
 func TestRegisterToolsNamesAndAnnotations(t *testing.T) {
 	t.Parallel()
 
 	m := &Module{API: &fakeAPI{}, Concurrency: 4, Logger: testLogger}
-	var r captureRegistrar
-	m.RegisterTools(&r)
+	var tools []*mcp.Tool
+	m.RegisterTools(testutil.CaptureRegistrar(func(e base.ToolEntry) { tools = append(tools, e.Tool) }))
 
 	want := map[string]bool{
 		"falcon_search_data_protection_classifications":  false,
 		"falcon_search_data_protection_policies":         false,
 		"falcon_search_data_protection_content_patterns": false,
 	}
-	for _, tool := range r.tools {
+	for _, tool := range tools {
 		if _, ok := want[tool.Name]; !ok {
 			t.Fatalf("unexpected tool registered: %q", tool.Name)
 		}

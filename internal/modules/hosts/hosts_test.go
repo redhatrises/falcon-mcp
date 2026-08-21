@@ -13,10 +13,10 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 type fakeHosts struct {
 	queryResp *hosts.QueryDevicesByFilterOK

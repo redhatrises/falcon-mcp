@@ -21,32 +21,24 @@ var _ = Describe("hostgroups module", Label("integration", "hostgroups"), func()
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_host_groups",
-			"falcon_search_host_group_members",
-			"falcon_create_host_group",
-			"falcon_delete_host_groups",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_host_groups",
+		"falcon_search_host_group_members",
+		"falcon_create_host_group",
+		"falcon_delete_host_groups",
+	)
 
 	It("searches host groups and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_host_groups", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_host_groups", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no host groups to validate details against")
 		expectSearchReturnsDetails(res, "id", "name")
 	})
 
 	It("searches host groups with an FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_host_groups", map[string]any{
+		res := callOK(ctx, "falcon_search_host_groups", map[string]any{
 			"filter": "group_type:'static'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no static host groups in tenant")
 		expectSearchReturnsDetails(res, "id", "name", "group_type")
 	})

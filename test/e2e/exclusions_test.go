@@ -24,36 +24,28 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_exclusions",
-			"falcon_create_exclusion",
-			"falcon_update_exclusion",
-			"falcon_delete_exclusions",
-			"falcon_get_certificate_details",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_exclusions",
+		"falcon_create_exclusion",
+		"falcon_update_exclusion",
+		"falcon_delete_exclusions",
+		"falcon_get_certificate_details",
+	)
 
 	It("searches IOA exclusions and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ioa",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no IOA exclusions")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches ML exclusions and returns full records via the typed path", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ml",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no ML exclusions")
 		// value is present on every ML exclusion record; its presence confirms the
 		// detail fetch returned full objects decoded through the typed groups model.
@@ -61,12 +53,10 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 	})
 
 	It("surfaces the raw API meta object on a populated search", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ml",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no ML exclusions")
 		// The pagination passthrough attaches the query-step meta verbatim; a
 		// populated search must carry a meta object (e.g. pagination/query_time).
@@ -77,23 +67,19 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 	})
 
 	It("searches sensor visibility exclusions and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "sensor_visibility",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no sensor visibility exclusions")
 		expectSearchReturnsDetails(res, "id", "value")
 	})
 
 	It("searches certificate-based exclusions and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "certificate",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no certificate-based exclusions")
 		expectSearchReturnsDetails(res, "id")
 	})
@@ -103,12 +89,10 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 		// false round-trips instead of being dropped by omitempty — the fix that
 		// let the module drop its raw-capture reader. Assert at least one IOA
 		// record carries the applied_globally key (present, regardless of value).
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ioa",
 			"limit":          10,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no IOA exclusions")
 		found := false
 		for _, r := range resources(res) {
@@ -124,13 +108,11 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 	})
 
 	It("applies a boolean FQL filter supported by every type", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ml",
 			"filter":         "applied_globally:true",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no globally-applied ML exclusions in tenant")
 		expectSearchReturnsDetails(res, "id", "value")
 	})
@@ -138,13 +120,11 @@ var _ = Describe("exclusions module", Label("integration", "exclusions"), func()
 	It("sorts IOA exclusions by last_modified without the created_on sort trap", func() {
 		// IOA rejects sort=created_on.desc with a 400; last_modified.desc is the
 		// correct field. A passing call confirms the tool built a valid sort.
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_exclusions", map[string]any{
+		res := callOK(ctx, "falcon_search_exclusions", map[string]any{
 			"exclusion_type": "ioa",
 			"sort":           "last_modified.desc",
 			"limit":          3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no IOA exclusions to sort")
 		expectSearchReturnsDetails(res, "id")
 	})

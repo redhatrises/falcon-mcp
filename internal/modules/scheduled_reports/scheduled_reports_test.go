@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,17 +14,14 @@ import (
 	"github.com/go-openapi/runtime"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // fakeReports is a configurable double for the reportsAPI interface. Each
 // operation records its call count/inputs and returns the preconfigured
@@ -108,8 +104,8 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 		getResp: &scheduled_reports.QueryByIDOK{Payload: &models.DomainScheduledReportsResultV1{
 			// Returned out of query order to exercise reordering by id.
 			Resources: []*models.DomainScheduledReportV1{
-				{ID: str("r2")},
-				{ID: str("r1")},
+				{ID: new("r2")},
+				{ID: new("r1")},
 			},
 		}},
 	}
@@ -164,7 +160,7 @@ func TestSearchScheduledReportsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &scheduled_reports.QueryBadRequest{Payload: &models.MsaReplyMetaOnly{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	r := &fakeReports{queryErr: badReq}
 	m := newModule(r, &fakeExecutions{})
@@ -202,7 +198,7 @@ func TestLaunchScheduledReportSuccess(t *testing.T) {
 	t.Parallel()
 
 	r := &fakeReports{execResp: &scheduled_reports.ExecuteOK{Payload: &models.DomainReportExecutionsResponseV1{
-		Resources: []*models.DomainReportExecutionV1{{ID: str("exec1")}},
+		Resources: []*models.DomainReportExecutionV1{{ID: new("exec1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(r, &fakeExecutions{})
@@ -253,8 +249,8 @@ func TestSearchReportExecutionsSuccess(t *testing.T) {
 		}},
 		getResp: &report_executions.ReportExecutionsGetOK{Payload: &models.DomainReportExecutionsResponseV1{
 			Resources: []*models.DomainReportExecutionV1{
-				{ID: str("e2")},
-				{ID: str("e1")},
+				{ID: new("e2")},
+				{ID: new("e1")},
 			},
 		}},
 	}
@@ -312,7 +308,7 @@ func TestSearchReportExecutionsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &report_executions.ReportExecutionsQueryBadRequest{Payload: &models.MsaReplyMetaOnly{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("bad execution filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("bad execution filter")}},
 	}}
 	e := &fakeExecutions{queryErr: badReq}
 	m := newModule(&fakeReports{}, e)

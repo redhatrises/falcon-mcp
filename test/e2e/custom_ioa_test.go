@@ -20,26 +20,20 @@ var _ = Describe("customioa module", Label("integration", "customioa"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises the custom_ioa tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_ioa_rule_groups",
-			"falcon_get_ioa_platforms",
-			"falcon_get_ioa_rule_types",
-			"falcon_create_ioa_rule_group",
-			"falcon_update_ioa_rule_group",
-			"falcon_delete_ioa_rule_groups",
-			"falcon_create_ioa_rule",
-			"falcon_update_ioa_rule",
-			"falcon_delete_ioa_rules",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_ioa_rule_groups",
+		"falcon_get_ioa_platforms",
+		"falcon_get_ioa_rule_types",
+		"falcon_create_ioa_rule_group",
+		"falcon_update_ioa_rule_group",
+		"falcon_delete_ioa_rule_groups",
+		"falcon_create_ioa_rule",
+		"falcon_update_ioa_rule",
+		"falcon_delete_ioa_rules",
+	)
 
 	It("searches IOA rule groups and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_ioa_rule_groups", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_ioa_rule_groups", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no Custom IOA rule groups")
 		// id/name/platform confirm QueryRuleGroupsFull returned full group
 		// records, not bare IDs.
@@ -47,12 +41,10 @@ var _ = Describe("customioa module", Label("integration", "customioa"), func() {
 	})
 
 	It("searches IOA rule groups with an FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_ioa_rule_groups", map[string]any{
+		res := callOK(ctx, "falcon_search_ioa_rule_groups", map[string]any{
 			"filter": "platform:'windows'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no Windows Custom IOA rule groups in tenant")
 		expectSearchReturnsDetails(res, "id", "name", "platform")
 	})
@@ -64,9 +56,7 @@ var _ = Describe("customioa module", Label("integration", "customioa"), func() {
 	})
 
 	It("gets the available IOA platforms", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_ioa_platforms", map[string]any{})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_get_ioa_platforms", map[string]any{})
 		// Platforms are a fixed set on any tenant; the result must be non-empty
 		// and each entry is an object carrying the platform id.
 		got := resources(res)
@@ -83,9 +73,7 @@ var _ = Describe("customioa module", Label("integration", "customioa"), func() {
 	})
 
 	It("lists IOA rule types and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_get_ioa_rule_types", map[string]any{"limit": 5})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_get_ioa_rule_types", map[string]any{"limit": 5})
 		skipIfEmpty(res, "tenant exposes no Custom IOA rule types")
 		// id/platform confirm the two-step query->GetRuleTypes fetch returned
 		// full rule-type records, not bare IDs.

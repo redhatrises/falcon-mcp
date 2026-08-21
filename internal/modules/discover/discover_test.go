@@ -14,13 +14,10 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // fakeDiscover is a configurable test double for the discoverAPI interface. It
 // records the last params each operation received so tests can assert on filter
@@ -87,7 +84,7 @@ func hostsOK(hosts ...*models.DomainDiscoverAPIHost) *discover.CombinedHostsOK {
 func TestSearchApplicationsSuccess(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeDiscover{appsResp: appsOK(&models.DomainDiscoverAPIApplication{ID: str("app-1"), Name: "Chrome"})}
+	f := &fakeDiscover{appsResp: appsOK(&models.DomainDiscoverAPIApplication{ID: new("app-1"), Name: "Chrome"})}
 	f.appsResp.Payload.Meta = &models.DomainDiscoverAPIMetaInfo{}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -172,7 +169,7 @@ func TestSearchApplicationsFQLError(t *testing.T) {
 
 	badReq := &discover.CombinedApplicationsBadRequest{
 		Payload: &models.MsaspecResponseFields{
-			Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+			Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 		},
 	}
 	f := &fakeDiscover{appsErr: badReq}
@@ -212,7 +209,7 @@ func TestSearchApplicationsAPIError(t *testing.T) {
 func TestSearchUnmanagedAssetsSuccess(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeDiscover{hostsResp: hostsOK(&models.DomainDiscoverAPIHost{ID: str("host-1"), Hostname: "PC-001"})}
+	f := &fakeDiscover{hostsResp: hostsOK(&models.DomainDiscoverAPIHost{ID: new("host-1"), Hostname: "PC-001"})}
 	f.hostsResp.Payload.Meta = &models.DomainDiscoverAPIMetaInfo{}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -369,7 +366,7 @@ func TestSearchUnmanagedAssetsFQLError(t *testing.T) {
 
 	badReq := &discover.CombinedHostsBadRequest{
 		Payload: &models.MsaspecResponseFields{
-			Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+			Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 		},
 	}
 	f := &fakeDiscover{hostsErr: badReq}
