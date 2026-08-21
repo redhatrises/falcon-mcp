@@ -305,19 +305,17 @@ func TestUnknownInvestigationType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// An unknown investigation type aborts the whole call with a failed status and
-	// an "Investigation failed during ..." error, returned as data (not a Go
-	// error).
+	// An unknown investigation type is rejected upfront by input validation, before
+	// any entity resolution, with a failed status returned as data (not a Go error).
 	if out.Summary.Status != "failed" {
 		t.Fatalf("expected failed status for unknown type, got %+v", out.Summary)
 	}
-	if !strings.Contains(out.Error, "Investigation failed during bogus_type") ||
-		!strings.Contains(out.Error, "Unknown investigation type: bogus_type") {
-		t.Fatalf("expected 'Investigation failed during ...' error, got %q", out.Error)
+	if !strings.Contains(out.Error, "Unknown investigation type: bogus_type") {
+		t.Fatalf("expected 'Unknown investigation type: ...' error, got %q", out.Error)
 	}
-	// The failed summary reports the resolved-entity count.
-	if out.Summary.EntityCount != 1 {
-		t.Fatalf("expected entity_count 1 in failed summary, got %d", out.Summary.EntityCount)
+	// Validation fails before resolution, so the failed summary reports no entities.
+	if out.Summary.EntityCount != 0 {
+		t.Fatalf("expected entity_count 0 in failed summary, got %d", out.Summary.EntityCount)
 	}
 	// No GraphQL call is made for an unknown type.
 	if f.idx != 0 {

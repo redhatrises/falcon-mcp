@@ -139,8 +139,10 @@ func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, 
 		DomainNames:    in.DomainNames,
 	}
 
-	// Step 1: validate inputs (returned as data, not a Go error).
-	if verr := m.validateIdentifiers(criteria, investigationTypes); verr != nil {
+	// Step 1: validate inputs (returned as data, not a Go error). This also
+	// rejects unknown investigation types, so runInvestigation only dispatches
+	// known ones below.
+	if verr := m.validateInput(criteria, investigationTypes); verr != nil {
 		return nil, *verr, nil
 	}
 
@@ -151,7 +153,7 @@ func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, InvestigationResult{}, apiErr
 	}
 	if len(resolvedIDs) == 0 {
-		return nil, m.errorResult("No entities found matching the provided criteria", 0, investigationTypes, &criteria), nil
+		return nil, m.errorResult("No entities found matching the provided criteria", investigationTypes, &criteria), nil
 	}
 
 	m.Logger.Debug("Resolved entities for investigation", "count", len(resolvedIDs))
@@ -174,15 +176,6 @@ func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, 
 		if apiErr != nil {
 			return nil, InvestigationResult{}, apiErr
 		}
-		// A single investigation that reports a data-level error (e.g. an unknown
-		// investigation type) aborts the whole call with a failed status rather than
-		// silently producing a completed result missing that type.
-		if msg, ok := investigationError(res); ok {
-			m.Logger.Error("investigation failed", "type", t, "error", msg)
-			return nil, m.errorResult(
-				fmt.Sprintf("Investigation failed during %s: %s", t, msg),
-				len(resolvedIDs), investigationTypes, nil), nil
-		}
 		results[t] = res
 	}
 
@@ -190,34 +183,32 @@ func (m *Module) investigateEntity(ctx context.Context, _ *mcp.CallToolRequest, 
 	return nil, m.synthesize(resolvedIDs, investigationTypes, criteria, results), nil
 }
 
-// investigationError reports whether a per-investigation result carries a
-// data-level "error" string, which the orchestrator checks for on each
-// investigation result.
-func investigationError(res any) (string, bool) {
-	if m, ok := res.(map[string]any); ok {
-		if msg, ok := m["error"].(string); ok {
-			return msg, true
-		}
-	}
-	return "", false
-}
-
-// validateIdentifiers returns a failed-status result when no identifier is
-// supplied, or when entity_names / email_addresses is a bare wildcard. A nil
-// return means the input is valid.
-func (m *Module) validateIdentifiers(c SearchCriteria, investigationTypes []string) *InvestigationResult {
+// validateInput returns a failed-status result when no identifier is supplied,
+// when entity_names / email_addresses is a bare wildcard, or when an unknown
+// investigation type is requested. A nil return means the input is valid, so the
+// dispatch in runInvestigation only ever sees a known type. Failures are returned
+// as data (a failed-status InvestigationResult), not as a Go error.
+func (m *Module) validateInput(c SearchCriteria, investigationTypes []string) *InvestigationResult {
 	if !c.hasAny() {
 		r := m.errorResult(
 			"At least one entity identifier must be provided (entity_ids, entity_names, email_addresses, ip_addresses, or domain_names)",
-			0, investigationTypes, nil)
+			investigationTypes, nil)
 		return &r
 	}
 	if isBareWildcard(c.EntityNames) || isBareWildcard(c.EmailAddresses) {
 		r := m.errorResult(
 			"entity_names/email_addresses cannot be a bare wildcard ('*'). "+
 				"Provide a more specific pattern (e.g., 'Admin*') or narrow the search.",
-			0, investigationTypes, nil)
+			investigationTypes, nil)
 		return &r
+	}
+	for _, t := range investigationTypes {
+		if _, ok := knownInvestigationTypes[t]; !ok {
+			r := m.errorResult(
+				fmt.Sprintf("Unknown investigation type: %s", t),
+				investigationTypes, nil)
+			return &r
+		}
 	}
 	return nil
 }
@@ -228,16 +219,15 @@ func isBareWildcard(s string) bool {
 	return s != "" && strings.Trim(s, "* ") == ""
 }
 
-// errorResult builds a failed-status InvestigationResult. entityCount is the
-// resolved-entity count to report: 0 for a validation or no-match failure
-// (resolution never produced entities), or the resolved count when a later
-// investigation step fails. searchCriteria is attached only when non-nil and
-// carrying at least one identifier.
-func (m *Module) errorResult(msg string, entityCount int, investigationTypes []string, criteria *SearchCriteria) InvestigationResult {
+// errorResult builds a failed-status InvestigationResult. Every failure it
+// reports (input validation or an empty resolution) happens before or without a
+// resolved entity set, so EntityCount is always 0. searchCriteria is attached
+// only when non-nil and carrying at least one identifier.
+func (m *Module) errorResult(msg string, investigationTypes []string, criteria *SearchCriteria) InvestigationResult {
 	res := InvestigationResult{
 		Error: msg,
 		Summary: &InvestigationMeta{
-			EntityCount:        entityCount,
+			EntityCount:        0,
 			InvestigationTypes: investigationTypes,
 			Timestamp:          m.timestamp(),
 			Status:             "failed",
