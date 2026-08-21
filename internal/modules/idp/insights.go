@@ -1,5 +1,7 @@
 package idp
 
+import "math"
+
 // This file derives cross-investigation insights: correlations that only exist
 // once two or more investigation types have run against the same entities.
 
@@ -106,11 +108,5 @@ func asMap(v any) map[string]any {
 
 // roundTo1 rounds x to one decimal place, half away from zero.
 func roundTo1(x float64) float64 {
-	scaled := x * 10
-	if scaled >= 0 {
-		scaled = float64(int64(scaled + 0.5))
-	} else {
-		scaled = float64(int64(scaled - 0.5))
-	}
-	return scaled / 10
+	return math.Round(x*10) / 10
 }

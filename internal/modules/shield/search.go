@@ -77,7 +77,7 @@ func (m *Module) searchShieldChecks(ctx context.Context, _ *mcp.CallToolRequest,
 	p.Status = strPtr(in.Status)
 	p.Impact = m.normalizeImpact(in.Impact)
 	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Compliance = boolPtr(in.Compliance)
+	p.Compliance = in.Compliance
 	p.CheckType = strPtr(in.CheckType)
 	p.CheckTags = strPtr(in.CheckTags)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
@@ -118,7 +118,7 @@ func (m *Module) searchShieldAlerts(ctx context.Context, _ *mcp.CallToolRequest,
 	p.ID = strPtr(in.ID)
 	p.Type = strPtr(in.Type)
 	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Ascending = boolPtr(in.Ascending)
+	p.Ascending = in.Ascending
 	p.LastID = strPtr(in.LastID)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	if from, err := parseDate("from_date", in.FromDate); err != nil {
@@ -160,7 +160,7 @@ func (m *Module) searchShieldUsers(ctx context.Context, _ *mcp.CallToolRequest, 
 	p := saas_security.NewGetUserInventoryV3ParamsWithContext(ctx)
 	p.IntegrationID = strPtr(in.IntegrationID)
 	p.Email = strPtr(in.Email)
-	p.PrivilegedOnly = boolPtr(in.PrivilegedOnly)
+	p.PrivilegedOnly = in.PrivilegedOnly
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
 
@@ -193,8 +193,8 @@ func (m *Module) searchShieldDevices(ctx context.Context, _ *mcp.CallToolRequest
 	p := saas_security.NewGetDeviceInventoryV3ParamsWithContext(ctx)
 	p.IntegrationID = strPtr(in.IntegrationID)
 	p.Email = strPtr(in.Email)
-	p.PrivilegedOnly = boolPtr(in.PrivilegedOnly)
-	p.UnassociatedDevices = boolPtr(in.UnassociatedDevices)
+	p.PrivilegedOnly = in.PrivilegedOnly
+	p.UnassociatedDevices = in.UnassociatedDevices
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
 
@@ -279,8 +279,8 @@ func (m *Module) searchShieldDataShares(ctx context.Context, _ *mcp.CallToolRequ
 	p.AccessLevel = strPtr(in.AccessLevel)
 	p.ResourceName = strPtr(in.ResourceName)
 	p.ResourceOwner = strPtr(in.ResourceOwner)
-	p.ResourceOwnerEnabled = boolPtr(in.ResourceOwnerEnabled)
-	p.PasswordProtected = boolPtr(in.PasswordProtected)
+	p.ResourceOwnerEnabled = in.ResourceOwnerEnabled
+	p.PasswordProtected = in.PasswordProtected
 	p.LastAccessed = strPtr(in.LastAccessed)
 	p.LastModified = strPtr(in.LastModified)
 	p.UnmanagedDomain = strPtr(in.UnmanagedDomain)

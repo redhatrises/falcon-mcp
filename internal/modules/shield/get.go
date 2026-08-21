@@ -125,7 +125,7 @@ func (m *Module) getShieldPostureMetrics(ctx context.Context, _ *mcp.CallToolReq
 	p.Status = strPtr(in.Status)
 	p.Impact = m.normalizeImpact(in.Impact)
 	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Compliance = boolPtr(in.Compliance)
+	p.Compliance = in.Compliance
 	p.CheckType = strPtr(in.CheckType)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
@@ -316,7 +316,7 @@ func (m *Module) getShieldSystemLogs(ctx context.Context, _ *mcp.CallToolRequest
 	p := saas_security.NewGetSystemLogsV3ParamsWithContext(ctx)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 100))
 	p.Offset = int64Ptr(in.Offset)
-	p.TotalCount = boolPtr(in.TotalCount)
+	p.TotalCount = in.TotalCount
 	if from, err := parseDate("from_date", in.FromDate); err != nil {
 		return nil, zero, err
 	} else {

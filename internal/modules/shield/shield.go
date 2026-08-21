@@ -14,6 +14,7 @@ package shield
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/saas_security"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -101,10 +102,6 @@ func strPtr(s string) *string {
 	return new(s)
 }
 
-// boolPtr returns b unchanged; it exists so callers can pass the *bool inputs
-// straight through and read as intentful at the call site.
-func boolPtr(b *bool) *bool { return b }
-
 // normalizeImpact maps an impact value to the title-case form the Shield API
 // accepts (low/medium/high -> Low/Medium/High), mirroring the Python module.
 // It returns nil when impact is empty or unrecognized; an unrecognized value is
@@ -113,22 +110,11 @@ func (m *Module) normalizeImpact(impact string) *string {
 	if impact == "" {
 		return nil
 	}
-	if n, ok := impactNames[toLower(impact)]; ok {
+	if n, ok := impactNames[strings.ToLower(impact)]; ok {
 		return &n
 	}
 	m.Logger.Warn("shield: unknown impact value", "impact", impact)
 	return nil
-}
-
-// toLower lowercases ASCII letters without importing strings for one call.
-func toLower(s string) string {
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + ('a' - 'A')
-		}
-	}
-	return string(b)
 }
 
 // RegisterTools registers the Shield tools into r. Tool names and descriptions

@@ -36,6 +36,16 @@ const (
 	investigationRiskAssessment = "risk_assessment"
 )
 
+// knownInvestigationTypes is the set of investigation types runInvestigation can
+// dispatch. It is the single source of truth for both upfront validation and the
+// dispatch switch, so an unknown type is rejected before any query runs.
+var knownInvestigationTypes = map[string]struct{}{
+	investigationEntityDetails:  {},
+	investigationTimeline:       {},
+	investigationRelationships:  {},
+	investigationRiskAssessment: {},
+}
+
 // Bounds on the investigation parameters, advertised on the served schema and
 // enforced by the MCP layer before a call reaches the handler.
 const (

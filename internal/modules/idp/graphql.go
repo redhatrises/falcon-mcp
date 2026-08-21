@@ -73,9 +73,10 @@ func toObjects(in []any) []map[string]any {
 	return out
 }
 
-// runInvestigation dispatches to the handler for one investigation type. An
-// unknown type yields a map with an "error" key (as data); only an API failure
-// returns a *base.Error.
+// runInvestigation dispatches to the handler for one investigation type. The
+// type is validated upfront by validateInput, so the default arm is an
+// unreachable invariant guard; it and an API failure are the only paths that
+// return a *base.Error.
 func (m *Module) runInvestigation(ctx context.Context, investigationType string, entityIDs []string, p investigationParams) (any, *base.Error) {
 	switch investigationType {
 	case investigationEntityDetails:
@@ -87,8 +88,11 @@ func (m *Module) runInvestigation(ctx context.Context, investigationType string,
 	case investigationRiskAssessment:
 		return m.riskAssessmentBatch(ctx, entityIDs)
 	default:
-		m.Logger.Warn("Unknown investigation type", "type", investigationType)
-		return map[string]any{"error": fmt.Sprintf("Unknown investigation type: %s", investigationType)}, nil
+		m.Logger.Error("runInvestigation received an unvalidated investigation type", "type", investigationType)
+		return nil, &base.Error{
+			Message:    fmt.Sprintf("internal error: unhandled investigation type %q", investigationType),
+			StatusCode: 500,
+		}
 	}
 }
 
