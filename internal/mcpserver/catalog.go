@@ -27,6 +27,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/version"
 )
 
 // Catalog holds the real tools captured in dynamic mode. Tools are registered
@@ -57,10 +58,16 @@ type catalogEntry struct {
 }
 
 // NewCatalog returns an empty Catalog with a fresh internal server for the real
-// tools.
-func NewCatalog() *Catalog {
+// tools. toolMW, when non-nil, is attached to that internal server as a
+// receiving middleware so dynamic-mode dispatch through falcon_execute_tool
+// records the real underlying tool name.
+func NewCatalog(toolMW mcp.Middleware) *Catalog {
+	internal := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp-internal", Version: version.Version}, nil)
+	if toolMW != nil {
+		internal.AddReceivingMiddleware(toolMW)
+	}
 	return &Catalog{
-		internal: mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp-internal", Version: "internal"}, nil),
+		internal: internal,
 		byName:   map[string]catalogEntry{},
 	}
 }

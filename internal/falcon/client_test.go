@@ -132,7 +132,7 @@ func TestNewWithProxy(t *testing.T) {
 		Cloud:        "us-2",
 		Proxy:        "http://proxy.example.com:8080",
 	}
-	c, err := New(context.Background(), cfg)
+	c, err := New(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("New with proxy: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestNewWithoutProxy(t *testing.T) {
 		ClientSecret: "secret",
 		Cloud:        "us-2",
 	}
-	c, err := New(context.Background(), cfg)
+	c, err := New(context.Background(), cfg, nil)
 	if err != nil {
 		t.Fatalf("New without proxy: %v", err)
 	}

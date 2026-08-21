@@ -38,13 +38,39 @@ type Server struct {
 	catalog *Catalog // non-nil only in dynamic mode
 }
 
-// New builds a Server from cfg and the shared Falcon client. It constructs all
-// registered modules (via the generated factory list), filters them against
-// cfg.Modules (empty enables all), and registers the selected modules.
+// ToolMiddlewareFunc builds an MCP receiving middleware that records tool-call
+// metrics, bounded to the set of known tool names passed to it (a nil set
+// records every name). Its signature matches metrics.Metrics.ToolMiddleware, so
+// the server can be instrumented without importing the metrics package.
+type ToolMiddlewareFunc func(known map[string]struct{}) mcp.Middleware
+
+// Options configures New. Config and API are required; ToolMiddleware is
+// optional.
+type Options struct {
+	// Config is the validated, immutable server configuration.
+	Config *config.Config
+	// API is the shared Falcon client the modules call.
+	API *client.CrowdStrikeAPISpecification
+	// ToolMiddleware, when non-nil, instruments tool calls. It is invoked once
+	// per server (the served server, and in dynamic mode the catalog's internal
+	// server) with that server's registered tool names, so the tool metric's
+	// label stays bounded to real tools. Nil disables tool instrumentation.
+	ToolMiddleware ToolMiddlewareFunc
+}
+
+// New builds a Server from opts. It constructs all registered modules (via the
+// generated factory list), filters them against opts.Config.Modules (empty
+// enables all), and registers the selected modules.
 // It returns ErrUnknownModule (wrapped) when the allowlist names a module that
 // does not exist. In dynamic mode it wires the catalog's in-process session;
 // call Close to release it.
-func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, error) {
+//
+// When opts.ToolMiddleware is non-nil, tool-call metrics are recorded on the
+// served server and (in dynamic mode) on the catalog's internal server, so the
+// real underlying tool name is recorded rather than only the falcon_execute_tool
+// meta-tool.
+func New(opts Options) (*Server, error) {
+	cfg := opts.Config
 	s := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp", Version: version.Version}, &mcp.ServerOptions{
 		Instructions: serverInstructions,
 		// KeepAlive pings idle sessions to detect dead peers and hold long-lived
@@ -57,7 +83,7 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 	// are called; injecting it here keeps handlers free of the slog global.
 	logger := slog.Default()
 	allModules := registry.Build(registry.Deps{
-		API:         api,
+		API:         opts.API,
 		Concurrency: cfg.DetailFetchConcurrency,
 		Logger:      logger,
 	}, moduleFactories())
@@ -75,7 +101,14 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 		return falconapi.ProbeConnectivity(ctx, probeCfg)
 	}
 
-	cat, err := registerModules(s, enabled, allModules, check, cfg.Dynamic)
+	cat, err := registerModules(moduleRegistration{
+		server:  s,
+		enabled: enabled,
+		all:     allModules,
+		check:   check,
+		dynamic: cfg.Dynamic,
+		toolMW:  opts.ToolMiddleware,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -84,42 +117,91 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 	return &Server{mcp: s, modules: enabled, catalog: cat}, nil
 }
 
-// registerModules registers core tools and the enabled modules on s.
+// moduleRegistration is the input for registerModules.
+type moduleRegistration struct {
+	// server is the served MCP server that clients connect to.
+	server *mcp.Server
+	// enabled are the modules selected for this run.
+	enabled []base.Module
+	// all are every registered module, used for the available-modules listing.
+	all []base.Module
+	// check backs falcon_check_connectivity.
+	check ConnectivityChecker
+	// dynamic selects dynamic mode (meta-tools + catalog) over normal mode.
+	dynamic bool
+	// toolMW, when non-nil, builds the tool-call metrics middleware bounded to a
+	// given tool-name set. Nil disables tool instrumentation.
+	toolMW ToolMiddlewareFunc
+}
+
+// namingRegistrar wraps a base.Registrar to record the name of every tool it
+// registers before forwarding to the inner registrar. The collected set bounds
+// the served server's tool-call metric label, so an unregistered name from an
+// untrusted tools/call cannot grow the metric's cardinality.
+type namingRegistrar struct {
+	inner base.Registrar
+	names map[string]struct{}
+}
+
+// Add records the tool's name and delegates to the inner registrar.
+func (r *namingRegistrar) Add(e base.ToolEntry) {
+	r.names[e.Tool.Name] = struct{}{}
+	r.inner.Add(e)
+}
+
+// registerModules registers core tools and the enabled modules on p.server.
 //
 // Always (both modes): falcon_list_enabled_modules.
 // Normal mode: also falcon_check_connectivity, falcon_list_modules, and each
-// module's tools directly on s; the returned catalog is nil.
+// module's tools directly on the served server; the returned catalog is nil.
 // Dynamic mode: real tools go on the catalog's internal server and only the
-// meta-tools (search_tools, execute_tool) plus list_enabled_modules are on s;
-// the returned catalog owns the in-process session and must be closed by the
-// caller. Module resources (FQL guides) and prompts are exposed on s in both
-// modes.
-func registerModules(s *mcp.Server, enabled, all []base.Module, check ConnectivityChecker, dynamicMode bool) (*Catalog, error) {
+// meta-tools (search_tools, execute_tool) plus list_enabled_modules are on the
+// served server; the returned catalog owns the in-process session and must be
+// closed by the caller. Module resources (FQL guides) and prompts are exposed
+// on the served server in both modes.
+//
+// When p.toolMW is non-nil it is attached to the served server bounded by that
+// server's registered tool names, and in dynamic mode also to the catalog's
+// internal server with a nil (record-all) set — falcon_execute_tool only ever
+// dispatches names it has already resolved via catalog lookup, so that server's
+// label is already bounded to real tools.
+func registerModules(p moduleRegistration) (*Catalog, error) {
 	core := &coreTools{
-		enabled:   enabled,
-		available: moduleNames(all),
-		check:     check,
+		enabled:   p.enabled,
+		available: moduleNames(p.all),
+		check:     p.check,
 	}
-	reg := base.ServerRegistrar(s)
+	// Wrap the served-server registrar so every tool registered through it is
+	// recorded; the collected names later bound the tool-call metric label.
+	names := map[string]struct{}{}
+	reg := base.Registrar(&namingRegistrar{inner: base.ServerRegistrar(p.server), names: names})
 	// falcon_list_enabled_modules is always registered — dynamic mode's
 	// no-results hint references it by name, and it's useful in both modes.
 	core.registerAlwaysOn(reg)
 
-	if !dynamicMode {
+	if !p.dynamic {
 		core.registerNormalOnly(reg)
-		for _, m := range enabled {
+		for _, m := range p.enabled {
 			m.RegisterTools(reg)
-			m.RegisterResources(s)
-			m.RegisterPrompts(s)
+			m.RegisterResources(p.server)
+			m.RegisterPrompts(p.server)
 		}
+		attachToolMiddleware(p.server, p.toolMW, names)
 		return nil, nil
 	}
 
-	cat := NewCatalog()
-	for _, m := range enabled {
+	// Dynamic mode: real tools live on the catalog's internal server, which only
+	// receives names falcon_execute_tool already resolved via lookup, so its
+	// label set is already bounded — pass a nil (record-all) known set.
+	var internalMW mcp.Middleware
+	if p.toolMW != nil {
+		internalMW = p.toolMW(nil)
+	}
+	cat := NewCatalog(internalMW)
+	for _, m := range p.enabled {
 		m.RegisterTools(cat.ForModule(m.Name()))
-		m.RegisterResources(s)
-		m.RegisterPrompts(s)
+		m.RegisterResources(p.server)
+		m.RegisterPrompts(p.server)
 	}
 	// Connect the in-process session before serving so falcon_execute_tool can
 	// dispatch. context.Background is right here: the session lives for the
@@ -128,8 +210,19 @@ func registerModules(s *mcp.Server, enabled, all []base.Module, check Connectivi
 		return nil, err
 	}
 	// Meta-tools only: list_enabled_modules is already on the served server.
-	NewMetaModule(cat, enabled).RegisterTools(reg)
+	NewMetaModule(cat, p.enabled).RegisterTools(reg)
+	attachToolMiddleware(p.server, p.toolMW, names)
 	return cat, nil
+}
+
+// attachToolMiddleware attaches the tool-call metrics middleware to s, bounded
+// to known. It is a no-op when mw is nil. Registration must be complete before
+// calling so known holds every served tool name.
+func attachToolMiddleware(s *mcp.Server, mw ToolMiddlewareFunc, known map[string]struct{}) {
+	if mw == nil {
+		return
+	}
+	s.AddReceivingMiddleware(mw(known))
 }
 
 // moduleNames returns the Name() of each module, in order. It is the single
