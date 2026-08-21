@@ -310,8 +310,7 @@ func (m *Module) searchPolicies(ctx context.Context, _ *mcp.CallToolRequest, in 
 
 	args := queryArgs{filter: in.Filter, sort: in.Sort, limit: clampLimit(in.Limit, 500)}
 	if in.Offset != 0 {
-		off := int64(in.Offset)
-		args.offset = &off
+		args.offset = new(int64(in.Offset))
 	}
 
 	records, meta, err := b.search(ctx, args)
@@ -350,8 +349,7 @@ func (m *Module) searchPolicyMembers(ctx context.Context, _ *mcp.CallToolRequest
 
 	args := queryArgs{filter: in.Filter, sort: in.Sort, limit: clampLimit(in.Limit, 5000)}
 	if in.Offset != 0 {
-		off := int64(in.Offset)
-		args.offset = &off
+		args.offset = new(int64(in.Offset))
 	}
 
 	members, meta, err := b.members(ctx, in.ID, args)
