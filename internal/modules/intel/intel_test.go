@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"reflect"
 	"testing"
 
@@ -13,10 +12,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeIntel is a configurable test double for the intelAPI interface.
 type fakeIntel struct {
@@ -63,16 +62,12 @@ func (f *fakeIntel) GetMitreReport(p *intel.GetMitreReportParams, w io.Writer, _
 	return &intel.GetMitreReportOK{}, nil
 }
 
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-func i64(v int64) *int64   { return &v }
-
 func TestSearchActorsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeIntel{actorsResp: &intel.QueryIntelActorEntitiesOK{Payload: &models.ActorActorPaginatedResponse{
-		Resources: []*models.ActorActorDocument{{ID: i64(2583), Name: "FANCY BEAR"}},
-		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(31)}},
+		Resources: []*models.ActorActorDocument{{ID: new(int64(2583)), Name: "FANCY BEAR"}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: new(int64(31))}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -92,7 +87,7 @@ func TestSearchActorsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &intel.QueryIntelActorEntitiesBadRequest{Payload: &models.MsaErrorsOnly{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	f := &fakeIntel{actorsErr: badReq}
 	m := &Module{API: f, Logger: testLogger}
@@ -125,8 +120,8 @@ func TestSearchIndicatorsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeIntel{indicatorsResp: &intel.QueryIntelIndicatorEntitiesOK{Payload: &models.DomainPublicIndicatorsV3Response{
-		Resources: []*models.DomainPublicIndicatorV3{{ID: str("domain_evil.example"), Indicator: str("evil.example")}},
-		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(88)}},
+		Resources: []*models.DomainPublicIndicatorV3{{ID: new("domain_evil.example"), Indicator: new("evil.example")}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: new(int64(88))}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -146,7 +141,7 @@ func TestSearchIndicatorsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &intel.QueryIntelIndicatorEntitiesBadRequest{Payload: &models.MsaErrorsOnly{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("bad indicator filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("bad indicator filter")}},
 	}}
 	f := &fakeIntel{indicatorsErr: badReq}
 	m := &Module{API: f, Logger: testLogger}
@@ -164,8 +159,8 @@ func TestSearchReportsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeIntel{reportsResp: &intel.QueryIntelReportEntitiesOK{Payload: &models.DomainNewsResponse{
-		Resources: []*models.DomainNewsDocument{{ID: i64(42), Name: str("CSA-1")}},
-		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: i64(7)}},
+		Resources: []*models.DomainNewsDocument{{ID: new(int64(42)), Name: new("CSA-1")}},
+		Meta:      &models.MsaMetaInfo{Pagination: &models.MsaPaging{Total: new(int64(7))}},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
 
@@ -228,7 +223,7 @@ func TestGetMitreReportNameResolution(t *testing.T) {
 
 	f := &fakeIntel{
 		actorsResp: &intel.QueryIntelActorEntitiesOK{Payload: &models.ActorActorPaginatedResponse{
-			Resources: []*models.ActorActorDocument{{ID: i64(2583), Name: "WARP PANDA"}},
+			Resources: []*models.ActorActorDocument{{ID: new(int64(2583)), Name: "WARP PANDA"}},
 		}},
 		mitreBody: []byte(`{"ok":true}`),
 	}
@@ -338,52 +333,12 @@ func TestGetMitreReportValidation(t *testing.T) {
 func TestRegisterResourcesServesFQLGuides(t *testing.T) {
 	t.Parallel()
 
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	(&Module{API: &fakeIntel{}, Logger: testLogger}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 3 {
-		t.Fatalf("expected 3 resources, got %d", len(list.Resources))
-	}
-
-	want := map[string]string{
-		actorsFQLGuideURI:     "falcon_search_actors_fql_guide",
-		indicatorsFQLGuideURI: "falcon_search_indicators_fql_guide",
-		reportsFQLGuideURI:    "falcon_search_reports_fql_guide",
-	}
-	byURI := map[string]string{}
-	for _, r := range list.Resources {
-		byURI[r.URI] = r.Name
-	}
-	for uri, name := range want {
-		if byURI[uri] != name {
-			t.Fatalf("resource %s = %q, want %q", uri, byURI[uri], name)
-		}
-		read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
-		if err != nil {
-			t.Fatalf("ReadResource %s: %v", uri, err)
-		}
-		if len(read.Contents) != 1 || read.Contents[0].Text == "" {
-			t.Fatalf("read content empty for %s", uri)
-		}
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t,
+		(&Module{API: &fakeIntel{}, Logger: testLogger}).RegisterResources,
+		testutil.FQLGuideExpectation{Name: "falcon_search_actors_fql_guide", URI: actorsFQLGuideURI, Body: actorsFQLGuide},
+		testutil.FQLGuideExpectation{Name: "falcon_search_indicators_fql_guide", URI: indicatorsFQLGuideURI, Body: indicatorsFQLGuide},
+		testutil.FQLGuideExpectation{Name: "falcon_search_reports_fql_guide", URI: reportsFQLGuideURI, Body: reportsFQLGuide},
+	)
 }
 
 // TestRegisterToolsAnnotations verifies all four tools advertise read-only
@@ -392,7 +347,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeIntel{}, Logger: testLogger}
 	m.RegisterTools(reg)
 
@@ -414,24 +369,6 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing %s", n)
 		}
-		assertReadOnlyAnnotations(t, n, tool.Annotations)
-	}
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if !a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = false, want true", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
+		testutil.AssertReadOnlyAnnotations(t, n, tool.Annotations)
 	}
 }

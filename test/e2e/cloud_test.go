@@ -20,99 +20,77 @@ var _ = Describe("cloud module", Label("integration", "cloud"), func() {
 	})
 
 	It("searches kubernetes containers and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_kubernetes_containers", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_kubernetes_containers", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no kubernetes containers")
 		expectSearchReturnsDetails(res, "container_id")
 	})
 
 	It("counts kubernetes containers", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_count_kubernetes_containers", map[string]any{})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_count_kubernetes_containers", map[string]any{})
 		obj := structured(res)
 		Expect(obj).To(HaveKey("count"), "count result should carry a count field")
 	})
 
 	It("counts kubernetes containers with a filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_count_kubernetes_containers", map[string]any{
+		res := callOK(ctx, "falcon_count_kubernetes_containers", map[string]any{
 			"filter": "running_status:true",
 		})
-		expectNoToolError(res)
 		Expect(structured(res)).To(HaveKey("count"))
 	})
 
 	It("searches kubernetes containers sorted by last_seen", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_kubernetes_containers", map[string]any{
+		res := callOK(ctx, "falcon_search_kubernetes_containers", map[string]any{
 			"sort":  "last_seen.desc",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no kubernetes containers to sort")
 		expectSearchReturnsDetails(res, "container_id")
 	})
 
 	It("searches image vulnerabilities and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_images_vulnerabilities", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_images_vulnerabilities", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no image vulnerabilities")
 		expectSearchReturnsDetails(res, "cve_id")
 	})
 
 	It("searches CSPM assets and returns slimmed records with an id", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_cspm_assets", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_cspm_assets", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no CSPM assets")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches CSPM assets sorted by updated_at", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_cspm_assets", map[string]any{
+		res := callOK(ctx, "falcon_search_cspm_assets", map[string]any{
 			"sort":  "updated_at.desc",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no CSPM assets to sort")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches IOM findings and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_iom_findings", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_iom_findings", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no IOM findings")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches IOM findings sorted by severity", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_iom_findings", map[string]any{
+		res := callOK(ctx, "falcon_search_iom_findings", map[string]any{
 			"sort":  "severity|desc",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no IOM findings to sort")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches cloud risks and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_cloud_risks", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_cloud_risks", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no cloud risks")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches cloud groups and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_cloud_groups", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_cloud_groups", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no cloud groups")
 		expectSearchReturnsDetails(res, "id")
 	})
@@ -133,20 +111,16 @@ var _ = Describe("cloud module", Label("integration", "cloud"), func() {
 	})
 
 	It("searches CSPM suppression rules", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_cspm_suppression_rules", map[string]any{"limit": 3})
-		expectNoToolError(res)
 		// Returns an empty list when no rules exist; nothing to assert on shape.
+		callOK(ctx, "falcon_search_cspm_suppression_rules", map[string]any{"limit": 3})
 	})
 
 	It("returns an FQL error result for an invalid cloud risks filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_cloud_risks", map[string]any{
+		res := callOK(ctx, "falcon_search_cloud_risks", map[string]any{
 			"filter": "definitely_not_a_field:'x'",
 			"limit":  3,
 		})
 		// Invalid FQL is a data result, not a protocol/tool error.
-		expectNoToolError(res)
 		obj := structured(res)
 		Expect(obj).To(HaveKey("errors"), "expected FQL error details in the result")
 	})

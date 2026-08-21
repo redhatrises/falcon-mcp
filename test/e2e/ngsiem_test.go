@@ -29,19 +29,14 @@ var _ = Describe("ngsiem module", Label("integration", "ngsiem"), func() {
 		DeferCleanup(cancel)
 	})
 
-	It("advertises its tool with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		Expect(toolNames(ctx, cs)).To(ContainElement("falcon_search_ngsiem"))
-	})
+	itAdvertisesTools("falcon_search_ngsiem")
 
 	It("runs a CQL query and returns event records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_ngsiem", map[string]any{
+		res := callOK(ctx, "falcon_search_ngsiem", map[string]any{
 			"query_string": "#event_simpleName=ProcessRollup2 | head(5)",
 			"start":        startISO(24 * time.Hour),
 			"repository":   "search-all",
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant returned no ProcessRollup2 events in the last 24h")
 		// Events are free-form JSON objects; assert each returned resource is an
 		// object (not a bare id), which confirms the poll loop surfaced full event
@@ -53,13 +48,11 @@ var _ = Describe("ngsiem module", Label("integration", "ngsiem"), func() {
 	})
 
 	It("accepts an explicit end time", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_ngsiem", map[string]any{
+		res := callOK(ctx, "falcon_search_ngsiem", map[string]any{
 			"query_string": "#event_simpleName=ProcessRollup2 | head(1)",
 			"start":        startISO(24 * time.Hour),
 			"end":          startISO(0),
 		})
-		expectNoToolError(res)
 		// An empty window is a valid outcome; the point is that supplying end does
 		// not error. resources() still asserts the envelope shape.
 		_ = resources(res)

@@ -3,7 +3,6 @@ package custom_ioa
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"testing"
 
@@ -13,14 +12,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeCustomIOA is a configurable test double for the customIOAAPI interface.
 type fakeCustomIOA struct {
@@ -118,8 +117,6 @@ func (f *fakeCustomIOA) DeleteRules(p *custom_ioa.DeleteRulesParams, _ ...custom
 	return &custom_ioa.DeleteRulesOK{Payload: &models.MsaReplyMetaOnly{Meta: f.deleteRulesMeta}}, f.deleteRulesErr
 }
 
-func str(s string) *string { return &s }
-
 // status400Err is a minimal runtime.ClientResponseStatus reporting HTTP 400, so
 // tests can exercise the status-based FQL classification without a live call.
 type status400Err struct{}
@@ -140,7 +137,7 @@ func TestSearchRuleGroupsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeCustomIOA{queryGroupsResp: &custom_ioa.QueryRuleGroupsFullOK{Payload: &models.APIRuleGroupsResponse{
-		Resources: []*models.APIRuleGroupV1{{ID: str("g1"), Name: str("Suspicious")}},
+		Resources: []*models.APIRuleGroupV1{{ID: new("g1"), Name: new("Suspicious")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -188,7 +185,7 @@ func TestQueryOffsetConversion(t *testing.T) {
 		want   *string
 	}{
 		{"zero leaves the param unset", 0, nil},
-		{"positive offset is sent as digits", 25, str("25")},
+		{"positive offset is sent as digits", 25, new("25")},
 	}
 
 	for _, tt := range tests {
@@ -321,7 +318,7 @@ func TestGetRuleTypesTwoStep(t *testing.T) {
 		}},
 		getRuleTypesResp: &custom_ioa.GetRuleTypesOK{Payload: &models.APIRuleTypesResponse{
 			// Returned out of query order to exercise reordering.
-			Resources: []*models.APIRuleTypeV1{{ID: str("2")}, {ID: str("1")}},
+			Resources: []*models.APIRuleTypeV1{{ID: new("2")}, {ID: new("1")}},
 		}},
 	}
 	m := &Module{API: f, Logger: testLogger}
@@ -399,7 +396,7 @@ func TestCreateRuleGroupBody(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeCustomIOA{createGroupResp: &custom_ioa.CreateRuleGroupMixin0Created{Payload: &models.APIRuleGroupsResponse{
-		Resources: []*models.APIRuleGroupV1{{ID: str("new")}},
+		Resources: []*models.APIRuleGroupV1{{ID: new("new")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -454,7 +451,7 @@ func TestUpdateRuleGroup(t *testing.T) {
 	t.Run("sends set fields and version", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCustomIOA{updateGroupResp: &custom_ioa.UpdateRuleGroupMixin0OK{Payload: &models.APIRuleGroupsResponse{
-			Resources: []*models.APIRuleGroupV1{{ID: str("g1")}},
+			Resources: []*models.APIRuleGroupV1{{ID: new("g1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := &Module{API: f, Logger: testLogger}
@@ -566,7 +563,7 @@ func TestCreateRuleBody(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeCustomIOA{createRuleResp: &custom_ioa.CreateRuleCreated{Payload: &models.APIRulesResponse{
-		Resources: []*models.APIRuleV1{{InstanceID: str("r1")}},
+		Resources: []*models.APIRuleV1{{InstanceID: new("r1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -632,7 +629,7 @@ func TestUpdateRuleBody(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeCustomIOA{updateRulesResp: &custom_ioa.UpdateRulesV2OK{Payload: &models.APIRulesResponse{
-		Resources: []*models.APIRuleV1{{InstanceID: str("r1")}},
+		Resources: []*models.APIRuleV1{{InstanceID: new("r1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -753,42 +750,11 @@ func TestMutatingScopeError(t *testing.T) {
 // Python-matching name, and that reading it returns the embedded guide text.
 func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 	t.Parallel()
-
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	(&Module{API: &fakeCustomIOA{}, Logger: testLogger}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(list.Resources))
-	}
-	if got := list.Resources[0]; got.Name != "falcon_search_ioa_rule_groups_fql_guide" || got.URI != fqlGuideURI {
-		t.Fatalf("resource = {name:%q uri:%q}, want falcon_search_ioa_rule_groups_fql_guide / %s", got.Name, got.URI, fqlGuideURI)
-	}
-
-	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: fqlGuideURI})
-	if err != nil {
-		t.Fatalf("ReadResource: %v", err)
-	}
-	if len(read.Contents) != 1 || read.Contents[0].Text != fqlGuide {
-		t.Fatalf("read content does not match embedded guide")
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t, (&Module{API: &fakeCustomIOA{}, Logger: testLogger}).RegisterResources, testutil.FQLGuideExpectation{
+		Name: "falcon_search_ioa_rule_groups_fql_guide",
+		URI:  fqlGuideURI,
+		Body: fqlGuide,
+	})
 }
 
 // --- annotations ---
@@ -800,7 +766,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 	m.RegisterTools(reg)
 
@@ -819,7 +785,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing tool %s", name)
 		}
-		assertReadOnlyAnnotations(t, name, tool.Annotations)
+		testutil.AssertReadOnlyAnnotations(t, name, tool.Annotations)
 	}
 
 	// Create tools: non-read-only, non-destructive, non-idempotent.
@@ -828,7 +794,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing tool %s", name)
 		}
-		assertMutatingAnnotations(t, name, tool.Annotations, false)
+		testutil.AssertMutatingAnnotations(t, name, tool.Annotations, false)
 	}
 
 	// Update tools: non-read-only, non-destructive, idempotent.
@@ -837,7 +803,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing tool %s", name)
 		}
-		assertMutatingAnnotations(t, name, tool.Annotations, true)
+		testutil.AssertMutatingAnnotations(t, name, tool.Annotations, true)
 	}
 
 	// Delete tools: destructive, idempotent.
@@ -846,62 +812,6 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing tool %s", name)
 		}
-		assertDestructiveAnnotations(t, name, tool.Annotations, true)
-	}
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if !a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = false, want true", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
-	}
-}
-
-func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations, idempotent bool) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint != idempotent {
-		t.Errorf("%s: IdempotentHint = %v, want %v", name, a.IdempotentHint, idempotent)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false (MCP defaults omitted to true)", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
-}
-
-func assertDestructiveAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations, idempotent bool) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint != idempotent {
-		t.Errorf("%s: IdempotentHint = %v, want %v", name, a.IdempotentHint, idempotent)
-	}
-	if a.DestructiveHint == nil || !*a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil true", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
+		testutil.AssertDestructiveAnnotations(t, name, tool.Annotations, true)
 	}
 }
