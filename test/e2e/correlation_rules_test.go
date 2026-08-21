@@ -18,21 +18,15 @@ var _ = Describe("correlationrules module", Label("integration", "correlationrul
 		ctx = newSpecContext()
 	})
 
-	It("advertises the correlation-rules tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_correlation_rules",
-			"falcon_create_correlation_rule",
-			"falcon_update_correlation_rule",
-			"falcon_delete_correlation_rules",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_correlation_rules",
+		"falcon_create_correlation_rule",
+		"falcon_update_correlation_rule",
+		"falcon_delete_correlation_rules",
+	)
 
 	It("searches correlation rules and returns full rule records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_correlation_rules", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_correlation_rules", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no correlation rules to validate details against")
 		// CombinedRulesGetV2 returns full rule objects in one call; rule_id is the
 		// field the tool documents for chaining into update/delete, so its presence
@@ -41,23 +35,19 @@ var _ = Describe("correlationrules module", Label("integration", "correlationrul
 	})
 
 	It("searches published correlation rules with an FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_correlation_rules", map[string]any{
+		res := callOK(ctx, "falcon_search_correlation_rules", map[string]any{
 			"filter": "state:'published'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no published correlation rules in tenant")
 		expectSearchReturnsDetails(res, "rule_id", "name", "status")
 	})
 
 	It("searches correlation rules sorted by last_updated_on", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_correlation_rules", map[string]any{
+		res := callOK(ctx, "falcon_search_correlation_rules", map[string]any{
 			"sort":  "last_updated_on.desc",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no correlation rules to sort")
 		expectSearchReturnsDetails(res, "rule_id")
 	})

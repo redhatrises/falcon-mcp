@@ -13,10 +13,10 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeSpotlight is a configurable test double for the spotlightAPI interface.
 type fakeSpotlight struct {
@@ -47,10 +47,6 @@ func (f *fakeSpotlight) CombinedQueryVulnerabilities(p *spotlight_vulnerabilitie
 	return f.resp, f.err
 }
 
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-func i64(v int64) *int64   { return &v }
-
 func okResp(vulns ...*models.DomainBaseAPIVulnerabilityV2) *spotlight_vulnerabilities.CombinedQueryVulnerabilitiesOK {
 	return &spotlight_vulnerabilities.CombinedQueryVulnerabilitiesOK{
 		Payload: &models.DomainSPAPICombinedVulnerabilitiesResponse{Resources: vulns},
@@ -60,8 +56,8 @@ func okResp(vulns ...*models.DomainBaseAPIVulnerabilityV2) *spotlight_vulnerabil
 func TestSearchVulnerabilitiesSuccess(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeSpotlight{resp: okResp(&models.DomainBaseAPIVulnerabilityV2{ID: str("vuln-1")})}
-	f.resp.Payload.Meta = &models.DomainSPAPIQueryMeta{Pagination: &models.DomainSPAPIQueryPaging{Total: i64(120), After: str("cursor-next")}}
+	f := &fakeSpotlight{resp: okResp(&models.DomainBaseAPIVulnerabilityV2{ID: new("vuln-1")})}
+	f.resp.Payload.Meta = &models.DomainSPAPIQueryMeta{Pagination: &models.DomainSPAPIQueryPaging{Total: new(int64(120)), After: new("cursor-next")}}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchVulnerabilities(context.Background(), nil, SearchInput{Filter: "status:'open'"})
@@ -132,7 +128,7 @@ func TestSearchVulnerabilitiesFQLError(t *testing.T) {
 
 	badReq := &spotlight_vulnerabilities.CombinedQueryVulnerabilitiesBadRequest{
 		Payload: &models.DomainSPAPICombinedVulnerabilitiesResponse{
-			Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+			Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 		},
 	}
 	f := &fakeSpotlight{err: badReq}

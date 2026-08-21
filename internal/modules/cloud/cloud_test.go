@@ -3,7 +3,6 @@ package cloud
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/cloud_policies"
@@ -16,18 +15,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-func i64(v int64) *int64   { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // --- Fakes ---
 
@@ -149,7 +144,7 @@ func (f *fakePolicies) DeleteSuppressionRules(p *cloud_policies.DeleteSuppressio
 func TestSearchKubernetesContainersReturnsRecords(t *testing.T) {
 	t.Parallel()
 	f := &fakeKubernetes{combinedResp: &kubernetes_protection.ContainerCombinedOK{Payload: &models.ModelsContainerEntityResponse{
-		Resources: []*models.ModelsContainer{{ContainerID: str("c1")}, {ContainerID: str("c2")}},
+		Resources: []*models.ModelsContainer{{ContainerID: new("c1")}, {ContainerID: new("c2")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{Kubernetes: f, Logger: testLogger}
@@ -183,7 +178,7 @@ func TestSearchKubernetesContainersEmpty(t *testing.T) {
 func TestCountKubernetesContainers(t *testing.T) {
 	t.Parallel()
 	f := &fakeKubernetes{countResp: &kubernetes_protection.ContainerCountOK{Payload: &models.CommonCountResponse{
-		Resources: []*models.CommonCountAsResource{{Count: i64(42)}},
+		Resources: []*models.CommonCountAsResource{{Count: new(int64(42))}},
 	}}}
 	m := &Module{Kubernetes: f, Logger: testLogger}
 
@@ -215,7 +210,7 @@ func TestCountKubernetesContainersEmptyResources(t *testing.T) {
 func TestSearchImagesVulnerabilities(t *testing.T) {
 	t.Parallel()
 	f := &fakeVulns{resp: &container_vulnerabilities.ReadCombinedVulnerabilitiesOK{Payload: &models.VulnerabilitiesAPICombinedVulnerability{
-		Resources: []*models.ModelsAPIVulnerabilityCombined{{CveID: str("CVE-2025-1")}},
+		Resources: []*models.ModelsAPIVulnerabilityCombined{{CveID: new("CVE-2025-1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{Vulns: f, Logger: testLogger}
@@ -291,8 +286,8 @@ func TestSearchCSPMAssetsSlimming(t *testing.T) {
 			PubliclyExposed: true,
 			Detections: &models.ResourcesDetections{
 				HighestSeverity: "critical",
-				IomCounts:       i64(5),
-				IoaCounts:       i64(2),
+				IomCounts:       new(int64(5)),
+				IoaCounts:       new(int64(2)),
 				Severities:      []string{"critical", "high"},
 				// Compliant is benchmark bloat outside detectionsKeep and must be dropped.
 				Compliant: &models.ResourcesCompliance{},
@@ -384,7 +379,7 @@ func TestSearchCSPMAssetsEmptyNoFetch(t *testing.T) {
 func TestSearchCSPMAssetsFQLError(t *testing.T) {
 	t.Parallel()
 	badReq := &cloud_security_assets.CloudSecurityAssetsQueriesBadRequest{Payload: &models.RestCursorResponseFields{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("found unknown filter values: bogus")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("found unknown filter values: bogus")}},
 	}}
 	f := &fakeAssets{queryErr: badReq}
 	m := &Module{Assets: f, Concurrency: 4, Logger: testLogger}
@@ -460,7 +455,7 @@ func TestSearchIOMFindingsSurfacesSiblingCursor(t *testing.T) {
 func TestSearchIOMFindingsFQLError(t *testing.T) {
 	t.Parallel()
 	badReq := &cloud_security_detections.CspmEvaluationsIomQueriesBadRequest{Payload: &models.RestCursorResponseFields{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("unknown field")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("unknown field")}},
 	}}
 	f := &fakeDetections{queryErr: badReq}
 	m := &Module{Detections: f, Concurrency: 4, Logger: testLogger}
@@ -482,7 +477,7 @@ func TestSearchIOMFindingsFQLError(t *testing.T) {
 func TestSearchCloudRisks(t *testing.T) {
 	t.Parallel()
 	f := &fakeCloudSec{risksResp: &cloud_security.CombinedCloudRisksOK{Payload: &models.RisksGetCloudRisksResponse{
-		Resources: []*models.RisksUnionCloudRisk{{ID: str("r1")}},
+		Resources: []*models.RisksUnionCloudRisk{{ID: new("r1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{CloudSec: f, Logger: testLogger}
@@ -499,7 +494,7 @@ func TestSearchCloudRisks(t *testing.T) {
 func TestSearchCloudRisksFQLError(t *testing.T) {
 	t.Parallel()
 	badReq := &cloud_security.CombinedCloudRisksBadRequest{Payload: &models.APICursorResponseFields{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("unknown field")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("unknown field")}},
 	}}
 	f := &fakeCloudSec{risksErr: badReq}
 	m := &Module{CloudSec: f, Logger: testLogger}
@@ -594,7 +589,7 @@ func TestSearchCSPMSuppressionRules(t *testing.T) {
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}},
 		getResp: &cloud_policies.GetSuppressionRulesOK{Payload: &models.SuppressionrulesGetSuppressionRulesResponse{
-			Resources: []*models.ApimodelsSuppressionRule{{ID: str("s1")}, {ID: str("s2")}},
+			Resources: []*models.ApimodelsSuppressionRule{{ID: new("s1")}, {ID: new("s2")}},
 		}},
 	}
 	m := &Module{Policies: f, Logger: testLogger}
@@ -632,7 +627,7 @@ func TestCreateCSPMSuppressionRuleBuildsBody(t *testing.T) {
 	t.Parallel()
 	f := &fakePolicies{
 		createResp: &cloud_policies.CreateSuppressionRuleOK{Payload: &models.SuppressionrulesCreateSuppressionRuleResponse{Resources: []string{"new1"}}},
-		getResp:    &cloud_policies.GetSuppressionRulesOK{Payload: &models.SuppressionrulesGetSuppressionRulesResponse{Resources: []*models.ApimodelsSuppressionRule{{ID: str("new1")}}}},
+		getResp:    &cloud_policies.GetSuppressionRulesOK{Payload: &models.SuppressionrulesGetSuppressionRulesResponse{Resources: []*models.ApimodelsSuppressionRule{{ID: new("new1")}}}},
 	}
 	m := &Module{Policies: f, Logger: testLogger}
 
@@ -680,7 +675,7 @@ func TestCreateCSPMSuppressionRuleAllAssetsScope(t *testing.T) {
 	t.Parallel()
 	f := &fakePolicies{
 		createResp: &cloud_policies.CreateSuppressionRuleOK{Payload: &models.SuppressionrulesCreateSuppressionRuleResponse{Resources: []string{"new1"}}},
-		getResp:    &cloud_policies.GetSuppressionRulesOK{Payload: &models.SuppressionrulesGetSuppressionRulesResponse{Resources: []*models.ApimodelsSuppressionRule{{ID: str("new1")}}}},
+		getResp:    &cloud_policies.GetSuppressionRulesOK{Payload: &models.SuppressionrulesGetSuppressionRulesResponse{Resources: []*models.ApimodelsSuppressionRule{{ID: new("new1")}}}},
 	}
 	m := &Module{Policies: f, Logger: testLogger}
 
@@ -738,7 +733,7 @@ func TestCreateCSPMSuppressionRuleNoRuleSelection(t *testing.T) {
 func TestDeleteCSPMSuppressionRules(t *testing.T) {
 	t.Parallel()
 	f := &fakePolicies{deleteResp: &cloud_policies.DeleteSuppressionRulesOK{Payload: &models.SuppressionrulesDeleteSuppressionRulesResponse{
-		Resources: []*models.ApimodelsSuppressionRule{{ID: str("s1")}},
+		Resources: []*models.ApimodelsSuppressionRule{{ID: new("s1")}},
 	}}}
 	m := &Module{Policies: f, Logger: testLogger}
 
@@ -773,7 +768,7 @@ func TestDeleteCSPMSuppressionRulesEmptyIDs(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{Logger: testLogger}
 	m.RegisterTools(reg)
 
@@ -816,11 +811,6 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	}
 	assertDestructive(t, "falcon_delete_cspm_suppression_rules", del.Annotations, true)
 }
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
 
 // assertDestructive verifies a tool carries destructive-mutator annotations,
 // matching base.DestructiveAnnotations(idempotent).

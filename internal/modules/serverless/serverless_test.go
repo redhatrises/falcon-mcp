@@ -11,10 +11,11 @@ import (
 
 	"github.com/crowdstrike/gofalcon/falcon/client/serverless_vulnerabilities"
 	"github.com/crowdstrike/gofalcon/falcon/models"
+
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeServerless is a configurable test double for the serverlessAPI interface.
 // GetCombinedVulnerabilitiesSARIF returns the raw response body as an any
@@ -50,9 +51,6 @@ func (f *fakeServerless) GetCombinedVulnerabilitiesSARIF(p *serverless_vulnerabi
 	return f.body, nil
 }
 
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-
 // sarifBody renders a combined-SARIF response body with the given number of
 // runs, matching the live API shape (resources is a single SARIF object whose
 // runs field is the array of interest).
@@ -63,7 +61,7 @@ func sarifBody(runs int) []byte {
 	}
 	b, err := json.Marshal(sarifResponse{
 		Resources: &models.ModelsVulnerabilitySARIF{
-			Version: str("2.1.0"),
+			Version: new("2.1.0"),
 			Runs:    runList,
 		},
 	})
@@ -158,7 +156,7 @@ func TestSearchServerlessVulnerabilitiesFQLError(t *testing.T) {
 
 	badReq := &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFBadRequest{
 		Payload: &models.MsaspecResponseFields{
-			Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+			Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 		},
 	}
 	f := &fakeServerless{err: badReq}

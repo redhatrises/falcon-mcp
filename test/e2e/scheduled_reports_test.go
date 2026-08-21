@@ -22,21 +22,17 @@ var _ = Describe("scheduledreports module", Label("integration", "scheduledrepor
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElement("falcon_search_scheduled_reports"))
-		Expect(names).To(ContainElement("falcon_launch_scheduled_report"))
-		Expect(names).To(ContainElement("falcon_search_report_executions"))
-		Expect(names).To(ContainElement("falcon_download_report_execution"))
-	})
+	itAdvertisesTools(
+		"falcon_search_scheduled_reports",
+		"falcon_launch_scheduled_report",
+		"falcon_search_report_executions",
+		"falcon_download_report_execution",
+	)
 
 	It("searches scheduled reports and returns full entity details", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_scheduled_reports", map[string]any{
+		res := callOK(ctx, "falcon_search_scheduled_reports", map[string]any{
 			"limit": 5,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no scheduled reports to validate against")
 		// id and status are entity fields, so their presence confirms the
 		// two-step query->QueryByID chain returned full records rather than IDs.
@@ -44,22 +40,18 @@ var _ = Describe("scheduledreports module", Label("integration", "scheduledrepor
 	})
 
 	It("searches scheduled reports filtered by status", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_scheduled_reports", map[string]any{
+		res := callOK(ctx, "falcon_search_scheduled_reports", map[string]any{
 			"filter": "status:'ACTIVE'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no ACTIVE scheduled reports")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches report executions and returns full execution details", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_report_executions", map[string]any{
+		res := callOK(ctx, "falcon_search_report_executions", map[string]any{
 			"limit": 5,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no report executions to validate against")
 		expectSearchReturnsDetails(res, "id", "status")
 	})

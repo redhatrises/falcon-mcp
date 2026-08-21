@@ -8,25 +8,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // listToolNames connects an in-memory client to srv and returns the registered
 // tool names.
 func listToolNames(t *testing.T, srv *Server) map[string]bool {
 	t.Helper()
-	clientT, serverT := mcp.NewInMemoryTransports()
 	ctx := context.Background()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 
 	tools, err := cs.ListTools(ctx, nil)
 	if err != nil {
@@ -126,18 +116,8 @@ func TestDynamicMetaToolAnnotations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	clientT, serverT := mcp.NewInMemoryTransports()
 	ctx := context.Background()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 	tools, err := cs.ListTools(ctx, nil)
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)

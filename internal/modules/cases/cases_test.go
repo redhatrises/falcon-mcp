@@ -3,7 +3,6 @@ package cases
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"testing"
 
@@ -13,17 +12,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // fakeCases is a configurable test double for the casesAPI interface.
 type fakeCases struct {
@@ -134,8 +130,8 @@ func TestSearchCasesSuccess(t *testing.T) {
 		getResp: &cases.EntitiesCasesPostV2OK{Payload: &models.OperationsGetCasesByIDsResponseVM{
 			// Deliberately reversed to exercise reorder-by-id.
 			Resources: []*models.SdkCaseVM{
-				{ID: str("c2"), Status: str("in_progress")},
-				{ID: str("c1"), Status: str("new")},
+				{ID: new("c2"), Status: new("in_progress")},
+				{ID: new("c1"), Status: new("new")},
 			},
 		}},
 	}
@@ -181,7 +177,7 @@ func TestSearchCasesFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &cases.QueriesCasesGetV1BadRequest{Payload: &models.CasesapiGetQueriesCasesV1Response{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	f := &fakeCases{queryErr: badReq}
 	m := newModule(f, &fakeTemplates{})
@@ -228,7 +224,7 @@ func TestGetCases(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{getResp: &cases.EntitiesCasesPostV2OK{Payload: &models.OperationsGetCasesByIDsResponseVM{
-			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
 		}}}
 		m := newModule(f, &fakeTemplates{})
 		_, out, err := m.getCases(context.Background(), nil, GetInput{IDs: []string{"c1"}})
@@ -252,7 +248,7 @@ func TestListCaseTemplates(t *testing.T) {
 				Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 			}},
 			getResp: &case_management.EntitiesTemplatesGetV1OK{Payload: &models.APITemplateV1Response{
-				Resources: []*models.APITemplateV1{{ID: str("t2")}, {ID: str("t1")}},
+				Resources: []*models.APITemplateV1{{ID: new("t2")}, {ID: new("t1")}},
 			}},
 		}
 		m := newModule(&fakeCases{}, ft)
@@ -328,7 +324,7 @@ func TestCreateCaseBody(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeCases{createResp: &cases.EntitiesCasesPutV2Created{Payload: &models.OperationsCreateCaseResponseVM{
-		Resources: []*models.SdkCaseVM{{ID: str("new")}},
+		Resources: []*models.SdkCaseVM{{ID: new("new")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := newModule(f, &fakeTemplates{})
@@ -414,7 +410,7 @@ func TestUpdateCase(t *testing.T) {
 	t.Run("sends provided fields and expected_version", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{patchResp: &cases.EntitiesCasesPatchV2OK{Payload: &models.OperationsUpdateCaseResponseVM{
-			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, &fakeTemplates{})
@@ -477,7 +473,7 @@ func TestAddCaseAlertEvidence(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{alertResp: &cases.EntitiesAlertEvidencePostV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
-			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, &fakeTemplates{})
@@ -519,7 +515,7 @@ func TestAddCaseEventEvidence(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{eventResp: &cases.EntitiesEventEvidencePostV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
-			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, &fakeTemplates{})
@@ -562,7 +558,7 @@ func TestManageCaseTags(t *testing.T) {
 	t.Run("add", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{tagPostResp: &cases.EntitiesCaseTagsPostV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
-			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
 			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 		}}}
 		m := newModule(f, &fakeTemplates{})
@@ -584,7 +580,7 @@ func TestManageCaseTags(t *testing.T) {
 	t.Run("remove", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeCases{tagDelResp: &cases.EntitiesCaseTagsDeleteV1OK{Payload: &models.OperationsUpdateCaseResponseVM{
-			Resources: []*models.SdkCaseVM{{ID: str("c1")}},
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
 		}}}
 		m := newModule(f, &fakeTemplates{})
 		_, out, err := m.manageCaseTags(context.Background(), nil, TagsInput{ID: "c1", Action: "remove", Tags: []string{"triage"}})
@@ -605,42 +601,11 @@ func TestManageCaseTags(t *testing.T) {
 // Python-matching name, and that reading it returns the embedded guide text.
 func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 	t.Parallel()
-
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	newModule(&fakeCases{}, &fakeTemplates{}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(list.Resources))
-	}
-	if got := list.Resources[0]; got.Name != "falcon_search_cases_fql_guide" || got.URI != fqlGuideURI {
-		t.Fatalf("resource = {name:%q uri:%q}, want falcon_search_cases_fql_guide / %s", got.Name, got.URI, fqlGuideURI)
-	}
-
-	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: fqlGuideURI})
-	if err != nil {
-		t.Fatalf("ReadResource: %v", err)
-	}
-	if len(read.Contents) != 1 || read.Contents[0].Text != fqlGuide {
-		t.Fatalf("read content does not match embedded guide")
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t, newModule(&fakeCases{}, &fakeTemplates{}).RegisterResources, testutil.FQLGuideExpectation{
+		Name: "falcon_search_cases_fql_guide",
+		URI:  fqlGuideURI,
+		Body: fqlGuide,
+	})
 }
 
 // TestRegisterToolsAnnotations verifies the mutator tools set complete
@@ -650,7 +615,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	newModule(&fakeCases{}, &fakeTemplates{}).RegisterTools(reg)
 
 	byName := map[string]*mcp.Tool{}
@@ -677,7 +642,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		"falcon_add_case_alert_evidence", "falcon_add_case_event_evidence",
 		"falcon_manage_case_tags",
 	} {
-		assertMutatingAnnotations(t, name, byName[name].Annotations)
+		testutil.AssertMutatingAnnotations(t, name, byName[name].Annotations, false)
 	}
 
 	// Read-only tools: readOnly=true.
@@ -686,29 +651,5 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if a == nil || !a.ReadOnlyHint {
 			t.Fatalf("%s: expected ReadOnlyHint true, got %+v", name, a)
 		}
-	}
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint {
-		t.Errorf("%s: IdempotentHint = true, want false", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false (MCP defaults omitted to true)", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
 	}
 }

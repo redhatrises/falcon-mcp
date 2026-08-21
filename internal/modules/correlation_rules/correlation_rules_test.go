@@ -3,7 +3,6 @@ package correlation_rules
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"testing"
 
@@ -13,14 +12,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeAPI is a configurable test double for the correlationRulesAPI interface.
 type fakeAPI struct {
@@ -71,16 +70,13 @@ func (f *fakeAPI) EntitiesRulesDeleteV1(p *correlation_rules.EntitiesRulesDelete
 	return f.deleteResp, f.deleteErr
 }
 
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
-
 // --- search ---
 
 func TestSearchSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{searchResp: &correlation_rules.CombinedRulesGetV2OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
-		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("r1"), Name: str("Rule One")}},
+		Resources: []*models.CorrelationrulesapiRuleV1{{ID: new("r1"), Name: new("Rule One")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -147,7 +143,7 @@ func TestSearchFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &correlation_rules.CombinedRulesGetV2BadRequest{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
-		Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	f := &fakeAPI{searchErr: badReq}
 	m := &Module{API: f, Logger: testLogger}
@@ -214,7 +210,7 @@ func TestCreateBodyDefaults(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{createResp: &correlation_rules.EntitiesRulesPostV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
-		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("new"), RuleID: "rule-new"}},
+		Resources: []*models.CorrelationrulesapiRuleV1{{ID: new("new"), RuleID: "rule-new"}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -352,7 +348,7 @@ func TestUpdateBodyPartial(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeAPI{patchResp: &correlation_rules.EntitiesRulesPatchV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{
-		Resources: []*models.CorrelationrulesapiRuleV1{{ID: str("r1")}},
+		Resources: []*models.CorrelationrulesapiRuleV1{{ID: new("r1")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -545,42 +541,11 @@ func TestDeleteAPIError(t *testing.T) {
 // Python-matching name, and that reading it returns the embedded guide text.
 func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 	t.Parallel()
-
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	(&Module{API: &fakeAPI{}, Logger: testLogger}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(list.Resources))
-	}
-	if got := list.Resources[0]; got.Name != "falcon_search_correlation_rules_fql_guide" || got.URI != fqlGuideURI {
-		t.Fatalf("resource = {name:%q uri:%q}, want falcon_search_correlation_rules_fql_guide / %s", got.Name, got.URI, fqlGuideURI)
-	}
-
-	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: fqlGuideURI})
-	if err != nil {
-		t.Fatalf("ReadResource: %v", err)
-	}
-	if len(read.Contents) != 1 || read.Contents[0].Text != fqlGuide {
-		t.Fatalf("read content does not match embedded guide")
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t, (&Module{API: &fakeAPI{}, Logger: testLogger}).RegisterResources, testutil.FQLGuideExpectation{
+		Name: "falcon_search_correlation_rules_fql_guide",
+		URI:  fqlGuideURI,
+		Body: fqlGuide,
+	})
 }
 
 // TestRegisterToolsAnnotations verifies each tool advertises the correct
@@ -590,7 +555,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeAPI{}, Logger: testLogger}
 	m.RegisterTools(reg)
 
@@ -603,79 +568,23 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	if search == nil {
 		t.Fatal("missing falcon_search_correlation_rules")
 	}
-	assertReadOnlyAnnotations(t, "falcon_search_correlation_rules", search.Annotations)
+	testutil.AssertReadOnlyAnnotations(t, "falcon_search_correlation_rules", search.Annotations)
 
 	create := byName["falcon_create_correlation_rule"]
 	if create == nil {
 		t.Fatal("missing falcon_create_correlation_rule")
 	}
-	assertMutatingAnnotations(t, "falcon_create_correlation_rule", create.Annotations, false)
+	testutil.AssertMutatingAnnotations(t, "falcon_create_correlation_rule", create.Annotations, false)
 
 	update := byName["falcon_update_correlation_rule"]
 	if update == nil {
 		t.Fatal("missing falcon_update_correlation_rule")
 	}
-	assertMutatingAnnotations(t, "falcon_update_correlation_rule", update.Annotations, true)
+	testutil.AssertMutatingAnnotations(t, "falcon_update_correlation_rule", update.Annotations, true)
 
 	del := byName["falcon_delete_correlation_rules"]
 	if del == nil {
 		t.Fatal("missing falcon_delete_correlation_rules")
 	}
-	assertDestructiveAnnotations(t, "falcon_delete_correlation_rules", del.Annotations, true)
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if !a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = false, want true", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
-	}
-}
-
-func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations, idempotent bool) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint != idempotent {
-		t.Errorf("%s: IdempotentHint = %v, want %v", name, a.IdempotentHint, idempotent)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false (MCP defaults omitted to true)", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
-}
-
-func assertDestructiveAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations, idempotent bool) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint != idempotent {
-		t.Errorf("%s: IdempotentHint = %v, want %v", name, a.IdempotentHint, idempotent)
-	}
-	if a.DestructiveHint == nil || !*a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil true", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
+	testutil.AssertDestructiveAnnotations(t, "falcon_delete_correlation_rules", del.Annotations, true)
 }

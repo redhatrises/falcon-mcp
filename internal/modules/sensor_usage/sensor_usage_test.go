@@ -13,10 +13,10 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeSensorUsage is a configurable test double for the sensorUsageAPI interface.
 type fakeSensorUsage struct {
@@ -36,9 +36,6 @@ func (f *fakeSensorUsage) GetSensorUsageWeekly(p *sensor_usage_api.GetSensorUsag
 	}
 	return f.resp, f.err
 }
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
 
 func okResp(records ...*models.EntitiesRollingAverage) *sensor_usage_api.GetSensorUsageWeeklyOK {
 	return &sensor_usage_api.GetSensorUsageWeeklyOK{
@@ -121,7 +118,7 @@ func TestSearchSensorUsageFQLError(t *testing.T) {
 
 	badReq := &sensor_usage_api.GetSensorUsageWeeklyBadRequest{
 		Payload: &models.APIHourlyAverageResponse{
-			Errors: []*models.MsaAPIError{{Code: i32(400), Message: str("invalid filter")}},
+			Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 		},
 	}
 	f := &fakeSensorUsage{err: badReq}

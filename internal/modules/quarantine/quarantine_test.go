@@ -3,7 +3,6 @@ package quarantine
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"reflect"
 	"testing"
 
@@ -12,14 +11,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
 // normalized meta is a populated value rather than nil.
 var metaQueryTime = 0.02
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
+var testLogger = testutil.DiscardLogger()
 
 // fakeQuarantine is a configurable test double for the quarantineAPI interface.
 type fakeQuarantine struct {
@@ -67,8 +66,6 @@ func (f *fakeQuarantine) UpdateQfByQuery(p *quarantine.UpdateQfByQueryParams, _ 
 	return f.byQryResp, f.byQryErr
 }
 
-func str(s string) *string { return &s }
-
 // queryOK builds a QueryQuarantineFiles response returning the given IDs.
 func queryOK(ids ...string) *quarantine.QueryQuarantineFilesOK {
 	return &quarantine.QueryQuarantineFilesOK{Payload: &models.MsaspecQueryResponse{Resources: ids}}
@@ -115,7 +112,7 @@ func TestSearchQuarantinedFilesOffset(t *testing.T) {
 		want   *string
 	}{
 		{"zero leaves the param unset", 0, nil},
-		{"positive offset is sent as digits", 25, str("25")},
+		{"positive offset is sent as digits", 25, new("25")},
 	}
 
 	for _, tt := range tests {
@@ -216,7 +213,7 @@ func TestPreviewQuarantineActionsSuccess(t *testing.T) {
 	t.Parallel()
 
 	f := &fakeQuarantine{countResp: &quarantine.ActionUpdateCountOK{Payload: &models.MsaAggregatesResponse{
-		Resources: []*models.MsaAggregationResult{{Name: str("release")}, {Name: str("delete")}},
+		Resources: []*models.MsaAggregationResult{{Name: new("release")}, {Name: new("delete")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{API: f, Logger: testLogger}
@@ -482,42 +479,11 @@ func TestDeleteQuarantinedFilesAPIError(t *testing.T) {
 // the Python-matching name, and that reading it returns the embedded guide text.
 func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 	t.Parallel()
-
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	(&Module{API: &fakeQuarantine{}, Logger: testLogger}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 1 {
-		t.Fatalf("expected 1 resource, got %d", len(list.Resources))
-	}
-	if got := list.Resources[0]; got.Name != "falcon_search_quarantined_files_fql_guide" || got.URI != fqlGuideURI {
-		t.Fatalf("resource = {name:%q uri:%q}, want falcon_search_quarantined_files_fql_guide / %s", got.Name, got.URI, fqlGuideURI)
-	}
-
-	read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: fqlGuideURI})
-	if err != nil {
-		t.Fatalf("ReadResource: %v", err)
-	}
-	if len(read.Contents) != 1 || read.Contents[0].Text != fqlGuide {
-		t.Fatalf("read content does not match embedded guide")
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t, (&Module{API: &fakeQuarantine{}, Logger: testLogger}).RegisterResources, testutil.FQLGuideExpectation{
+		Name: "falcon_search_quarantined_files_fql_guide",
+		URI:  fqlGuideURI,
+		Body: fqlGuide,
+	})
 }
 
 // TestRegisterToolsAnnotations verifies each tool advertises the correct
@@ -528,7 +494,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeQuarantine{}, Logger: testLogger}
 	m.RegisterTools(reg)
 
@@ -541,79 +507,23 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	if search == nil {
 		t.Fatal("missing falcon_search_quarantined_files")
 	}
-	assertReadOnlyAnnotations(t, "falcon_search_quarantined_files", search.Annotations)
+	testutil.AssertReadOnlyAnnotations(t, "falcon_search_quarantined_files", search.Annotations)
 
 	preview := byName["falcon_preview_quarantine_actions"]
 	if preview == nil {
 		t.Fatal("missing falcon_preview_quarantine_actions")
 	}
-	assertReadOnlyAnnotations(t, "falcon_preview_quarantine_actions", preview.Annotations)
+	testutil.AssertReadOnlyAnnotations(t, "falcon_preview_quarantine_actions", preview.Annotations)
 
 	update := byName["falcon_update_quarantined_files"]
 	if update == nil {
 		t.Fatal("missing falcon_update_quarantined_files")
 	}
-	assertMutatingAnnotations(t, "falcon_update_quarantined_files", update.Annotations)
+	testutil.AssertMutatingAnnotations(t, "falcon_update_quarantined_files", update.Annotations, false)
 
 	del := byName["falcon_delete_quarantined_files"]
 	if del == nil {
 		t.Fatal("missing falcon_delete_quarantined_files")
 	}
-	assertDestructiveAnnotations(t, "falcon_delete_quarantined_files", del.Annotations, true)
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if !a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = false, want true", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
-	}
-}
-
-func assertMutatingAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint {
-		t.Errorf("%s: IdempotentHint = true, want false", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false (MCP defaults omitted to true)", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
-}
-
-func assertDestructiveAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations, idempotent bool) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = true, want false", name)
-	}
-	if a.IdempotentHint != idempotent {
-		t.Errorf("%s: IdempotentHint = %v, want %v", name, a.IdempotentHint, idempotent)
-	}
-	if a.DestructiveHint == nil || !*a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil true", name, a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("%s: OpenWorldHint = %v, want non-nil true", name, a.OpenWorldHint)
-	}
+	testutil.AssertDestructiveAnnotations(t, "falcon_delete_quarantined_files", del.Annotations, true)
 }

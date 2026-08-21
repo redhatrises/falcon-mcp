@@ -25,14 +25,10 @@ var _ = Describe("idp module", Label("integration", "idp"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tool with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		Expect(toolNames(ctx, cs)).To(ContainElement("falcon_idp_investigate_entity"))
-	})
+	itAdvertisesTools("falcon_idp_investigate_entity")
 
 	It("resolves entities by name and returns entity details", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_idp_investigate_entity", map[string]any{
+		res := callOK(ctx, "falcon_idp_investigate_entity", map[string]any{
 			"entity_names":        "*",
 			"investigation_types": []any{"entity_details"},
 			"limit":               3,
@@ -44,13 +40,11 @@ var _ = Describe("idp module", Label("integration", "idp"), func() {
 	})
 
 	It("returns full entity detail objects, not bare IDs", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_idp_investigate_entity", map[string]any{
+		res := callOK(ctx, "falcon_idp_investigate_entity", map[string]any{
 			"entity_names":        "a*",
 			"investigation_types": []any{"entity_details"},
 			"limit":               5,
 		})
-		expectNoToolError(res)
 		obj := structured(res)
 		// Either entities resolved (completed) or none matched (error field). Both
 		// are valid live outcomes; when entities resolved, entity_details must
@@ -71,13 +65,11 @@ var _ = Describe("idp module", Label("integration", "idp"), func() {
 	})
 
 	It("runs a risk assessment for resolved entities", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_idp_investigate_entity", map[string]any{
+		res := callOK(ctx, "falcon_idp_investigate_entity", map[string]any{
 			"entity_names":        "a*",
 			"investigation_types": []any{"risk_assessment"},
 			"limit":               3,
 		})
-		expectNoToolError(res)
 		obj := structured(res)
 		if _, hasErr := obj["error"]; hasErr {
 			Skip("no entities matched 'a*'")
@@ -89,11 +81,9 @@ var _ = Describe("idp module", Label("integration", "idp"), func() {
 	})
 
 	It("rejects a call with no identifier as a data error", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_idp_investigate_entity", map[string]any{
+		res := callOK(ctx, "falcon_idp_investigate_entity", map[string]any{
 			"investigation_types": []any{"entity_details"},
 		})
-		expectNoToolError(res)
 		obj := structured(res)
 		Expect(obj).To(HaveKey("error"))
 		summary, ok := obj["investigation_summary"].(map[string]any)
