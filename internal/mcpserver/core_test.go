@@ -111,10 +111,10 @@ func TestNormalModeCoreToolsCallable(t *testing.T) {
 	// the network with empty credentials and return false — which is fine for
 	// list_modules / list_enabled_modules, but we assert check_connectivity
 	// structure either way.
-	srv, err := New(
-		&config.Config{Modules: []string{"hosts"}},
-		&client.CrowdStrikeAPISpecification{},
-	)
+	srv, err := New(Options{
+		Config: &config.Config{Modules: []string{"hosts"}},
+		API:    &client.CrowdStrikeAPISpecification{},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -207,10 +207,10 @@ checked:
 // available when Dynamic=true (moved off MetaModule onto always-on core).
 func TestDynamicModeStillHasListEnabledModules(t *testing.T) {
 	t.Parallel()
-	srv, err := New(
-		&config.Config{Dynamic: true, Modules: []string{"hosts", "detections"}},
-		&client.CrowdStrikeAPISpecification{},
-	)
+	srv, err := New(Options{
+		Config: &config.Config{Dynamic: true, Modules: []string{"hosts", "detections"}},
+		API:    &client.CrowdStrikeAPISpecification{},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

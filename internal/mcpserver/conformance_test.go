@@ -366,10 +366,10 @@ func TestOffsetInputsAreIntegers(t *testing.T) {
 // are absent. A zero API is safe here — New only reads sub-client pointers to
 // register tools (see TestServerMCPNotNil), it makes no API calls.
 func TestModuleSelectionEndToEnd(t *testing.T) {
-	srv, err := New(
-		&config.Config{Modules: []string{"hosts"}},
-		&client.CrowdStrikeAPISpecification{},
-	)
+	srv, err := New(Options{
+		Config: &config.Config{Modules: []string{"hosts"}},
+		API:    &client.CrowdStrikeAPISpecification{},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -411,7 +411,7 @@ func TestModuleSelectionEndToEnd(t *testing.T) {
 // API calls) and returns a connected in-memory client session.
 func connectNewServer(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 	t.Helper()
-	srv, err := New(cfg, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(Options{Config: cfg, API: &client.CrowdStrikeAPISpecification{}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

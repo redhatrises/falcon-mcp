@@ -33,10 +33,18 @@ import (
 // cfg.Proxy is empty) its ProxyFromEnvironment behavior, so HTTPS_PROXY/
 // HTTP_PROXY/NO_PROXY are still honored; it adds a response-header timeout and,
 // when cfg.Proxy is set, overrides the proxy.
-func New(ctx context.Context, cfg *config.Config) (*client.CrowdStrikeAPISpecification, error) {
+//
+// wrapTransport, when non-nil, decorates that base transport before it is
+// injected — below the OAuth layer, so it observes real outbound API requests
+// with their status codes. It is the metrics RoundTripper wrapper; a nil value
+// leaves the transport uninstrumented.
+func New(ctx context.Context, cfg *config.Config, wrapTransport func(http.RoundTripper) http.RoundTripper) (*client.CrowdStrikeAPISpecification, error) {
 	httpClient, err := apiHTTPClient(cfg.Proxy, cfg.ResponseHeaderTimeout, cfg.MaxIdleConnsPerHost)
 	if err != nil {
 		return nil, err
+	}
+	if wrapTransport != nil {
+		httpClient.Transport = wrapTransport(httpClient.Transport)
 	}
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 

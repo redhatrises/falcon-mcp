@@ -30,7 +30,7 @@ Configure your CrowdStrike API credentials and server settings using environment
 | `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools instead of all module tools |
 | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy URL for outbound API connections |
 | `FALCON_MCP_HEALTH_ADDR` | — | `host:port` for the `/healthz` liveness probe; empty disables it. See [Operational Endpoints](/falcon-mcp/usage/cli/#operational-endpoints). |
-| `FALCON_MCP_METRICS_ADDR` | — | `host:port` for the `/metrics` (expvar) endpoint; empty disables it. Debugging only — bind to loopback. |
+| `FALCON_MCP_METRICS_ADDR` | — | `host:port` for the Prometheus `/metrics` endpoint; empty disables it. Debugging only — bind to loopback. |
 | `FALCON_MCP_PPROF_ADDR` | — | `host:port` for the `/debug/pprof/` profiling endpoints; empty disables it. Debugging only — bind to loopback. |
 
 ## Using a .env File

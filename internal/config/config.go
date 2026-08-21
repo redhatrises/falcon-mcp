@@ -92,8 +92,9 @@ type Config struct {
 	// disables it. It is independent of HTTPAddr and works under any transport,
 	// including stdio.
 	HealthAddr string
-	// MetricsAddr is the listen address for the /metrics endpoint (stdlib expvar).
-	// Empty disables it. It is independent of HTTPAddr and works under any
+	// MetricsAddr is the listen address for the /metrics endpoint, which serves
+	// process, tool-call, and Falcon API metrics in Prometheus text exposition
+	// format. Empty disables it. It is independent of HTTPAddr and works under any
 	// transport, including stdio.
 	MetricsAddr string
 	// PprofAddr is the listen address for the /debug/pprof profiling endpoints.

@@ -17,7 +17,7 @@ func TestServerMCPNotNil(t *testing.T) {
 	// api can be a zero *client.CrowdStrikeAPISpecification for this wiring test;
 	// New only reads sub-client fields to register tools, does not call the API.
 	// (WHY: exercises accessor wiring, not live API calls.)
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(Options{Config: &config.Config{}, API: &client.CrowdStrikeAPISpecification{}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -93,10 +93,10 @@ func TestSelectModules(t *testing.T) {
 
 func TestNewSelectsModules(t *testing.T) {
 	t.Parallel()
-	srv, err := New(
-		&config.Config{Modules: []string{"hosts"}},
-		&client.CrowdStrikeAPISpecification{},
-	)
+	srv, err := New(Options{
+		Config: &config.Config{Modules: []string{"hosts"}},
+		API:    &client.CrowdStrikeAPISpecification{},
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -107,10 +107,10 @@ func TestNewSelectsModules(t *testing.T) {
 
 func TestNewUnknownModule(t *testing.T) {
 	t.Parallel()
-	_, err := New(
-		&config.Config{Modules: []string{"bogus"}},
-		&client.CrowdStrikeAPISpecification{},
-	)
+	_, err := New(Options{
+		Config: &config.Config{Modules: []string{"bogus"}},
+		API:    &client.CrowdStrikeAPISpecification{},
+	})
 	if !errors.Is(err, ErrUnknownModule) {
 		t.Fatalf("err = %v, want ErrUnknownModule", err)
 	}
@@ -123,7 +123,7 @@ func TestNewUnknownModule(t *testing.T) {
 // TestModuleFactoriesDiscovered already canonicalizes.
 func TestNewRegistersAllModules(t *testing.T) {
 	t.Parallel()
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(Options{Config: &config.Config{}, API: &client.CrowdStrikeAPISpecification{}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
