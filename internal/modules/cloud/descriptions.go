@@ -50,7 +50,8 @@ falcon://cloud/cspm-iom-findings/fql-guide before constructing filter expression
 Returns IOM entities with cloud context, evaluation details, and resource information.
 ` +
 		"Responses include `pagination.total` (the total number of records matching the filter, " +
-		"or null when the API does not report a count) — use it to answer \"how many\" questions."
+		"or null when the API does not report a count) — use it to answer \"how many\" questions. " +
+		"For cursor-based paging, use `pagination.next` as the `after` parameter on the next call."
 
 	searchCSPMSuppressionRulesDescription = `Search for CSPM IOM suppression rules.
 
@@ -155,6 +156,8 @@ Examples: 'updated_at.desc', 'resource_type.asc'`
 	cspmAssetsAfterDescription = "A pagination token used with the limit parameter to manage pagination of results. On your first request, don't provide an after token. On subsequent requests, provide the after token from the previous response to continue from that result set."
 
 	iomFindingsFilterDescription = "FQL filter expression. See `falcon://cloud/cspm-iom-findings/fql-guide` for syntax."
+
+	iomFindingsOffsetDescription = "Starting index of overall result set from which to return findings."
 
 	iomFindingsSortDescription = `Sort IOM findings. Use |asc or |desc suffix to specify direction.
 

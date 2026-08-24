@@ -29,13 +29,13 @@ func listToolNames(t *testing.T, srv *Server) map[string]bool {
 	return names
 }
 
-// dynamicModeToolNames are the three tools exposed in dynamic mode (meta-tools
-// plus always-on list_enabled_modules).
-var dynamicModeToolNames = []string{"falcon_search_tools", "falcon_execute_tool", "falcon_list_enabled_modules"}
+// dynamicModeToolNames are the three tools exposed in dynamic mode (the two
+// discovery/execution meta-tools plus the always-on list_enabled_tools).
+var dynamicModeToolNames = []string{"falcon_search_tools", "falcon_execute_tool", "falcon_list_enabled_tools"}
 
-// normalModeCoreToolNames are the three core tools registered in
-// normal mode (not the dynamic search/execute meta-tools).
-var normalModeCoreToolNames = []string{"falcon_check_connectivity", "falcon_list_modules", "falcon_list_enabled_modules"}
+// normalModeCoreToolNames are the three core tools registered in normal mode
+// (not the dynamic search/execute meta-tools).
+var normalModeCoreToolNames = []string{"falcon_check_connectivity", "falcon_list_enabled_modules", "falcon_list_enabled_tools"}
 
 // TestDynamicModeExposesOnlyMetaTools verifies that with Dynamic=true the server
 // exposes exactly the three dynamic tools and none of the real tools or
@@ -64,8 +64,8 @@ func TestDynamicModeExposesOnlyMetaTools(t *testing.T) {
 	if names["falcon_check_connectivity"] {
 		t.Error("falcon_check_connectivity leaked in dynamic mode")
 	}
-	if names["falcon_list_modules"] {
-		t.Error("falcon_list_modules leaked in dynamic mode")
+	if names["falcon_list_enabled_modules"] {
+		t.Error("falcon_list_enabled_modules leaked in dynamic mode")
 	}
 }
 
@@ -105,7 +105,7 @@ func keys(m map[string]bool) []string {
 }
 
 // TestDynamicMetaToolAnnotations verifies annotation posture for the
-// dynamic-mode meta-tools. falcon_search_tools and falcon_list_enabled_modules
+// dynamic-mode meta-tools. falcon_search_tools and falcon_list_enabled_tools
 // are read-only discovery helpers; falcon_execute_tool is a general dispatcher
 // that can invoke mutating tools, so it must NOT advertise readOnlyHint
 // (it uses MutatingAnnotations so base.AddTool does not apply the default
@@ -127,7 +127,7 @@ func TestDynamicMetaToolAnnotations(t *testing.T) {
 		byName[tool.Name] = tool
 	}
 
-	for _, name := range []string{"falcon_search_tools", "falcon_list_enabled_modules"} {
+	for _, name := range []string{"falcon_search_tools", "falcon_list_enabled_tools"} {
 		tool, ok := byName[name]
 		if !ok {
 			t.Fatalf("%s not registered", name)

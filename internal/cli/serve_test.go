@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/crowdstrike/falcon-mcp/internal/config"
 )
 
 func TestServeHTTPGracefulShutdown(t *testing.T) {
@@ -169,7 +171,7 @@ func TestStartOpsDisabled(t *testing.T) {
 		reached.Store(true)
 		w.WriteHeader(http.StatusOK)
 	})
-	if err := startOps(t.Context(), "test", "", h, 120*time.Second); err != nil {
+	if err := startOps(t.Context(), opsEndpoint{name: "test", addr: "", handler: h, idleTimeout: 120 * time.Second}); err != nil {
 		t.Fatalf("startOps with empty addr: %v", err)
 	}
 	// Give any (erroneously) launched goroutine a moment to bind and serve.
@@ -189,7 +191,7 @@ func TestStartOpsBindFailureReturnsError(t *testing.T) {
 	t.Cleanup(func() { _ = ln.Close() })
 	addr := ln.Addr().String() // still bound: startOps will collide on it
 
-	err := startOps(t.Context(), "health", addr, healthHandler(), 120*time.Second)
+	err := startOps(t.Context(), opsEndpoint{name: "health", addr: addr, handler: healthHandler(), idleTimeout: 120 * time.Second})
 	if err == nil {
 		t.Fatal("startOps on an in-use addr should return a bind error")
 	}
@@ -314,7 +316,7 @@ func startOpsOnFreePort(ctx context.Context, t *testing.T, name string, h http.H
 		ln := newLocalListener(t)
 		addr := ln.Addr().String()
 		_ = ln.Close() // free the port; startOps re-binds it
-		err := startOps(ctx, name, addr, h, 120*time.Second)
+		err := startOps(ctx, opsEndpoint{name: name, addr: addr, handler: h, idleTimeout: 120 * time.Second})
 		if err == nil {
 			return addr
 		}
@@ -347,6 +349,61 @@ func TestIsLoopbackAddr(t *testing.T) {
 			t.Parallel()
 			if got := isLoopbackAddr(tt.addr); got != tt.want {
 				t.Errorf("isLoopbackAddr(%q) = %v, want %v", tt.addr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWarnIfOpenBind(t *testing.T) {
+	// Mutates the global slog default, so it cannot run in parallel with tests
+	// that also swap the default logger.
+	tests := []struct {
+		name     string
+		cfg      config.Config
+		wantWarn bool
+	}{
+		{
+			name:     "open bind without key warns",
+			cfg:      config.Config{Transport: "streamable-http", HTTPAddr: "0.0.0.0:8080"},
+			wantWarn: true,
+		},
+		{
+			name:     "sse empty host without key warns",
+			cfg:      config.Config{Transport: "sse", HTTPAddr: ":8080"},
+			wantWarn: true,
+		},
+		{
+			name:     "loopback bind stays quiet",
+			cfg:      config.Config{Transport: "streamable-http", HTTPAddr: "127.0.0.1:8080"},
+			wantWarn: false,
+		},
+		{
+			name:     "api key protects open bind",
+			cfg:      config.Config{Transport: "streamable-http", HTTPAddr: "0.0.0.0:8080", APIKey: "secret"},
+			wantWarn: false,
+		},
+		{
+			name:     "stdio never warns",
+			cfg:      config.Config{Transport: "stdio"},
+			wantWarn: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf syncBuffer
+			orig := slog.Default()
+			t.Cleanup(func() { slog.SetDefault(orig) })
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+
+			warnIfOpenBind(&tt.cfg)
+
+			logged := buf.String()
+			got := strings.Contains(logged, "without an API key")
+			if got != tt.wantWarn {
+				t.Errorf("warnIfOpenBind warned=%v, want %v; log: %q", got, tt.wantWarn, logged)
+			}
+			if tt.wantWarn && !strings.Contains(logged, tt.cfg.HTTPAddr) {
+				t.Errorf("warning omitted the bound addr %q; log: %q", tt.cfg.HTTPAddr, logged)
 			}
 		})
 	}

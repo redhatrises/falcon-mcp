@@ -452,6 +452,34 @@ func TestSearchIOMFindingsSurfacesSiblingCursor(t *testing.T) {
 	}
 }
 
+// TestSearchIOMFindingsForwardsOffsetNeverAfter pins the offset-based pagination
+// surface: the handler forwards the offset to the query params and never sets
+// after (the cursor field is not part of the input).
+func TestSearchIOMFindingsForwardsOffsetNeverAfter(t *testing.T) {
+	t.Parallel()
+	f := &fakeDetections{
+		queryResp: &cloud_security_detections.CspmEvaluationsIomQueriesOK{Payload: &models.EvaluationsQueryIOMsResponse{
+			Resources: []string{},
+			Meta:      &models.RestCursorAndLimitMetaInfo{QueryTime: &metaQueryTime},
+		}},
+	}
+	m := &Module{Detections: f, Concurrency: 4, Logger: testLogger}
+
+	_, _, err := m.searchIOMFindings(context.Background(), nil, SearchIOMFindingsInput{Offset: 50})
+	if err != nil {
+		t.Fatalf("searchIOMFindings: %v", err)
+	}
+	if f.lastQuery == nil {
+		t.Fatal("expected the query params to be captured")
+	}
+	if f.lastQuery.After != nil {
+		t.Errorf("after = %v, want unset", *f.lastQuery.After)
+	}
+	if f.lastQuery.Offset == nil || *f.lastQuery.Offset != 50 {
+		t.Errorf("offset = %v, want 50", f.lastQuery.Offset)
+	}
+}
+
 func TestSearchIOMFindingsFQLError(t *testing.T) {
 	t.Parallel()
 	badReq := &cloud_security_detections.CspmEvaluationsIomQueriesBadRequest{Payload: &models.RestCursorResponseFields{

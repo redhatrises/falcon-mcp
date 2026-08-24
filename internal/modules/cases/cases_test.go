@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/crowdstrike/gofalcon/falcon/client/case_files"
 	"github.com/crowdstrike/gofalcon/falcon/client/case_management"
 	"github.com/crowdstrike/gofalcon/falcon/client/cases"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -102,6 +103,17 @@ type fakeTemplates struct {
 	getErr     error
 	getCalls   int
 	lastGetIDs []string
+
+	slasResp    *case_management.AggregatesSlasPostV1OK
+	slasErr     error
+	tmplAggResp *case_management.AggregatesTemplatesPostV1OK
+	tmplAggErr  error
+	tagsResp    *case_management.AggregatesAccessTagsPostV1OK
+	tagsErr     error
+	notifResp   *case_management.AggregatesNotificationGroupsPostV2OK
+	notifErr    error
+
+	lastAggBody []*models.APIMSAAggregateQueryRequest
 }
 
 func (f *fakeTemplates) QueriesTemplatesGetV1(*case_management.QueriesTemplatesGetV1Params, ...case_management.ClientOption) (*case_management.QueriesTemplatesGetV1OK, error) {
@@ -114,9 +126,44 @@ func (f *fakeTemplates) EntitiesTemplatesGetV1(p *case_management.EntitiesTempla
 	return f.getResp, f.getErr
 }
 
+func (f *fakeTemplates) AggregatesSlasPostV1(p *case_management.AggregatesSlasPostV1Params, _ ...case_management.ClientOption) (*case_management.AggregatesSlasPostV1OK, error) {
+	f.lastAggBody = p.Body
+	return f.slasResp, f.slasErr
+}
+
+func (f *fakeTemplates) AggregatesTemplatesPostV1(p *case_management.AggregatesTemplatesPostV1Params, _ ...case_management.ClientOption) (*case_management.AggregatesTemplatesPostV1OK, error) {
+	f.lastAggBody = p.Body
+	return f.tmplAggResp, f.tmplAggErr
+}
+
+func (f *fakeTemplates) AggregatesAccessTagsPostV1(p *case_management.AggregatesAccessTagsPostV1Params, _ ...case_management.ClientOption) (*case_management.AggregatesAccessTagsPostV1OK, error) {
+	f.lastAggBody = p.Body
+	return f.tagsResp, f.tagsErr
+}
+
+func (f *fakeTemplates) AggregatesNotificationGroupsPostV2(p *case_management.AggregatesNotificationGroupsPostV2Params, _ ...case_management.ClientOption) (*case_management.AggregatesNotificationGroupsPostV2OK, error) {
+	f.lastAggBody = p.Body
+	return f.notifResp, f.notifErr
+}
+
+// fakeCaseFiles is a configurable test double for the caseFilesAPI interface.
+type fakeCaseFiles struct {
+	resp     *case_files.AggregatesFileDetailsPostV1OK
+	err      error
+	lastBody []models.MsaAggregateQueryRequest
+	lastIDs  []string
+}
+
+func (f *fakeCaseFiles) AggregatesFileDetailsPostV1(p *case_files.AggregatesFileDetailsPostV1Params, _ ...case_files.ClientOption) (*case_files.AggregatesFileDetailsPostV1OK, error) {
+	f.lastBody = p.Body
+	f.lastIDs = p.Ids
+	return f.resp, f.err
+}
+
 // newModule builds a Module wired to the given fakes with a discarding logger.
+// CaseFiles defaults to an empty fake; aggregate-file tests override it.
 func newModule(c *fakeCases, t *fakeTemplates) *Module {
-	return &Module{Cases: c, Templates: t, Concurrency: 4, Logger: testLogger}
+	return &Module{Cases: c, Templates: t, CaseFiles: &fakeCaseFiles{}, Concurrency: 4, Logger: testLogger}
 }
 
 func TestSearchCasesSuccess(t *testing.T) {
@@ -596,16 +643,256 @@ func TestManageCaseTags(t *testing.T) {
 	})
 }
 
-// TestRegisterResourcesServesFQLGuide verifies the cases module publishes its
-// FQL guide as the falcon://cases/search/fql-guide resource, with the
-// Python-matching name, and that reading it returns the embedded guide text.
-func TestRegisterResourcesServesFQLGuide(t *testing.T) {
+// TestRegisterResourcesServesFQLGuides verifies the cases module publishes all
+// three FQL guide resources — case search, case-configuration aggregates, and
+// case-file aggregates — with the Python-matching names and URIs, and that
+// reading each returns its embedded guide text. The helper also asserts the
+// module serves exactly these resources and no others.
+func TestRegisterResourcesServesFQLGuides(t *testing.T) {
 	t.Parallel()
-	testutil.AssertServesFQLGuide(context.Background(), t, newModule(&fakeCases{}, &fakeTemplates{}).RegisterResources, testutil.FQLGuideExpectation{
-		Name: "falcon_search_cases_fql_guide",
-		URI:  fqlGuideURI,
-		Body: fqlGuide,
+	testutil.AssertServesFQLGuide(context.Background(), t, newModule(&fakeCases{}, &fakeTemplates{}).RegisterResources,
+		testutil.FQLGuideExpectation{
+			Name: "falcon_search_cases_fql_guide",
+			URI:  fqlGuideURI,
+			Body: fqlGuide,
+		},
+		testutil.FQLGuideExpectation{
+			Name: "falcon_aggregate_case_config_fql_guide",
+			URI:  aggregatesFQLGuideURI,
+			Body: aggregatesFQLGuide,
+		},
+		testutil.FQLGuideExpectation{
+			Name: "falcon_aggregate_case_file_details_fql_guide",
+			URI:  fileAggregatesFQLGuideURI,
+			Body: fileAggregatesFQLGuide,
+		},
+	)
+}
+
+// TestAggregateCaseConfig exercises the happy path of the four
+// case-configuration aggregate tools: each forwards the built aggregate body to
+// its op and returns the buckets with normalized meta.
+func TestAggregateCaseConfig(t *testing.T) {
+	t.Parallel()
+
+	aggResp := func() *models.APIMSAAggregatesResponse {
+		return &models.APIMSAAggregatesResponse{
+			Resources: []*models.MsaAggregationResult{{Name: new("by-name")}},
+			Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
+		}
+	}
+
+	tests := []struct {
+		name      string
+		configure func(*fakeTemplates)
+		call      func(*Module) base.AggregateResult[*models.MsaAggregationResult]
+	}{
+		{
+			name:      "slas",
+			configure: func(f *fakeTemplates) { f.slasResp = &case_management.AggregatesSlasPostV1OK{Payload: aggResp()} },
+			call: func(m *Module) base.AggregateResult[*models.MsaAggregationResult] {
+				_, out, _ := m.aggregateCaseSlas(context.Background(), nil, AggregateInput{Field: "name"})
+				return out
+			},
+		},
+		{
+			name: "templates",
+			configure: func(f *fakeTemplates) {
+				f.tmplAggResp = &case_management.AggregatesTemplatesPostV1OK{Payload: aggResp()}
+			},
+			call: func(m *Module) base.AggregateResult[*models.MsaAggregationResult] {
+				_, out, _ := m.aggregateCaseTemplates(context.Background(), nil, AggregateInput{Field: "name"})
+				return out
+			},
+		},
+		{
+			name:      "access_tags",
+			configure: func(f *fakeTemplates) { f.tagsResp = &case_management.AggregatesAccessTagsPostV1OK{Payload: aggResp()} },
+			call: func(m *Module) base.AggregateResult[*models.MsaAggregationResult] {
+				_, out, _ := m.aggregateCaseAccessTags(context.Background(), nil, AggregateInput{Field: "key"})
+				return out
+			},
+		},
+		{
+			name: "notification_groups",
+			configure: func(f *fakeTemplates) {
+				f.notifResp = &case_management.AggregatesNotificationGroupsPostV2OK{Payload: aggResp()}
+			},
+			call: func(m *Module) base.AggregateResult[*models.MsaAggregationResult] {
+				_, out, _ := m.aggregateCaseNotificationGroups(context.Background(), nil, AggregateInput{Field: "name"})
+				return out
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ft := &fakeTemplates{}
+			tc.configure(ft)
+			m := newModule(&fakeCases{}, ft)
+			out := tc.call(m)
+
+			if len(out.Resources) != 1 || out.Resources[0] == nil {
+				t.Fatalf("expected 1 bucket, got %+v", out.Resources)
+			}
+			if len(out.Errors) != 0 {
+				t.Fatalf("expected no errors, got %+v", out.Errors)
+			}
+			if len(ft.lastAggBody) != 1 || ft.lastAggBody[0] == nil {
+				t.Fatalf("expected one aggregate body, got %+v", ft.lastAggBody)
+			}
+			// Aggregation type defaults to terms when the caller omits it.
+			if ft.lastAggBody[0].Type == nil || *ft.lastAggBody[0].Type != base.AggregateTypeDefault {
+				t.Fatalf("expected default type %q, got %+v", base.AggregateTypeDefault, ft.lastAggBody[0].Type)
+			}
+			if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(&models.MsaMetaInfo{QueryTime: &metaQueryTime})) {
+				t.Fatalf("expected normalized meta, got %+v", out.Meta)
+			}
+		})
+	}
+}
+
+// TestAggregateCaseConfigFQLError verifies a typed 400 from a config aggregate
+// op is surfaced as an FQL data result, not a Go error.
+func TestAggregateCaseConfigFQLError(t *testing.T) {
+	t.Parallel()
+
+	badReq := &case_management.AggregatesSlasPostV1BadRequest{Payload: &models.MsaspecResponseFields{
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
+	}}
+	ft := &fakeTemplates{slasErr: badReq}
+	m := newModule(&fakeCases{}, ft)
+
+	_, out, err := m.aggregateCaseSlas(context.Background(), nil, AggregateInput{Field: "name", Filter: "bogus:::"})
+	if err != nil {
+		t.Fatalf("expected FQL error to be formatted, not returned: %v", err)
+	}
+	if len(out.Errors) != 1 || out.Errors[0].Message != "invalid filter" {
+		t.Fatalf("expected FQL error detail, got %+v", out.Errors)
+	}
+	if out.FQLGuide == "" {
+		t.Fatalf("expected fql_guide to be populated")
+	}
+}
+
+// TestAggregateCaseConfigNonFilterBadRequestSurfacesRaw verifies a typed 400
+// whose message does not mention the filter (an unsupported field or
+// aggregation type) is not misclassified as an FQL error: it surfaces as a Go
+// error rather than a soft result carrying the FQL guide.
+func TestAggregateCaseConfigNonFilterBadRequestSurfacesRaw(t *testing.T) {
+	t.Parallel()
+
+	badReq := &case_management.AggregatesSlasPostV1BadRequest{Payload: &models.MsaspecResponseFields{
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("unsupported aggregation field")}},
+	}}
+	ft := &fakeTemplates{slasErr: badReq}
+	m := newModule(&fakeCases{}, ft)
+
+	_, out, err := m.aggregateCaseSlas(context.Background(), nil, AggregateInput{Field: "bogus"})
+	if err == nil {
+		t.Fatalf("expected a Go error for a non-filter 400, got soft result %+v", out)
+	}
+	if len(out.Errors) != 0 || out.FQLGuide != "" {
+		t.Fatalf("non-filter 400 must not be dressed as an FQL error, got %+v", out)
+	}
+}
+
+// TestAggregateCaseFileDetails verifies the file aggregate tool folds case_ids
+// into a case_id:[...] filter clause, sets the request Ids param, and returns
+// the buckets with normalized meta.
+func TestAggregateCaseFileDetails(t *testing.T) {
+	t.Parallel()
+
+	fcf := &fakeCaseFiles{resp: &case_files.AggregatesFileDetailsPostV1OK{Payload: &models.CasefilesapiAggregatesResponseV1{
+		Resources: []*models.MsaAggregationResult{{Name: new("by-name")}},
+		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
+	}}}
+	m := newModule(&fakeCases{}, &fakeTemplates{})
+	m.CaseFiles = fcf
+
+	_, out, err := m.aggregateCaseFileDetails(context.Background(), nil, FileAggregateInput{
+		Field:   "name",
+		CaseIDs: []string{"c1", "c2"},
+		Filter:  "name:*'*.png'",
 	})
+	if err != nil {
+		t.Fatalf("aggregateCaseFileDetails: %v", err)
+	}
+	if len(out.Resources) != 1 {
+		t.Fatalf("expected 1 bucket, got %+v", out.Resources)
+	}
+	if len(fcf.lastIDs) != 2 || fcf.lastIDs[0] != "c1" {
+		t.Fatalf("expected case ids forwarded to Ids param, got %v", fcf.lastIDs)
+	}
+	if len(fcf.lastBody) != 1 || fcf.lastBody[0].Filter == nil {
+		t.Fatalf("expected one aggregate body with a filter, got %+v", fcf.lastBody)
+	}
+	got := *fcf.lastBody[0].Filter
+	want := "case_id:['c1','c2']+(name:*'*.png')"
+	if got != want {
+		t.Fatalf("scoped filter mismatch:\n got %q\nwant %q", got, want)
+	}
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(&models.MsaMetaInfo{QueryTime: &metaQueryTime})) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
+	}
+}
+
+// TestAggregateCaseFileDetailsRejectsMalformedFilter proves a caller filter that
+// would escape the case_id scope (a stray ) that lets a following comma reach
+// top level) is rejected as a soft FQL result and never dispatched to the API.
+func TestAggregateCaseFileDetailsRejectsMalformedFilter(t *testing.T) {
+	t.Parallel()
+
+	fcf := &fakeCaseFiles{}
+	m := newModule(&fakeCases{}, &fakeTemplates{})
+	m.CaseFiles = fcf
+
+	_, out, err := m.aggregateCaseFileDetails(context.Background(), nil, FileAggregateInput{
+		Field:   "name",
+		CaseIDs: []string{"c1"},
+		Filter:  "a:'1'),cid:*+(x:'1'",
+	})
+	if err != nil {
+		t.Fatalf("expected a soft result, got Go error: %v", err)
+	}
+	if len(out.Errors) == 0 {
+		t.Fatalf("expected FQL error details on rejection, got %+v", out)
+	}
+	if len(out.Resources) != 0 {
+		t.Fatalf("expected no resources on rejection, got %+v", out.Resources)
+	}
+	if fcf.lastBody != nil {
+		t.Fatalf("malformed filter must not be dispatched to the API, body=%+v", fcf.lastBody)
+	}
+}
+
+// TestAggregateCaseFileDetailsEscapesCaseIDQuotes proves an embedded single
+// quote in a case id is escaped so it cannot break out of the case_id clause.
+func TestAggregateCaseFileDetailsEscapesCaseIDQuotes(t *testing.T) {
+	t.Parallel()
+
+	fcf := &fakeCaseFiles{resp: &case_files.AggregatesFileDetailsPostV1OK{Payload: &models.CasefilesapiAggregatesResponseV1{
+		Resources: []*models.MsaAggregationResult{},
+	}}}
+	m := newModule(&fakeCases{}, &fakeTemplates{})
+	m.CaseFiles = fcf
+
+	_, _, err := m.aggregateCaseFileDetails(context.Background(), nil, FileAggregateInput{
+		Field:   "name",
+		CaseIDs: []string{`c'1`},
+	})
+	if err != nil {
+		t.Fatalf("aggregateCaseFileDetails: %v", err)
+	}
+	if len(fcf.lastBody) != 1 || fcf.lastBody[0].Filter == nil {
+		t.Fatalf("expected one aggregate body with a filter, got %+v", fcf.lastBody)
+	}
+	got := *fcf.lastBody[0].Filter
+	want := `case_id:['c\'1']`
+	if got != want {
+		t.Fatalf("escaped scope mismatch:\n got %q\nwant %q", got, want)
+	}
 }
 
 // TestRegisterToolsAnnotations verifies the mutator tools set complete
@@ -623,12 +910,15 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		byName[e.Tool.Name] = e.Tool
 	}
 
-	// All eight tools must register.
+	// All thirteen tools must register.
 	wantTools := []string{
 		"falcon_search_cases", "falcon_get_cases", "falcon_create_case",
 		"falcon_update_case", "falcon_add_case_alert_evidence",
 		"falcon_add_case_event_evidence", "falcon_manage_case_tags",
 		"falcon_list_case_templates",
+		"falcon_aggregate_case_slas", "falcon_aggregate_case_templates",
+		"falcon_aggregate_case_access_tags", "falcon_aggregate_case_notification_groups",
+		"falcon_aggregate_case_file_details",
 	}
 	for _, name := range wantTools {
 		if byName[name] == nil {
@@ -645,8 +935,14 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		testutil.AssertMutatingAnnotations(t, name, byName[name].Annotations, false)
 	}
 
-	// Read-only tools: readOnly=true.
-	for _, name := range []string{"falcon_search_cases", "falcon_get_cases", "falcon_list_case_templates"} {
+	// Read-only tools: readOnly=true. The five aggregate tools only count
+	// records, so they carry the default read-only annotations.
+	for _, name := range []string{
+		"falcon_search_cases", "falcon_get_cases", "falcon_list_case_templates",
+		"falcon_aggregate_case_slas", "falcon_aggregate_case_templates",
+		"falcon_aggregate_case_access_tags", "falcon_aggregate_case_notification_groups",
+		"falcon_aggregate_case_file_details",
+	} {
 		a := byName[name].Annotations
 		if a == nil || !a.ReadOnlyHint {
 			t.Fatalf("%s: expected ReadOnlyHint true, got %+v", name, a)

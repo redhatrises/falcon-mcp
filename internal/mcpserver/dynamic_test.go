@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -106,8 +107,8 @@ func callSearch(t *testing.T, m *MetaModule, in SearchToolsInput) SearchToolsRes
 }
 
 func toolNames(res SearchToolsResult) []string {
-	names := make([]string, len(res.Tools))
-	for i, s := range res.Tools {
+	names := make([]string, len(res.Results))
+	for i, s := range res.Results {
 		names[i] = s.Name
 	}
 	return names
@@ -131,7 +132,7 @@ func TestSearchTools(t *testing.T) {
 		{name: "empty query returns all", in: SearchToolsInput{}, want: []string{"falcon_search_hosts", "falcon_search_detections", "falcon_update_detections"}, exact: true},
 		{name: "single token", in: SearchToolsInput{Query: "hosts"}, want: []string{"falcon_search_hosts"}, exact: true},
 		{name: "multi token AND", in: SearchToolsInput{Query: "update detections"}, want: []string{"falcon_update_detections"}, exact: true},
-		{name: "multi token AND no match", in: SearchToolsInput{Query: "update hosts"}, want: nil, exact: true},
+		{name: "multi token no strict match falls back to relaxed", in: SearchToolsInput{Query: "update hosts"}, want: []string{"falcon_search_hosts", "falcon_update_detections"}, exact: true},
 		{name: "token matches param name", in: SearchToolsInput{Query: "filter"}, want: []string{"falcon_search_hosts", "falcon_search_detections"}, exact: true},
 		{name: "module filter", in: SearchToolsInput{Module: "detections"}, want: []string{"falcon_search_detections", "falcon_update_detections"}, exact: true},
 		{name: "module plus query", in: SearchToolsInput{Module: "detections", Query: "search"}, want: []string{"falcon_search_detections"}, exact: true},
@@ -148,6 +149,77 @@ func TestSearchTools(t *testing.T) {
 	}
 }
 
+// TestSearchToolsEmptyQueryOrderedByName pins the empty-query ordering: with no
+// query to rank on, every entry scores zero, so the listing must fall to a plain
+// by-name sort rather than the relevance comparator's word-count/read-only keys.
+// The order matters because a full catalog exceeds the result limit, so the sort
+// decides which tools survive truncation. slices.Equal (not assertSameSet) so a
+// reordering is caught, not just a membership change.
+func TestSearchToolsEmptyQueryOrderedByName(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t,
+		fakeToolModule{name: "hosts"},
+		fakeToolModule{name: "detections", withMutator: true},
+	)
+	got := toolNames(callSearch(t, m, SearchToolsInput{}))
+	want := []string{"falcon_search_detections", "falcon_search_hosts", "falcon_update_detections"}
+	if !slices.Equal(got, want) {
+		t.Errorf("empty-query order = %v, want by-name %v", got, want)
+	}
+}
+
+// --- ranking -----------------------------------------------------------------
+
+// TestSearchToolsRanking pins the score ordering search relies on: a name-word
+// hit outranks a bare name substring, an exactly-named tool is lifted above a
+// strong partial match by the exact-name short-circuit, and read-only sorts
+// before mutating when the weighted strength ties. The full ranked order is
+// asserted, so a regression that only perturbs relative position is caught.
+func TestSearchToolsRanking(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		mods []fakeToolModule
+		in   SearchToolsInput
+		want []string // expected order, full ranked list
+	}{
+		{
+			// "hosts" is a whole word in search_hosts (10) but only a substring
+			// of search_hoststorage's name (5), so search_hosts ranks first.
+			name: "name word outranks substring",
+			mods: []fakeToolModule{{name: "hosts"}, {name: "hoststorage"}},
+			in:   SearchToolsInput{Query: "hosts"},
+			want: []string{"falcon_search_hosts", "falcon_search_hoststorage"},
+		},
+		{
+			// The query names search_host exactly (short-circuit: matched=3),
+			// beating search_hosts's strong two-token partial hit (matched=2).
+			name: "exact name lifted above strong partial",
+			mods: []fakeToolModule{{name: "host"}, {name: "hosts"}},
+			in:   SearchToolsInput{Query: "search_host"},
+			want: []string{"falcon_search_host", "falcon_search_hosts"},
+		},
+		{
+			// Both score the same on "detections" (name word, 10), so the
+			// read-only search tool sorts ahead of the mutating update tool.
+			name: "read only before mutating on tie",
+			mods: []fakeToolModule{{name: "detections", withMutator: true}},
+			in:   SearchToolsInput{Query: "detections"},
+			want: []string{"falcon_search_detections", "falcon_update_detections"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m := buildCatalog(t, tt.mods...)
+			got := toolNames(callSearch(t, m, tt.in))
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("ranked order = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSearchToolsLimit(t *testing.T) {
 	t.Parallel()
 	// Build 5 modules => 5 search tools.
@@ -155,24 +227,29 @@ func TestSearchToolsLimit(t *testing.T) {
 	m := buildCatalog(t, mods...)
 
 	tests := []struct {
-		name     string
-		limit    int
-		wantSize int
+		name          string
+		limit         int
+		wantSize      int
+		wantTruncated bool
 	}{
-		{name: "zero uses default 20", limit: 0, wantSize: 5}, // only 5 exist
-		{name: "explicit truncates", limit: 2, wantSize: 2},
-		{name: "negative clamps to 1", limit: -3, wantSize: 1},
-		{name: "over max still bounded by count", limit: 500, wantSize: 5},
+		{name: "zero uses default 50", limit: 0, wantSize: 5, wantTruncated: false}, // only 5 exist
+		{name: "explicit truncates", limit: 2, wantSize: 2, wantTruncated: true},
+		{name: "negative clamps to 1", limit: -3, wantSize: 1, wantTruncated: true},
+		{name: "over max still bounded by count", limit: 500, wantSize: 5, wantTruncated: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := callSearch(t, m, SearchToolsInput{Limit: tt.limit})
-			if len(got.Tools) != tt.wantSize {
-				t.Errorf("got %d tools, want %d", len(got.Tools), tt.wantSize)
+			if len(got.Results) != tt.wantSize {
+				t.Errorf("got %d tools, want %d", len(got.Results), tt.wantSize)
 			}
-			if got.Total != len(got.Tools) {
-				t.Errorf("Total = %d, want %d", got.Total, len(got.Tools))
+			// Total is the full match count, ignoring the limit.
+			if got.Total != 5 {
+				t.Errorf("Total = %d, want 5", got.Total)
+			}
+			if got.Truncated != tt.wantTruncated {
+				t.Errorf("Truncated = %v, want %v", got.Truncated, tt.wantTruncated)
 			}
 		})
 	}
@@ -182,11 +259,14 @@ func TestSearchToolsNoMatchIsEmptyNotNil(t *testing.T) {
 	t.Parallel()
 	m := buildCatalog(t, fakeToolModule{name: "hosts"})
 	got := callSearch(t, m, SearchToolsInput{Query: "nonexistent"})
-	if got.Tools == nil {
-		t.Fatal("Tools is nil, want empty slice")
+	if got.Results == nil {
+		t.Fatal("Results is nil, want empty slice")
 	}
-	if len(got.Tools) != 0 {
-		t.Errorf("Tools len = %d, want 0", len(got.Tools))
+	if len(got.Results) != 0 {
+		t.Errorf("Results len = %d, want 0", len(got.Results))
+	}
+	if got.Hint == "" {
+		t.Error("empty result should carry a hint")
 	}
 }
 
@@ -198,7 +278,7 @@ func TestSearchToolsAnnotationFlags(t *testing.T) {
 	got := callSearch(t, m, SearchToolsInput{})
 
 	byName := map[string]ToolSummary{}
-	for _, s := range got.Tools {
+	for _, s := range got.Results {
 		byName[s.Name] = s
 	}
 
@@ -230,18 +310,22 @@ func TestSearchToolsAnnotationFlags(t *testing.T) {
 func TestSearchToolsParameterSummaries(t *testing.T) {
 	t.Parallel()
 	// hosts has a search tool (all-optional params) and a mutating tool whose
-	// "id" field is required (no omitempty).
+	// "id" field is required (no omitempty). Parameters are only returned by the
+	// two-step tool_names lookup, not the lean keyword search.
 	m := buildCatalog(t, fakeToolModule{name: "hosts", withMutator: true})
-	got := callSearch(t, m, SearchToolsInput{})
+	got := callSearch(t, m, SearchToolsInput{ToolNames: []string{"falcon_search_hosts", "falcon_update_hosts"}})
 
 	byName := map[string]ToolSummary{}
-	for _, s := range got.Tools {
+	for _, s := range got.Results {
 		byName[s.Name] = s
 	}
 
 	// search_hosts: filter and limit are optional.
 	search := byName["falcon_search_hosts"]
-	for _, p := range search.Parameters {
+	if search.Parameters == nil {
+		t.Fatal("search_hosts carried no parameters key")
+	}
+	for _, p := range *search.Parameters {
 		if p.Required {
 			t.Errorf("search param %q Required = true, want false", p.Name)
 		}
@@ -249,8 +333,11 @@ func TestSearchToolsParameterSummaries(t *testing.T) {
 
 	// update_hosts: id is required.
 	update := byName["falcon_update_hosts"]
+	if update.Parameters == nil {
+		t.Fatal("update_hosts carried no parameters key")
+	}
 	var sawID bool
-	for _, p := range update.Parameters {
+	for _, p := range *update.Parameters {
 		if p.Name == "id" {
 			sawID = true
 			if !p.Required {
@@ -259,7 +346,7 @@ func TestSearchToolsParameterSummaries(t *testing.T) {
 		}
 	}
 	if !sawID {
-		t.Fatalf("update_hosts params missing id: %+v", update.Parameters)
+		t.Fatalf("update_hosts params missing id: %+v", *update.Parameters)
 	}
 }
 
@@ -267,21 +354,33 @@ func TestSearchToolsParameterSummaries(t *testing.T) {
 
 // filterDesc returns the "filter" parameter description for the named tool in a
 // search result, failing the test if the tool or its filter param is absent.
+// Parameters are only present on two-step tool_names results, so callers must
+// have requested the tool by name.
 func filterDesc(t *testing.T, res SearchToolsResult, tool string) string {
 	t.Helper()
-	for _, s := range res.Tools {
+	for _, s := range res.Results {
 		if s.Name != tool {
 			continue
 		}
-		for _, p := range s.Parameters {
+		if s.Parameters == nil {
+			t.Fatalf("tool %q carried no parameters key (call search with tool_names)", tool)
+		}
+		for _, p := range *s.Parameters {
 			if p.Name == "filter" {
 				return p.Description
 			}
 		}
-		t.Fatalf("tool %q has no filter parameter: %+v", tool, s.Parameters)
+		t.Fatalf("tool %q has no filter parameter: %+v", tool, *s.Parameters)
 	}
 	t.Fatalf("tool %q missing from results", tool)
 	return ""
+}
+
+// describeTool runs the two-step tool_names lookup for a single tool and returns
+// the result, so hint tests can inspect the full parameter schema.
+func describeTool(t *testing.T, m *MetaModule, tool string) SearchToolsResult {
+	t.Helper()
+	return callSearch(t, m, SearchToolsInput{ToolNames: []string{tool}})
 }
 
 // TestSearchToolsInjectsCuratedFilterHint verifies that a tool with a curated
@@ -292,7 +391,7 @@ func filterDesc(t *testing.T, res SearchToolsResult, tool string) string {
 func TestSearchToolsInjectsCuratedFilterHint(t *testing.T) {
 	t.Parallel()
 	m := buildCatalog(t, fakeToolModule{name: "detections"})
-	desc := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_detections")
+	desc := filterDesc(t, describeTool(t, m, "falcon_search_detections"), "falcon_search_detections")
 
 	// Original schema description is preserved.
 	if !strings.Contains(desc, "FQL filter") {
@@ -319,7 +418,7 @@ func TestSearchToolsInjectsCuratedFilterHint(t *testing.T) {
 func TestSearchToolsInjectsSuffixWithoutCuratedHint(t *testing.T) {
 	t.Parallel()
 	m := buildCatalog(t, fakeToolModule{name: "widgets"})
-	desc := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_widgets")
+	desc := filterDesc(t, describeTool(t, m, "falcon_search_widgets"), "falcon_search_widgets")
 
 	if _, ok := filterHints["falcon_search_widgets"]; ok {
 		t.Fatal("test precondition broken: falcon_search_widgets unexpectedly has a curated hint")
@@ -335,8 +434,8 @@ func TestSearchToolsInjectsSuffixWithoutCuratedHint(t *testing.T) {
 func TestSearchToolsHintInjectionIsIdempotent(t *testing.T) {
 	t.Parallel()
 	m := buildCatalog(t, fakeToolModule{name: "detections"})
-	first := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_detections")
-	second := filterDesc(t, callSearch(t, m, SearchToolsInput{}), "falcon_search_detections")
+	first := filterDesc(t, describeTool(t, m, "falcon_search_detections"), "falcon_search_detections")
+	second := filterDesc(t, describeTool(t, m, "falcon_search_detections"), "falcon_search_detections")
 	if first != second {
 		t.Errorf("hint injection not idempotent:\n first  = %q\n second = %q", first, second)
 	}
@@ -350,12 +449,15 @@ func TestSearchToolsHintInjectionIsIdempotent(t *testing.T) {
 func TestSearchToolsNoFilterParamUnchanged(t *testing.T) {
 	t.Parallel()
 	m := buildCatalog(t, fakeToolModule{name: "detections", withMutator: true})
-	res := callSearch(t, m, SearchToolsInput{})
-	for _, s := range res.Tools {
+	res := describeTool(t, m, "falcon_update_detections")
+	for _, s := range res.Results {
 		if s.Name != "falcon_update_detections" {
 			continue
 		}
-		for _, p := range s.Parameters {
+		if s.Parameters == nil {
+			t.Fatal("update_detections carried no parameters key")
+		}
+		for _, p := range *s.Parameters {
 			if strings.Contains(p.Description, fqlFilterHintSuffix) {
 				t.Errorf("param %q on a filterless tool got a hint appended: %q", p.Name, p.Description)
 			}
@@ -446,6 +548,78 @@ func TestExecuteToolBadParamsEnriched(t *testing.T) {
 	}
 	if !strings.Contains(text, "filter") {
 		t.Errorf("error text %q missing param name", text)
+	}
+}
+
+// --- withheld vs unknown -----------------------------------------------------
+
+// buildWithheldCatalog builds a catalog that registered only search_hosts but
+// records falcon_update_hosts as a tool an active deny-list withheld: it is in
+// seen (mapped to its module, which is enabled) but never entered the catalog.
+// This is the state server.go establishes in real dynamic-mode registration,
+// which buildCatalog does not reproduce, so withholdingRule can distinguish a
+// filtered-out tool from one that never existed.
+func buildWithheldCatalog(t *testing.T) *MetaModule {
+	t.Helper()
+	cat := NewCatalog()
+	mod := fakeToolModule{name: "hosts"}
+	mod.RegisterTools(cat.ForModule(mod.Name()))
+	if err := cat.Connect(context.Background()); err != nil {
+		t.Fatalf("catalog connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cat.Close() })
+
+	cat.policy = toolPolicy{
+		excluded:          map[string]struct{}{"falcon_update_hosts": {}},
+		allModulesEnabled: true,
+	}
+	cat.seen = map[string]string{
+		"falcon_search_hosts": "hosts",
+		"falcon_update_hosts": "hosts",
+	}
+	return NewMetaModule(cat, []base.Module{mod})
+}
+
+// TestSearchToolsWithheldByPolicy verifies the two-step tool_names lookup
+// attributes a filtered-out tool to the active policy — "withheld by
+// configuration" wording plus the deny-list description — rather than reporting
+// it as an unknown tool.
+func TestSearchToolsWithheldByPolicy(t *testing.T) {
+	t.Parallel()
+	m := buildWithheldCatalog(t)
+	res := callSearch(t, m, SearchToolsInput{ToolNames: []string{"falcon_update_hosts"}})
+
+	if len(res.Results) != 0 {
+		t.Fatalf("withheld tool must not resolve to a result, got %+v", res.Results)
+	}
+	if !strings.Contains(res.Hint, "Withheld by this server's configuration") {
+		t.Errorf("hint %q missing withheld wording", res.Hint)
+	}
+	if !strings.Contains(res.Hint, "deny-list") {
+		t.Errorf("hint %q missing the policy description", res.Hint)
+	}
+	if strings.Contains(res.Hint, "Not available on this server") {
+		t.Errorf("hint %q wrongly reports a withheld tool as unknown", res.Hint)
+	}
+}
+
+// TestExecuteToolWithheldByPolicy verifies execute_tool reports the same
+// withheld attribution: a filtered-out tool errors as configuration-withheld,
+// not as a nonexistent tool.
+func TestExecuteToolWithheldByPolicy(t *testing.T) {
+	t.Parallel()
+	m := buildWithheldCatalog(t)
+	res := callExecute(t, m, ExecuteToolInput{ToolName: "falcon_update_hosts"})
+
+	if !res.IsError {
+		t.Fatal("expected IsError result for a withheld tool")
+	}
+	text := contentText(t, res)
+	if !strings.Contains(text, "withholds it") {
+		t.Errorf("error text %q missing withheld wording", text)
+	}
+	if !strings.Contains(text, "deny-list") {
+		t.Errorf("error text %q missing the policy description", text)
 	}
 }
 

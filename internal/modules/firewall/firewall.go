@@ -144,7 +144,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Create a firewall rule group.\n\n" +
 			"Provide a name, platform, and either rules or a clone_id. Returns a list\n" +
 			"containing the created rule group object.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createFirewallRuleGroup)
 
 	base.AddTool(r, &mcp.Tool{

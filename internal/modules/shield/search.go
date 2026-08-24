@@ -73,13 +73,13 @@ type SearchChecksInput struct {
 func (m *Module) searchShieldChecks(ctx context.Context, _ *mcp.CallToolRequest, in SearchChecksInput) (*mcp.CallToolResult, base.SearchResult[*models.SecurityCheckWithComplianceGetSecurityChecks], error) {
 	var zero base.SearchResult[*models.SecurityCheckWithComplianceGetSecurityChecks]
 	p := saas_security.NewGetSecurityChecksV3ParamsWithContext(ctx)
-	p.ID = strPtr(in.ID)
-	p.Status = strPtr(in.Status)
+	p.ID = base.PtrIfSet(in.ID)
+	p.Status = base.PtrIfSet(in.Status)
 	p.Impact = m.normalizeImpact(in.Impact)
-	p.IntegrationID = strPtr(in.IntegrationID)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
 	p.Compliance = in.Compliance
-	p.CheckType = strPtr(in.CheckType)
-	p.CheckTags = strPtr(in.CheckTags)
+	p.CheckType = base.PtrIfSet(in.CheckType)
+	p.CheckTags = base.PtrIfSet(in.CheckTags)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
 
@@ -115,11 +115,11 @@ type SearchAlertsInput struct {
 func (m *Module) searchShieldAlerts(ctx context.Context, _ *mcp.CallToolRequest, in SearchAlertsInput) (*mcp.CallToolResult, base.SearchResult[*models.AlertGetAlertsResponse], error) {
 	var zero base.SearchResult[*models.AlertGetAlertsResponse]
 	p := saas_security.NewGetAlertsV3ParamsWithContext(ctx)
-	p.ID = strPtr(in.ID)
-	p.Type = strPtr(in.Type)
-	p.IntegrationID = strPtr(in.IntegrationID)
+	p.ID = base.PtrIfSet(in.ID)
+	p.Type = base.PtrIfSet(in.Type)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
 	p.Ascending = in.Ascending
-	p.LastID = strPtr(in.LastID)
+	p.LastID = base.PtrIfSet(in.LastID)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	if from, err := parseDate("from_date", in.FromDate); err != nil {
 		return nil, zero, err
@@ -158,8 +158,8 @@ type SearchUsersInput struct {
 func (m *Module) searchShieldUsers(ctx context.Context, _ *mcp.CallToolRequest, in SearchUsersInput) (*mcp.CallToolResult, base.SearchResult[*models.UserGetUserInventory], error) {
 	var zero base.SearchResult[*models.UserGetUserInventory]
 	p := saas_security.NewGetUserInventoryV3ParamsWithContext(ctx)
-	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Email = strPtr(in.Email)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
+	p.Email = base.PtrIfSet(in.Email)
 	p.PrivilegedOnly = in.PrivilegedOnly
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
@@ -191,8 +191,8 @@ type SearchDevicesInput struct {
 func (m *Module) searchShieldDevices(ctx context.Context, _ *mcp.CallToolRequest, in SearchDevicesInput) (*mcp.CallToolResult, base.SearchResult[*models.DeviceGetDeviceInventory], error) {
 	var zero base.SearchResult[*models.DeviceGetDeviceInventory]
 	p := saas_security.NewGetDeviceInventoryV3ParamsWithContext(ctx)
-	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Email = strPtr(in.Email)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
+	p.Email = base.PtrIfSet(in.Email)
 	p.PrivilegedOnly = in.PrivilegedOnly
 	p.UnassociatedDevices = in.UnassociatedDevices
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
@@ -230,14 +230,14 @@ type SearchAppsInput struct {
 func (m *Module) searchShieldApps(ctx context.Context, _ *mcp.CallToolRequest, in SearchAppsInput) (*mcp.CallToolResult, base.SearchResult[*models.AppAppInventory], error) {
 	var zero base.SearchResult[*models.AppAppInventory]
 	p := saas_security.NewGetAppInventoryParamsWithContext(ctx)
-	p.Type = strPtr(in.Type)
-	p.Status = strPtr(in.Status)
-	p.AccessLevel = strPtr(in.AccessLevel)
-	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Scopes = strPtr(in.Scopes)
-	p.Users = strPtr(in.Users)
-	p.Groups = strPtr(in.Groups)
-	p.LastActivity = strPtr(in.LastActivity)
+	p.Type = base.PtrIfSet(in.Type)
+	p.Status = base.PtrIfSet(in.Status)
+	p.AccessLevel = base.PtrIfSet(in.AccessLevel)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
+	p.Scopes = base.PtrIfSet(in.Scopes)
+	p.Users = base.PtrIfSet(in.Users)
+	p.Groups = base.PtrIfSet(in.Groups)
+	p.LastActivity = base.PtrIfSet(in.LastActivity)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
 
@@ -274,16 +274,16 @@ type SearchDataSharesInput struct {
 func (m *Module) searchShieldDataShares(ctx context.Context, _ *mcp.CallToolRequest, in SearchDataSharesInput) (*mcp.CallToolResult, base.SearchResult[*models.AssetGetAssetInventory], error) {
 	var zero base.SearchResult[*models.AssetGetAssetInventory]
 	p := saas_security.NewGetAssetInventoryV3ParamsWithContext(ctx)
-	p.IntegrationID = strPtr(in.IntegrationID)
-	p.ResourceType = strPtr(in.ResourceType)
-	p.AccessLevel = strPtr(in.AccessLevel)
-	p.ResourceName = strPtr(in.ResourceName)
-	p.ResourceOwner = strPtr(in.ResourceOwner)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
+	p.ResourceType = base.PtrIfSet(in.ResourceType)
+	p.AccessLevel = base.PtrIfSet(in.AccessLevel)
+	p.ResourceName = base.PtrIfSet(in.ResourceName)
+	p.ResourceOwner = base.PtrIfSet(in.ResourceOwner)
 	p.ResourceOwnerEnabled = in.ResourceOwnerEnabled
 	p.PasswordProtected = in.PasswordProtected
-	p.LastAccessed = strPtr(in.LastAccessed)
-	p.LastModified = strPtr(in.LastModified)
-	p.UnmanagedDomain = strPtr(in.UnmanagedDomain)
+	p.LastAccessed = base.PtrIfSet(in.LastAccessed)
+	p.LastModified = base.PtrIfSet(in.LastModified)
+	p.UnmanagedDomain = base.PtrIfSet(in.UnmanagedDomain)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
 

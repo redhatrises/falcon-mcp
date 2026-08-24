@@ -143,7 +143,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Create a Custom IOA rule group, a platform-scoped container for " +
 			"behavioral detection rules. Use falcon_get_ioa_platforms for valid platform " +
 			"values, then falcon_create_ioa_rule to add rules. Returns the created group.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createRuleGroup)
 
 	base.AddTool(r, &mcp.Tool{
@@ -151,7 +151,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Update a Custom IOA rule group's name, description, or enabled state. " +
 			"Requires the current rulegroup_version for optimistic locking — get it from " +
 			"falcon_search_ioa_rule_groups. Returns the updated group.",
-		Annotations: idempotentMutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(true),
 	}, m.updateRuleGroup)
 
 	base.AddTool(r, &mcp.Tool{
@@ -167,7 +167,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"falcon_get_ioa_rule_types first to discover rule type IDs, required fields, and " +
 			"valid disposition IDs. The field_values define the behavioral matching criteria. " +
 			"Returns the created rule.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createRule)
 
 	base.AddTool(r, &mcp.Tool{
@@ -175,7 +175,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Update a Custom IOA behavioral detection rule. Requires the rule group's " +
 			"current rulegroup_version and the rule instance_id — get both from " +
 			"falcon_search_ioa_rule_groups. Returns the updated rule.",
-		Annotations: idempotentMutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(true),
 	}, m.updateRule)
 
 	base.AddTool(r, &mcp.Tool{
@@ -185,21 +185,6 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"instance IDs. Idempotent.",
 		Annotations: base.DestructiveAnnotations(true),
 	}, m.deleteRules)
-}
-
-// idempotentMutatingAnnotations returns annotations for non-destructive update
-// tools: readOnlyHint=false, destructiveHint=false, idempotentHint=true. base
-// offers MutatingAnnotations (idempotent=false) and DestructiveAnnotations
-// (destructive=true) but not this combination, which the Python module applies
-// to its update tools. All four hints are set explicitly because MCP defaults
-// DestructiveHint to true when omitted.
-func idempotentMutatingAnnotations() *mcp.ToolAnnotations {
-	return &mcp.ToolAnnotations{
-		ReadOnlyHint:    false,
-		IdempotentHint:  true,
-		OpenWorldHint:   new(true),
-		DestructiveHint: new(false),
-	}
 }
 
 // RegisterResources publishes the rule-groups FQL guide as an MCP resource,

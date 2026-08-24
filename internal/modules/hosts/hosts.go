@@ -38,6 +38,7 @@ var Factory registry.Factory = func(d registry.Deps) base.Module {
 type hostsAPI interface {
 	QueryDevicesByFilter(params *hosts.QueryDevicesByFilterParams, opts ...hosts.ClientOption) (*hosts.QueryDevicesByFilterOK, error)
 	PostDeviceDetailsV2(params *hosts.PostDeviceDetailsV2Params, opts ...hosts.ClientOption) (*hosts.PostDeviceDetailsV2OK, error)
+	UpdateDeviceTags(params *hosts.UpdateDeviceTagsParams, opts ...hosts.ClientOption) (*hosts.UpdateDeviceTagsOK, *hosts.UpdateDeviceTagsAccepted, error)
 }
 
 // Module registers the hosts tools. It holds only the shared Falcon client and
@@ -122,6 +123,13 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: getHostDetailsDescription,
 	}
 	base.AddTool(r, detailsTool, m.getHostDetails)
+
+	tagsTool := &mcp.Tool{
+		Name:        "manage_host_grouping_tags",
+		Description: manageGroupingTagsDescription,
+		Annotations: base.MutatingAnnotations(true),
+	}
+	base.AddTool(r, tagsTool, m.manageGroupingTags)
 }
 
 // RegisterResources publishes the hosts FQL guide as an MCP resource,

@@ -103,7 +103,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Create a new NG-SIEM correlation rule that wraps a user-provided CQL query " +
 			"as a scheduled detection rule. Validate the CQL query against NG-SIEM before " +
 			"creating the rule. Returns the created rule record.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createCorrelationRule)
 
 	base.AddTool(r, &mcp.Tool{
@@ -111,7 +111,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Update an existing NG-SIEM correlation rule and auto-publish a new version " +
 			"(no separate publish step). To enable/disable a rule, set status to 'active' or " +
 			"'inactive'. Only provided fields are changed; omitted fields retain current values.",
-		Annotations: idempotentMutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(true),
 	}, m.updateCorrelationRule)
 
 	base.AddTool(r, &mcp.Tool{
@@ -139,23 +139,6 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 
 // RegisterPrompts is a no-op: the correlation_rules module exposes no prompts.
 func (m *Module) RegisterPrompts(_ *mcp.Server) {}
-
-// idempotentMutatingAnnotations returns annotations for a non-destructive
-// mutator that is safe to repeat with the same arguments (readOnlyHint=false,
-// destructiveHint=false, idempotentHint=true, openWorldHint=true). base exposes
-// helpers for non-idempotent mutators and destructive tools but not this
-// combination, which the update tool requires (a repeated update converges on
-// the same rule state).
-func idempotentMutatingAnnotations() *mcp.ToolAnnotations {
-	openWorld := true
-	destructive := false
-	return &mcp.ToolAnnotations{
-		ReadOnlyHint:    false,
-		IdempotentHint:  true,
-		OpenWorldHint:   &openWorld,
-		DestructiveHint: &destructive,
-	}
-}
 
 // SearchInput is the input for falcon_search_correlation_rules.
 type SearchInput struct {

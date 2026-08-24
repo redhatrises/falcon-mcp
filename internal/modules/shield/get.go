@@ -122,11 +122,11 @@ type GetMetricsInput struct {
 func (m *Module) getShieldPostureMetrics(ctx context.Context, _ *mcp.CallToolRequest, in GetMetricsInput) (*mcp.CallToolResult, base.SearchResult[*models.SecurityCheckMetricsGetMetrics], error) {
 	var zero base.SearchResult[*models.SecurityCheckMetricsGetMetrics]
 	p := saas_security.NewGetMetricsV3ParamsWithContext(ctx)
-	p.Status = strPtr(in.Status)
+	p.Status = base.PtrIfSet(in.Status)
 	p.Impact = m.normalizeImpact(in.Impact)
-	p.IntegrationID = strPtr(in.IntegrationID)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
 	p.Compliance = in.Compliance
-	p.CheckType = strPtr(in.CheckType)
+	p.CheckType = base.PtrIfSet(in.CheckType)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 10))
 	p.Offset = int64Ptr(in.Offset)
 
@@ -188,10 +188,10 @@ type GetActivityInput struct {
 func (m *Module) getShieldActivityMonitor(ctx context.Context, _ *mcp.CallToolRequest, in GetActivityInput) (*mcp.CallToolResult, base.SearchResult[*models.Activity2GetActivityMonitor], error) {
 	var zero base.SearchResult[*models.Activity2GetActivityMonitor]
 	p := saas_security.NewGetActivityMonitorV3ParamsWithContext(ctx)
-	p.IntegrationID = strPtr(in.IntegrationID)
-	p.Actor = strPtr(in.Actor)
-	p.Category = strPtr(in.Category)
-	p.Projection = strPtr(in.Projection)
+	p.IntegrationID = base.PtrIfSet(in.IntegrationID)
+	p.Actor = base.PtrIfSet(in.Actor)
+	p.Category = base.PtrIfSet(in.Category)
+	p.Projection = base.PtrIfSet(in.Projection)
 	p.Limit = int64Ptr(defaultLimit(in.Limit, 100))
 	p.Skip = int64Ptr(in.Skip)
 	if from, err := parseDate("from_date", in.FromDate); err != nil {
@@ -253,7 +253,7 @@ type GetIntegrationsInput struct {
 func (m *Module) getShieldIntegrations(ctx context.Context, _ *mcp.CallToolRequest, in GetIntegrationsInput) (*mcp.CallToolResult, base.SearchResult[*models.AccountIntegrationGetIntegrations], error) {
 	var zero base.SearchResult[*models.AccountIntegrationGetIntegrations]
 	p := saas_security.NewGetIntegrationsV3ParamsWithContext(ctx)
-	p.SaasID = strPtr(in.SaasID)
+	p.SaasID = base.PtrIfSet(in.SaasID)
 
 	resp, err := m.API.GetIntegrationsV3(p)
 	if e := base.APIError(err, resp, scopeShieldRead); e != nil {
