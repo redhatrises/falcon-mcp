@@ -22,20 +22,30 @@ type fakeAlerts struct {
 	queryErr   error
 	getResp    *alerts.GetV2OK
 	getErr     error
+	aggResp    *alerts.GetAggregateV2OK
+	aggErr     error
 	updateResp *alerts.UpdateV3OK
 	updateErr  error
 
-	lastUpdateBody *models.DetectsapiPatchEntitiesAlertsV3Request
-	getCalls       int
+	lastUpdateBody  *models.DetectsapiPatchEntitiesAlertsV3Request
+	lastQueryParams *alerts.QueryV2Params
+	lastAggParams   *alerts.GetAggregateV2Params
+	getCalls        int
 }
 
-func (f *fakeAlerts) QueryV2(*alerts.QueryV2Params, ...alerts.ClientOption) (*alerts.QueryV2OK, error) {
+func (f *fakeAlerts) QueryV2(p *alerts.QueryV2Params, _ ...alerts.ClientOption) (*alerts.QueryV2OK, error) {
+	f.lastQueryParams = p
 	return f.queryResp, f.queryErr
 }
 
 func (f *fakeAlerts) GetV2(p *alerts.GetV2Params, _ ...alerts.ClientOption) (*alerts.GetV2OK, error) {
 	f.getCalls++
 	return f.getResp, f.getErr
+}
+
+func (f *fakeAlerts) GetAggregateV2(p *alerts.GetAggregateV2Params, _ ...alerts.ClientOption) (*alerts.GetAggregateV2OK, error) {
+	f.lastAggParams = p
+	return f.aggResp, f.aggErr
 }
 
 func (f *fakeAlerts) UpdateV3(p *alerts.UpdateV3Params, _ ...alerts.ClientOption) (*alerts.UpdateV3OK, error) {
@@ -126,6 +136,137 @@ func TestSearchDetectionsFetchesDetails(t *testing.T) {
 	}
 	if f.getCalls != 1 {
 		t.Fatalf("expected 1 GetV2 call, got %d", f.getCalls)
+	}
+}
+
+func TestSearchDetectionsForwardsIncludeHiddenToQuery(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeAlerts{queryResp: &alerts.QueryV2OK{Payload: &models.DetectsapiAlertQueryResponse{Resources: []string{}}}}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+	hidden := false
+	_, _, err := m.searchDetections(context.Background(), nil, SearchInput{IncludeHidden: &hidden})
+	if err != nil {
+		t.Fatalf("searchDetections: %v", err)
+	}
+	if f.lastQueryParams == nil || f.lastQueryParams.IncludeHidden == nil {
+		t.Fatalf("include_hidden not forwarded to query step: %+v", f.lastQueryParams)
+	}
+	if *f.lastQueryParams.IncludeHidden != false {
+		t.Fatalf("include_hidden = %v, want false at query step", *f.lastQueryParams.IncludeHidden)
+	}
+}
+
+func TestAggregateDetectionsHappyPath(t *testing.T) {
+	t.Parallel()
+
+	name := "alert_aggregation"
+	f := &fakeAlerts{aggResp: &alerts.GetAggregateV2OK{Payload: &models.DetectsapiAggregatesResponse{
+		Resources: []*models.DetectsapiAggregationResult{{Name: &name}},
+	}}}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+	_, out, err := m.aggregateDetections(context.Background(), nil, AggregateInput{Field: "severity_name", Type: "terms"})
+	if err != nil {
+		t.Fatalf("aggregateDetections: %v", err)
+	}
+	if len(out.Resources) != 1 || out.Resources[0].Name == nil || *out.Resources[0].Name != name {
+		t.Fatalf("expected one aggregation result, got %+v", out.Resources)
+	}
+	// include_hidden defaults to true to match the console.
+	if f.lastAggParams == nil || f.lastAggParams.IncludeHidden == nil || !*f.lastAggParams.IncludeHidden {
+		t.Fatalf("include_hidden should default to true, got %+v", f.lastAggParams)
+	}
+	// The alerts body sets type/field and omits percents.
+	if len(f.lastAggParams.Body) != 1 {
+		t.Fatalf("expected single-spec body, got %d", len(f.lastAggParams.Body))
+	}
+	if got := f.lastAggParams.Body[0]; got.Type == nil || *got.Type != "terms" || got.Field == nil || *got.Field != "severity_name" {
+		t.Fatalf("body type/field not mapped: %+v", got)
+	}
+	// An unset size falls back to 10 so raw/dynamic callers match schema-aware ones.
+	if got := f.lastAggParams.Body[0]; got.Size == nil || *got.Size != 10 {
+		t.Fatalf("size should default to 10 when unset, got %+v", got.Size)
+	}
+}
+
+func TestAggregateDetectionsSizePreserved(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeAlerts{aggResp: &alerts.GetAggregateV2OK{Payload: &models.DetectsapiAggregatesResponse{
+		Resources: []*models.DetectsapiAggregationResult{},
+	}}}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+	_, _, err := m.aggregateDetections(context.Background(), nil, AggregateInput{Field: "severity_name", Type: "terms", Size: 25})
+	if err != nil {
+		t.Fatalf("aggregateDetections: %v", err)
+	}
+	if got := f.lastAggParams.Body[0]; got.Size == nil || *got.Size != 25 {
+		t.Fatalf("explicit size must be preserved, got %+v", got.Size)
+	}
+}
+
+func TestAggregateDetectionsMissingCompanion(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeAlerts{}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+	// date_histogram without interval must be rejected client-side, before any
+	// API call, as a soft-error hint.
+	_, out, err := m.aggregateDetections(context.Background(), nil, AggregateInput{Field: "timestamp", Type: "date_histogram"})
+	if err != nil {
+		t.Fatalf("aggregateDetections: %v", err)
+	}
+	if out.Hint == "" {
+		t.Fatalf("expected companion-missing hint, got %+v", out)
+	}
+	if f.lastAggParams != nil {
+		t.Fatalf("expected no API call when a required companion is missing")
+	}
+}
+
+func TestAggregateDetectionsFQLError(t *testing.T) {
+	t.Parallel()
+
+	badReq := &alerts.GetAggregateV2BadRequest{Payload: &models.DetectsapiAggregatesResponse{
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
+	}}
+	f := &fakeAlerts{aggErr: badReq}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+	_, out, err := m.aggregateDetections(context.Background(), nil, AggregateInput{Field: "status", Type: "terms", Filter: "bogus"})
+	if err != nil {
+		t.Fatalf("expected FQL error as a data result, not returned: %v", err)
+	}
+	if len(out.Errors) != 1 || out.Errors[0].Message != "invalid filter" {
+		t.Fatalf("expected FQL error detail, got %+v", out.Errors)
+	}
+	if out.FQLGuide == "" || out.Hint == "" {
+		t.Fatalf("expected fql_guide and hint to be populated")
+	}
+}
+
+func TestAggregateDetectionsNonFilterBadRequestSurfacesRaw(t *testing.T) {
+	t.Parallel()
+
+	// A 400 that blames the sort (or any non-filter field) must NOT be relabeled
+	// as an invalid-filter result; it surfaces raw through base.APIError so the
+	// caller fixes the real problem instead of a filter that is fine.
+	badReq := &alerts.GetAggregateV2BadRequest{Payload: &models.DetectsapiAggregatesResponse{
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid sort field")}},
+	}}
+	f := &fakeAlerts{aggErr: badReq}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+
+	_, out, err := m.aggregateDetections(context.Background(), nil, AggregateInput{Field: "status", Type: "terms", Sort: "severity.desc"})
+	if err == nil {
+		t.Fatalf("expected a Go error for a non-filter 400, got soft result %+v", out)
+	}
+	if len(out.Errors) != 0 || out.FQLGuide != "" {
+		t.Fatalf("non-filter 400 must not be dressed as an FQL error, got %+v", out)
 	}
 }
 

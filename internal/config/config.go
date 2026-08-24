@@ -103,8 +103,8 @@ type Config struct {
 	// UserAgent is an optional caller-supplied string appended to the API
 	// User-Agent header. Load composes the final value; see composeUserAgent.
 	UserAgent string
-	// Dynamic exposes only the three meta-tools (falcon_search_tools,
-	// falcon_execute_tool, falcon_list_enabled_modules) instead of every
+	// Dynamic exposes only the meta-tools (falcon_search_tools,
+	// falcon_execute_tool, falcon_list_enabled_tools) instead of every
 	// module's tools, so clients discover tools on demand and pay each tool's
 	// schema cost only when they call it. Off by default.
 	Dynamic bool
@@ -124,6 +124,20 @@ type Config struct {
 	// config normalizes this list but does not validate names against the real
 	// module set — that authority belongs to the mcpserver package.
 	Modules []string
+	// ReadOnly drops every mutating tool from the served surface, leaving only
+	// read-only tools. It takes precedence over Tools: a mutating tool named in
+	// the allowlist is still dropped under ReadOnly.
+	ReadOnly bool
+	// Tools is an additive allowlist of "falcon_"-prefixed tool names. When set,
+	// only the named tools are served (plus meta-tools), and a name may reference
+	// a tool whose module is not in Modules. config normalizes this list but does
+	// not validate names — that authority belongs to the mcpserver package.
+	Tools []string
+	// ExcludeTools is a denylist of "falcon_"-prefixed tool names dropped from the
+	// served surface. It overrides Tools: a tool named in both is dropped. config
+	// normalizes this list but does not validate names — that authority belongs to
+	// the mcpserver package.
+	ExcludeTools []string
 	// KeepAlive is the interval at which the server pings idle sessions to detect
 	// dead peers and hold long-lived connections open. Zero (the default)
 	// disables keepalive. It is only meaningful for the http and sse transports;
@@ -200,7 +214,9 @@ func Load(cfg Config) (*Config, error) {
 		return nil, err
 	}
 
-	cfg.Modules = normalizeModules(cfg.Modules)
+	cfg.Modules = normalizeList(cfg.Modules)
+	cfg.Tools = normalizeList(cfg.Tools)
+	cfg.ExcludeTools = normalizeList(cfg.ExcludeTools)
 
 	cfg.HostOverride = normalizeHostOverride(cfg.HostOverride)
 
@@ -310,10 +326,11 @@ func composeUserAgent(user string) string {
 	return fmt.Sprintf("falcon-mcp/%s", version.Version)
 }
 
-// normalizeModules trims each module name and drops empty entries, returning nil
-// when nothing remains. It does not validate names against the real module set:
-// config must not import mcpserver, which is the sole authority on valid names.
-func normalizeModules(names []string) []string {
+// normalizeList trims each entry and drops empties, returning nil when nothing
+// remains. It serves the module and tool-name lists alike. It does not validate
+// entries against any real set: config must not import mcpserver, which is the
+// sole authority on valid module and tool names.
+func normalizeList(names []string) []string {
 	var out []string
 	for _, n := range names {
 		if n = strings.TrimSpace(n); n != "" {

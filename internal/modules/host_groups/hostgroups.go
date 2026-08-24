@@ -117,13 +117,13 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "create_host_group",
 		Description: "Create a host group of type static, staticByID, or dynamic. A dynamic group requires an assignment_rule (host FQL); the API rejects an assignment_rule on static and staticByID groups.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createHostGroup)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "update_host_group",
 		Description: "Update a host group's name, description, or assignment_rule. Unspecified fields are left unchanged. Only set assignment_rule on dynamic groups.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.updateHostGroup)
 
 	base.AddTool(r, &mcp.Tool{
@@ -135,7 +135,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "perform_host_group_action",
 		Description: "Add or remove hosts from static host groups. The filter selects which hosts to act on using HOST/DEVICE FQL (see the hosts FQL guide). Applies to static groups only.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.performHostGroupAction)
 }
 

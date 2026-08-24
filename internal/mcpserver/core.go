@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"sort"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -18,32 +19,39 @@ type ConnectivityResult struct {
 	Connected bool `json:"connected"`
 }
 
-// ListModulesResult is the falcon_list_modules output envelope (all available
-// modules, regardless of --modules).
-type ListModulesResult struct {
-	Modules []string `json:"modules"`
+// EnabledToolsResult is the falcon_list_enabled_tools output envelope. It lists
+// the module tools that survived the tool policy (sorted names, and grouped by
+// module), plus a human-readable summary of which filters are active. It does
+// not list the core or meta tools.
+type EnabledToolsResult struct {
+	Tools         []string            `json:"tools"`
+	Total         int                 `json:"total"`
+	ByModule      map[string][]string `json:"by_module"`
+	FiltersActive string              `json:"filters_active,omitempty"`
 }
 
-// coreTools owns the three core tools. list_enabled_modules is
-// registered in both modes; check_connectivity and list_modules only in normal
+// coreTools owns the core (non-module) tools. list_enabled_tools is registered
+// in both modes; check_connectivity and list_enabled_modules only in normal
 // mode (dynamic mode keeps the context window to the three meta-tools).
 type coreTools struct {
-	enabled   []base.Module
-	available []string
-	check     ConnectivityChecker
+	enabled []base.Module
+	check   ConnectivityChecker
+	reg     *registration
+	policy  toolPolicy
 }
 
-// registerAlwaysOn registers falcon_list_enabled_modules, which is present in
-// both normal and dynamic mode (dynamic's no-results hint references it).
+// registerAlwaysOn registers falcon_list_enabled_tools, which is present in both
+// normal and dynamic mode so a client can always see which tools survived the
+// policy without loading their schemas.
 func (c *coreTools) registerAlwaysOn(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
-		Name:        "list_enabled_modules",
-		Description: "List the Falcon modules enabled on this server.",
-	}, c.listEnabledModules)
+		Name:        "list_enabled_tools",
+		Description: "List the Falcon tools enabled on this server, grouped by module, with a summary of any active tool filters.",
+	}, c.listEnabledTools)
 }
 
-// registerNormalOnly registers falcon_check_connectivity and falcon_list_modules,
-// which are exposed only outside dynamic mode.
+// registerNormalOnly registers falcon_check_connectivity and
+// falcon_list_enabled_modules, which are exposed only outside dynamic mode.
 func (c *coreTools) registerNormalOnly(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "check_connectivity",
@@ -51,9 +59,9 @@ func (c *coreTools) registerNormalOnly(r base.Registrar) {
 	}, c.checkConnectivity)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "list_modules",
-		Description: "List all available modules in the falcon-mcp server.",
-	}, c.listModules)
+		Name:        "list_enabled_modules",
+		Description: "List the Falcon modules enabled on this server.",
+	}, c.listEnabledModules)
 }
 
 func (c *coreTools) checkConnectivity(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ConnectivityResult, error) {
@@ -64,16 +72,32 @@ func (c *coreTools) checkConnectivity(ctx context.Context, _ *mcp.CallToolReques
 	return nil, ConnectivityResult{Connected: connected}, nil
 }
 
-func (c *coreTools) listModules(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, ListModulesResult, error) {
-	// Copy so callers cannot mutate the shared available slice.
-	mods := make([]string, len(c.available))
-	copy(mods, c.available)
-	return nil, ListModulesResult{Modules: mods}, nil
+// listEnabledTools implements falcon_list_enabled_tools. It reports the module
+// tools that survived the policy — a flat sorted list and a per-module grouping
+// — plus a description of any active filters. It reads the registration lazily,
+// which is fully populated by the time any request arrives.
+func (c *coreTools) listEnabledTools(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, EnabledToolsResult, error) {
+	byModule := make(map[string][]string, len(c.reg.kept))
+	var all []string
+	for mod, names := range c.reg.kept {
+		sorted := make([]string, len(names))
+		copy(sorted, names)
+		sort.Strings(sorted)
+		byModule[mod] = sorted
+		all = append(all, names...)
+	}
+	sort.Strings(all)
+
+	res := EnabledToolsResult{Tools: all, Total: len(all), ByModule: byModule}
+	if c.policy.active() {
+		res.FiltersActive = c.policy.describe()
+	}
+	return nil, res, nil
 }
 
 // listEnabledModules implements falcon_list_enabled_modules. It reports the
-// enabled modules (honoring --modules), each with its name and description.
-// The shape matches the dynamic-mode envelope (name + description + total).
+// enabled modules (honoring --modules), each with its name and description. The
+// shape matches the dynamic-mode envelope (name + description + total).
 func (c *coreTools) listEnabledModules(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, EnabledModulesResult, error) {
 	mods := make([]ModuleInfo, len(c.enabled))
 	for i, mod := range c.enabled {

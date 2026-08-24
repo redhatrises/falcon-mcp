@@ -704,26 +704,28 @@ func TestInferOutputSchemaAnyIsNil(t *testing.T) {
 }
 
 // TestMutatingAnnotationsComplete verifies non-destructive mutator helpers set
-// all four MCP hints explicitly. DestructiveHint must be a non-nil false: the
-// protocol defaults omitted DestructiveHint to true.
+// all four MCP hints explicitly and honor the idempotent flag. DestructiveHint
+// must be a non-nil false: the protocol defaults omitted DestructiveHint to true.
 func TestMutatingAnnotationsComplete(t *testing.T) {
 	t.Parallel()
 
-	a := MutatingAnnotations()
-	if a == nil {
-		t.Fatal("MutatingAnnotations returned nil")
-	}
-	if a.ReadOnlyHint {
-		t.Error("ReadOnlyHint = true, want false")
-	}
-	if a.IdempotentHint {
-		t.Error("IdempotentHint = true, want false")
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("DestructiveHint = %v, want non-nil false", a.DestructiveHint)
-	}
-	if a.OpenWorldHint == nil || !*a.OpenWorldHint {
-		t.Errorf("OpenWorldHint = %v, want non-nil true", a.OpenWorldHint)
+	for _, idempotent := range []bool{false, true} {
+		a := MutatingAnnotations(idempotent)
+		if a == nil {
+			t.Fatal("MutatingAnnotations returned nil")
+		}
+		if a.ReadOnlyHint {
+			t.Error("ReadOnlyHint = true, want false")
+		}
+		if a.IdempotentHint != idempotent {
+			t.Errorf("IdempotentHint = %v, want %v", a.IdempotentHint, idempotent)
+		}
+		if a.DestructiveHint == nil || *a.DestructiveHint {
+			t.Errorf("DestructiveHint = %v, want non-nil false", a.DestructiveHint)
+		}
+		if a.OpenWorldHint == nil || !*a.OpenWorldHint {
+			t.Errorf("OpenWorldHint = %v, want non-nil true", a.OpenWorldHint)
+		}
 	}
 }
 

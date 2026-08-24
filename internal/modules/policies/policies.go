@@ -236,7 +236,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"except content_update) a platform_name. Detailed per-type settings construction is out of scope; " +
 			"prefer cloning an existing policy with clone_id then adjusting via falcon_update_policy. New " +
 			"policies are created disabled. Returns the created policy record.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createPolicy)
 
 	base.AddTool(r, &mcp.Tool{
@@ -244,7 +244,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Update an existing host-based policy of the given policy_type. Provide the policy id plus " +
 			"any fields to change (name, description, settings). platform_name is not updatable after creation. " +
 			"Uses PATCH semantics — unspecified fields are left unchanged. Returns the updated policy record.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.updatePolicy)
 
 	base.AddTool(r, &mcp.Tool{
@@ -261,7 +261,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"attach/detach host groups or rule groups, or (content_update only) content overrides. action_name " +
 			"is validated per type. The add/remove-host-group and add/remove-rule-group actions require a " +
 			"group_id. Returns the updated policy records.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.performPolicyAction)
 
 	base.AddTool(r, &mcp.Tool{
@@ -269,7 +269,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Set the precedence (evaluation order) of policies for a platform. The ids list must be the " +
 			"COMPLETE ordered set of non-Default policies for the platform, highest precedence first; partial " +
 			"lists are rejected. platform_name is required for every type except content_update. Returns the API response.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.setPolicyPrecedence)
 }
 
