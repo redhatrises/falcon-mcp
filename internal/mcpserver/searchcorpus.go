@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
@@ -12,14 +13,89 @@ import (
 // catalog keys tools by their prefixed name; lookup also accepts the bare name.
 const toolNamePrefix = "falcon_"
 
+// nonAlnum splits identifiers and queries on runs of non-alphanumeric
+// characters, so "search-hosts" and "search_hosts" tokenize identically.
+var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Relative ranking weights. The gap between tiers exceeds the token count any
+// realistic query carries, so a name-word match outranks any number of
+// description matches; a token that hits nothing scores nothing.
+const (
+	scoreExactName       = 1000
+	scoreNameWord        = 10
+	scoreNameSubstring   = 5
+	scoreModuleWord      = 3
+	scoreModuleSubstring = 2
+	scoreDescription     = 1
+)
+
+// words splits text into the set of its lowercase alphanumeric words.
+func words(text string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, w := range nonAlnum.Split(strings.ToLower(text), -1) {
+		if w != "" {
+			out[w] = struct{}{}
+		}
+	}
+	return out
+}
+
+// wordsList returns the deduped lowercase alphanumeric words of text in order,
+// for iterating query tokens.
+func wordsList(text string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, w := range nonAlnum.Split(strings.ToLower(text), -1) {
+		if w == "" {
+			continue
+		}
+		if _, dup := seen[w]; dup {
+			continue
+		}
+		seen[w] = struct{}{}
+		out = append(out, w)
+	}
+	return out
+}
+
+// normalizeIdentifier reduces a name to lowercase alphanumerics, dropping
+// separators, so "Host_Groups", "host-groups", and "hostgroups" share a key.
+func normalizeIdentifier(name string) string {
+	return nonAlnum.ReplaceAllString(strings.ToLower(name), "")
+}
+
+// containsAll reports whether corpus contains every token as a substring.
+func containsAll(corpus string, tokens []string) bool {
+	for _, t := range tokens {
+		if !strings.Contains(corpus, t) {
+			return false
+		}
+	}
+	return true
+}
+
+// containsAny reports whether corpus contains at least one token as a substring.
+func containsAny(corpus string, tokens []string) bool {
+	for _, t := range tokens {
+		if strings.Contains(corpus, t) {
+			return true
+		}
+	}
+	return false
+}
+
 // paramSummary describes one tool parameter for search results. It mirrors
 // upstream falcon-mcp's per-parameter summary: type, whether it is required,
-// and its description.
+// its description, and any examples. Examples are populated only for the
+// full-schema path (falcon_search_tools with tool_names); the lean discovery
+// path omits the whole parameter list, so it never carries examples, matching
+// upstream's summarize_parameters vs _format_entry split.
 type paramSummary struct {
 	Name        string `json:"name"`
 	Type        string `json:"type,omitempty"`
 	Required    bool   `json:"required"`
 	Description string `json:"description,omitempty"`
+	Examples    []any  `json:"examples,omitempty"`
 }
 
 // paramSummaries extracts the top-level parameters from a tool's inferred input
@@ -50,6 +126,9 @@ func paramSummaries(schema *jsonschema.Schema) []paramSummary {
 		if p != nil {
 			summary.Type = p.Type
 			summary.Description = p.Description
+			if len(p.Examples) > 0 {
+				summary.Examples = p.Examples
+			}
 		}
 		out = append(out, summary)
 	}
@@ -70,4 +149,61 @@ func searchCorpus(tool *mcp.Tool, module string, params []paramSummary) string {
 		b.WriteString(p.Name)
 	}
 	return strings.ToLower(b.String())
+}
+
+// deriveRanking populates the fields score reads — the name and module word
+// sets and normalized keys — from the entry's tool name and module. It is
+// called once at registration so search does not re-tokenize on every query.
+func (ce *catalogEntry) deriveRanking() {
+	name := strings.ToLower(ce.tool.Name)
+	ce.unprefixedName = strings.TrimPrefix(name, toolNamePrefix)
+	ce.nameWords = words(ce.unprefixedName)
+	// Both spellings are an exact hit, so a query can name the tool with or
+	// without the server's prefix.
+	ce.nameKey = map[string]struct{}{
+		normalizeIdentifier(name):              {},
+		normalizeIdentifier(ce.unprefixedName): {},
+	}
+	ce.moduleWords = words(ce.module)
+	ce.moduleKey = normalizeIdentifier(ce.module)
+}
+
+// score ranks ce against a tokenized query; higher sorts earlier. It returns
+// (matched, strength): matched is how many query tokens hit any field — the
+// primary key, so a tool covering more of the query outranks one covering less
+// wherever the hits land. strength is the weighted sum within that coverage,
+// each token scored once at the strongest field it hits, so a tool named for
+// the query outranks one that only mentions it in prose. queryKey is the whole
+// normalized query, matched against the name key for the exact-name
+// short-circuit. A token that hits nothing adds to neither total.
+func (ce catalogEntry) score(tokens []string, queryKey string) (matched, strength int) {
+	if queryKey != "" {
+		if _, ok := ce.nameKey[queryKey]; ok {
+			return len(tokens) + 1, scoreExactName
+		}
+	}
+	for _, token := range tokens {
+		switch {
+		case setHas(ce.nameWords, token):
+			strength += scoreNameWord
+		case strings.Contains(ce.unprefixedName, token):
+			strength += scoreNameSubstring
+		case setHas(ce.moduleWords, token):
+			strength += scoreModuleWord
+		case strings.Contains(ce.moduleKey, token):
+			strength += scoreModuleSubstring
+		case strings.Contains(ce.corpus, token):
+			strength += scoreDescription
+		default:
+			continue
+		}
+		matched++
+	}
+	return matched, strength
+}
+
+// setHas reports membership in a string set.
+func setHas(s map[string]struct{}, k string) bool {
+	_, ok := s[k]
+	return ok
 }

@@ -199,7 +199,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"for executing read-only commands. Use queue_offline=true if the host may be offline. " +
 			"Returns session records containing the session_id needed for subsequent commands.",
 		InputSchema: initSessionSchema,
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.initSession)
 
 	base.AddTool(r, &mcp.Tool{
@@ -207,7 +207,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Refresh an RTR session timeout for a single host, keeping an existing session " +
 			"alive by resetting its inactivity timer. Use this to prevent session expiration during " +
 			"long investigations.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.pulseSession)
 
 	base.AddTool(r, &mcp.Tool{
@@ -216,7 +216,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"commands (ls, ps, cat, filehash, reg). Does not expose admin or remediation commands. " +
 			"Returns command records containing a cloud_request_id for polling output via " +
 			"falcon_check_rtr_command_status.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.executeReadOnlyCommand)
 
 	base.AddTool(r, &mcp.Tool{
@@ -226,7 +226,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"the command output directly and do not need to manage a cloud_request_id. Limited to " +
 			"read-only commands; it does not expose RTR admin or remediation APIs.",
 		InputSchema: waitSchema,
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.runReadOnlyCommandAndWait)
 
 	base.AddTool(r, &mcp.Tool{

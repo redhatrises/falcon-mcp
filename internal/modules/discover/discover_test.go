@@ -443,7 +443,7 @@ func TestSearchUnmanagedAssetsMalformedFilterSoftError(t *testing.T) {
 // TestScopedFilter exercises filter scoping directly, covering the accept path
 // where paren depth rises and returns to zero (which the handler tests reach
 // only incidentally) alongside each rejection class. Rejections must surface
-// errInvalidFilter and must not return a filter.
+// base.ErrInvalidFilter and must not return a filter.
 func TestScopedFilter(t *testing.T) {
 	t.Parallel()
 
@@ -467,8 +467,8 @@ func TestScopedFilter(t *testing.T) {
 			t.Parallel()
 			got, err := scopedFilter(tc.filter)
 			if tc.wantErr {
-				if !errors.Is(err, errInvalidFilter) {
-					t.Fatalf("err = %v, want errInvalidFilter", err)
+				if !errors.Is(err, base.ErrInvalidFilter) {
+					t.Fatalf("err = %v, want base.ErrInvalidFilter", err)
 				}
 				if got != "" {
 					t.Errorf("filter = %q, want empty on rejection", got)
@@ -523,8 +523,8 @@ func FuzzScopedFilterCannotEscapeScope(f *testing.F) {
 
 // hasTopLevelComma reports whether s contains a , at paren depth 0, ignoring
 // single-quoted values. It is deliberately written independently of
-// checkFilterSyntax so the fuzz target does not assert a function against its
-// own logic.
+// base.CheckFilterSyntax so the fuzz target does not assert a function against
+// its own logic.
 func hasTopLevelComma(s string) bool {
 	depth, quoted := 0, false
 	for _, r := range s {

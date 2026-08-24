@@ -206,7 +206,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "launch_scheduled_report",
 		Description: launchScheduledReportDescription,
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.launchScheduledReport)
 
 	base.AddTool(r, &mcp.Tool{

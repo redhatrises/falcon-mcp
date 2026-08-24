@@ -59,10 +59,17 @@ func serve(ctx context.Context, cfg *config.Config) error {
 			slog.Warn("ops endpoint bound to a non-loopback address; it is unauthenticated and intended for debugging only — restrict access with firewall rules",
 				"endpoint", ops.name, "addr", ops.addr)
 		}
-		if err := startOps(ctx, ops.name, ops.addr, ops.handler, cfg.IdleTimeout); err != nil {
+		if err := startOps(ctx, opsEndpoint{
+			name:        ops.name,
+			addr:        ops.addr,
+			handler:     ops.handler,
+			idleTimeout: cfg.IdleTimeout,
+		}); err != nil {
 			return err
 		}
 	}
+
+	warnIfOpenBind(cfg)
 
 	switch cfg.Transport {
 	case "stdio":
@@ -100,34 +107,55 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	}
 }
 
-// startOps binds addr and serves h on it in a goroutine tied to ctx when addr
-// is non-empty; an empty addr disables the endpoint and starts no listener. The
-// bind happens synchronously so a bind failure (port in use, permission denied)
-// is returned to the caller and aborts startup rather than being lost in a
-// background goroutine — an ops listener that never comes up must not look
-// healthy. A serve failure after a successful bind is only logged. name labels
-// the endpoint in logs.
-func startOps(ctx context.Context, name, addr string, h http.Handler, idle time.Duration) error {
-	if addr == "" {
+// opsEndpoint describes one opt-in ops listener (health, metrics, pprof). name
+// labels the endpoint in logs; an empty addr disables it.
+type opsEndpoint struct {
+	name        string
+	addr        string
+	handler     http.Handler
+	idleTimeout time.Duration
+}
+
+// startOps binds ops.addr and serves ops.handler on it in a goroutine tied to
+// ctx when the addr is non-empty; an empty addr disables the endpoint and starts
+// no listener. The bind happens synchronously so a bind failure (port in use,
+// permission denied) is returned to the caller and aborts startup rather than
+// being lost in a background goroutine — an ops listener that never comes up must
+// not look healthy. A serve failure after a successful bind is only logged.
+func startOps(ctx context.Context, ops opsEndpoint) error {
+	if ops.addr == "" {
 		return nil
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp", ops.addr)
 	if err != nil {
-		return fmt.Errorf("bind %s endpoint %q: %w", name, addr, err)
+		return fmt.Errorf("bind %s endpoint %q: %w", ops.name, ops.addr, err)
 	}
-	slog.Info(fmt.Sprintf("falcon-mcp %s endpoint", name), "endpoint", name, "addr", addr)
+	slog.Info(fmt.Sprintf("falcon-mcp %s endpoint", ops.name), "endpoint", ops.name, "addr", ops.addr)
 	go func() {
 		if err := serveHTTP(ctx, httpServer{
-			endpoint:    name,
-			addr:        addr,
-			handler:     h,
-			idleTimeout: idle,
+			endpoint:    ops.name,
+			addr:        ops.addr,
+			handler:     ops.handler,
+			idleTimeout: ops.idleTimeout,
 			listener:    ln,
 		}); err != nil {
-			slog.Error("ops endpoint exited", "endpoint", name, "err", err)
+			slog.Error("ops endpoint exited", "endpoint", ops.name, "err", err)
 		}
 	}()
 	return nil
+}
+
+// warnIfOpenBind emits a startup warning when a network transport binds a
+// non-loopback address without an API key, leaving the MCP endpoint reachable
+// off the local machine with no authentication. It does not change binding
+// behavior — it only warns. stdio has no listener and a set API key or a
+// loopback bind both close the exposure, so those cases stay quiet.
+func warnIfOpenBind(cfg *config.Config) {
+	if cfg.Transport == "stdio" || cfg.APIKey != "" || isLoopbackAddr(cfg.HTTPAddr) {
+		return
+	}
+	slog.Warn("network transport bound to a non-loopback address without an API key: the endpoint is reachable on the network with no authentication — set --api-key (or FALCON_MCP_API_KEY) when binding beyond loopback",
+		"transport", cfg.Transport, "addr", cfg.HTTPAddr)
 }
 
 // isLoopbackAddr reports whether addr binds only to the loopback interface, so

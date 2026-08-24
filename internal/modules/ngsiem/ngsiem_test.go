@@ -128,7 +128,7 @@ func TestSearchNGSIEMSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	if out.Total != 2 || len(out.Resources) != 2 {
+	if out.Total != 2 || len(out.Results) != 2 {
 		t.Fatalf("expected 2 events, got %+v", out)
 	}
 
@@ -149,9 +149,9 @@ func TestSearchNGSIEMSuccess(t *testing.T) {
 		t.Fatalf("unexpected poll call: %+v", poll)
 	}
 
-	first, ok := out.Resources[0].(map[string]any)
+	first, ok := out.Results[0].(map[string]any)
 	if !ok || first["aid"] != "agent-1" {
-		t.Fatalf("unexpected first event: %#v", out.Resources[0])
+		t.Fatalf("unexpected first event: %#v", out.Results[0])
 	}
 }
 
@@ -372,8 +372,8 @@ func TestSearchNGSIEMOptionalEndAndRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	if out.Resources == nil || len(out.Resources) != 0 || out.Total != 0 {
-		t.Fatalf("expected empty non-nil resources, got %+v", out)
+	if out.Results == nil || len(out.Results) != 0 || out.Total != 0 {
+		t.Fatalf("expected empty non-nil results, got %+v", out)
 	}
 
 	start := f.calls[0]
@@ -476,11 +476,12 @@ func TestSearchNGSIEMBadEndTimestamp(t *testing.T) {
 }
 
 // TestSearchNGSIEMContextCancel verifies the poll loop honors context
-// cancellation instead of waiting out the timeout.
+// cancellation instead of waiting out the timeout, and stops the server-side job
+// on the way out so it is not abandoned.
 func TestSearchNGSIEMContextCancel(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeNGSIEM{startResp: startOK("job-ctx"), pollResps: []*ngsiem.GetSearchStatusV1OK{pollNotDone()}}
+	f := &fakeNGSIEM{startResp: startOK("job-ctx"), pollResps: []*ngsiem.GetSearchStatusV1OK{pollNotDone()}, stopResp: &ngsiem.StopSearchV1OK{}}
 	m := &Module{API: f, Logger: testLogger, PollInterval: time.Hour, Timeout: time.Hour}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -492,6 +493,55 @@ func TestSearchNGSIEMContextCancel(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	// The cancelled context must not prevent the best-effort cleanup: the stop
+	// runs on a short detached context.
+	last := f.calls[len(f.calls)-1]
+	if last.op != "StopSearchV1" || last.id != "job-ctx" || last.repository != "search-all" {
+		t.Fatalf("expected a StopSearchV1 cleanup call on cancel, got %+v", last)
+	}
+}
+
+// TestRegisterResourcesServesCQLGuide verifies the module serves exactly the CQL
+// authoring guide resource, at the expected URI and name, with the embedded guide
+// as its body.
+func TestRegisterResourcesServesCQLGuide(t *testing.T) {
+	t.Parallel()
+
+	m := &Module{Logger: testLogger}
+	testutil.AssertServesFQLGuide(context.Background(), t, m.RegisterResources,
+		testutil.FQLGuideExpectation{
+			Name: "falcon_search_ngsiem_cql_guide",
+			URI:  cqlGuideURI,
+			Body: cqlGuide,
+		})
+}
+
+// TestSearchNGSIEMEmptyResultHint verifies that a job completing with no events
+// returns the CQL guide and repair hint alongside the empty result, so a caller
+// can self-correct a query the API silently free-text-matched to nothing.
+func TestSearchNGSIEMEmptyResultHint(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeNGSIEM{startResp: startOK("job-empty"), pollResps: []*ngsiem.GetSearchStatusV1OK{pollDone()}}
+	m := newModule(f)
+
+	const query = "#event_simpleName=NopeNotAField"
+	_, out, err := m.searchNGSIEM(context.Background(), nil, SearchInput{
+		QueryString: query,
+		Start:       "2025-01-01T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("searchNGSIEM: %v", err)
+	}
+	if out.Hint != cqlEmptyHint {
+		t.Errorf("Hint = %q, want cqlEmptyHint", out.Hint)
+	}
+	if out.QueryUsed != query {
+		t.Errorf("QueryUsed = %q, want %q", out.QueryUsed, query)
+	}
+	if out.CQLGuide != cqlGuide {
+		t.Errorf("CQLGuide = %d bytes, want the embedded guide (%d bytes)", len(out.CQLGuide), len(cqlGuide))
 	}
 }
 

@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -38,6 +39,9 @@ func (stubHosts) QueryDevicesByFilter(*gofalconhosts.QueryDevicesByFilterParams,
 }
 func (stubHosts) PostDeviceDetailsV2(*gofalconhosts.PostDeviceDetailsV2Params, ...gofalconhosts.ClientOption) (*gofalconhosts.PostDeviceDetailsV2OK, error) {
 	return &gofalconhosts.PostDeviceDetailsV2OK{Payload: &models.DeviceapiDeviceDetailsResponseSwagger{}}, nil
+}
+func (stubHosts) UpdateDeviceTags(*gofalconhosts.UpdateDeviceTagsParams, ...gofalconhosts.ClientOption) (*gofalconhosts.UpdateDeviceTagsOK, *gofalconhosts.UpdateDeviceTagsAccepted, error) {
+	return &gofalconhosts.UpdateDeviceTagsOK{Payload: &models.DeviceapiUpdateDeviceTagsSwaggerV1{}}, nil, nil
 }
 
 type stubGroups struct{}
@@ -395,12 +399,24 @@ func connectNewServer(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 }
 
 // TestInitializeInstructions asserts the initialize response carries exactly the
-// wired serverInstructions value. It is intentionally the empty stub today; when
-// real guidance is written into serverInstructions this assertion tracks it.
+// wired serverInstructions value for each transport mode: normal mode gets the
+// base instructions, dynamic mode appends the search/execute loop guidance.
 func TestInitializeInstructions(t *testing.T) {
-	cs := connectNewServer(t, &config.Config{})
-	if got := cs.InitializeResult().Instructions; got != serverInstructions {
-		t.Fatalf("instructions = %q, want %q", got, serverInstructions)
+	tests := []struct {
+		name    string
+		dynamic bool
+	}{
+		{name: "normal mode", dynamic: false},
+		{name: "dynamic mode", dynamic: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := connectNewServer(t, &config.Config{Dynamic: tc.dynamic})
+			want := serverInstructions(tc.dynamic)
+			if got := cs.InitializeResult().Instructions; got != want {
+				t.Fatalf("instructions = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
@@ -433,5 +449,121 @@ func TestPromptsEndToEnd(t *testing.T) {
 	}
 	if len(get.Messages) == 0 {
 		t.Fatalf("prompt returned no messages")
+	}
+}
+
+// listAdvertisedTools connects to cs and returns the advertised tool names as a
+// set, failing the test on error.
+func listAdvertisedTools(t *testing.T, cs *mcp.ClientSession) map[string]bool {
+	t.Helper()
+	tools, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	got := map[string]bool{}
+	for _, tool := range tools.Tools {
+		got[tool.Name] = true
+	}
+	return got
+}
+
+// TestCoreToolSurfaceEndToEnd pins the restructured meta-tool surface on a full
+// server: the always-on falcon_list_enabled_tools and the normal-only
+// falcon_check_connectivity/falcon_list_enabled_modules are advertised, and the
+// removed falcon_list_modules is gone.
+func TestCoreToolSurfaceEndToEnd(t *testing.T) {
+	cs := connectNewServer(t, &config.Config{Modules: []string{"hosts"}})
+	got := listAdvertisedTools(t, cs)
+
+	for _, present := range []string{"falcon_list_enabled_tools", "falcon_check_connectivity", "falcon_list_enabled_modules"} {
+		if !got[present] {
+			t.Errorf("core tool %q not advertised", present)
+		}
+	}
+	if got["falcon_list_modules"] {
+		t.Errorf("removed tool falcon_list_modules is still advertised")
+	}
+}
+
+// TestAggregateToolsEndToEnd asserts the aggregate tools ported in items B and D
+// are advertised by their enabling modules on a full server.
+func TestAggregateToolsEndToEnd(t *testing.T) {
+	cs := connectNewServer(t, &config.Config{Modules: []string{"detections", "cases"}})
+	got := listAdvertisedTools(t, cs)
+
+	for _, name := range []string{
+		"falcon_aggregate_detections",
+		"falcon_aggregate_case_slas",
+		"falcon_aggregate_case_templates",
+		"falcon_aggregate_case_access_tags",
+		"falcon_aggregate_case_notification_groups",
+		"falcon_aggregate_case_file_details",
+	} {
+		if !got[name] {
+			t.Errorf("aggregate tool %q not advertised", name)
+		}
+	}
+}
+
+// TestReadOnlyPolicyEndToEnd asserts --read-only drops mutating module tools
+// while keeping read-only ones, over a full server.
+func TestReadOnlyPolicyEndToEnd(t *testing.T) {
+	cs := connectNewServer(t, &config.Config{Modules: []string{"hostgroups"}, ReadOnly: true})
+	got := listAdvertisedTools(t, cs)
+
+	if !got["falcon_search_host_groups"] {
+		t.Errorf("read-only search tool falcon_search_host_groups dropped, want kept")
+	}
+	for _, mutating := range []string{"falcon_create_host_group", "falcon_delete_host_groups", "falcon_perform_host_group_action"} {
+		if got[mutating] {
+			t.Errorf("mutating tool %q advertised under --read-only, want dropped", mutating)
+		}
+	}
+}
+
+// TestToolAllowlistEndToEnd asserts --tools without --modules yields exactly the
+// named tools (plus the always-on core tool), pulling a tool from a module that
+// was never wholesale-enabled.
+func TestToolAllowlistEndToEnd(t *testing.T) {
+	cs := connectNewServer(t, &config.Config{Tools: []string{"falcon_search_hosts"}})
+	got := listAdvertisedTools(t, cs)
+
+	if !got["falcon_search_hosts"] {
+		t.Errorf("allow-listed tool falcon_search_hosts not advertised")
+	}
+	// A sibling tool from the same module is not allow-listed, so it must be absent.
+	if got["falcon_get_host_details"] {
+		t.Errorf("non-allow-listed tool falcon_get_host_details advertised, want absent")
+	}
+	// A tool from an unrelated module must be absent too.
+	if got["falcon_search_detections"] {
+		t.Errorf("tool from unlisted module advertised, want absent")
+	}
+	// The always-on core tool is still present.
+	if !got["falcon_list_enabled_tools"] {
+		t.Errorf("always-on falcon_list_enabled_tools not advertised under allow-list")
+	}
+}
+
+// TestToolDenylistEndToEnd asserts --exclude-tools drops a named tool while
+// leaving its module's other tools in place.
+func TestToolDenylistEndToEnd(t *testing.T) {
+	cs := connectNewServer(t, &config.Config{Modules: []string{"hosts"}, ExcludeTools: []string{"falcon_get_host_details"}})
+	got := listAdvertisedTools(t, cs)
+
+	if got["falcon_get_host_details"] {
+		t.Errorf("deny-listed tool falcon_get_host_details advertised, want dropped")
+	}
+	if !got["falcon_search_hosts"] {
+		t.Errorf("non-deny-listed tool falcon_search_hosts dropped, want kept")
+	}
+}
+
+// TestUnknownToolNameRejected asserts an allow/deny-list naming no registered
+// tool fails New with a wrapped ErrUnknownToolName.
+func TestUnknownToolNameRejected(t *testing.T) {
+	_, err := New(&config.Config{Tools: []string{"falcon_no_such_tool"}}, &client.CrowdStrikeAPISpecification{})
+	if !errors.Is(err, ErrUnknownToolName) {
+		t.Fatalf("err = %v, want ErrUnknownToolName", err)
 	}
 }

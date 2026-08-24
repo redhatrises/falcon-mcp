@@ -153,7 +153,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"honored only for 'ml' and 'certificate'; the 'ioa' and 'sensor_visibility' APIs have no such " +
 			"field, so applied_globally:true is rejected for those types rather than silently narrowing " +
 			"the exclusion's scope — use host_groups instead. Returns the created exclusion record(s).",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createExclusion)
 
 	base.AddTool(r, &mcp.Tool{
@@ -162,7 +162,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"same fields used when creating that type. All four types update via HTTP PATCH. As with " +
 			"create, applied_globally:true is rejected for 'ioa' and 'sensor_visibility'. Returns the " +
 			"updated exclusion record(s).",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.updateExclusion)
 
 	base.AddTool(r, &mcp.Tool{

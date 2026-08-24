@@ -147,13 +147,15 @@ func readOnlyAnnotations() *mcp.ToolAnnotations {
 // MutatingAnnotations returns annotations for non-destructive mutators
 // (create/update/action). All four MCP hints are set explicitly: the protocol
 // defaults DestructiveHint to true when omitted, so a partial override would
-// incorrectly advertise non-destructive tools as destructive.
+// incorrectly advertise non-destructive tools as destructive. idempotent should
+// be true when repeating the call with the same arguments has no additional
+// effect (e.g. a set-membership tag update).
 //
-//	readOnlyHint=false, destructiveHint=false, idempotentHint=false, openWorldHint=true
-func MutatingAnnotations() *mcp.ToolAnnotations {
+//	readOnlyHint=false, destructiveHint=false, openWorldHint=true
+func MutatingAnnotations(idempotent bool) *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{
 		ReadOnlyHint:    false,
-		IdempotentHint:  false,
+		IdempotentHint:  idempotent,
 		OpenWorldHint:   new(true),
 		DestructiveHint: new(false),
 	}

@@ -38,6 +38,7 @@ const alertBatchSize = 1000
 type alertsAPI interface {
 	QueryV2(params *alerts.QueryV2Params, opts ...alerts.ClientOption) (*alerts.QueryV2OK, error)
 	GetV2(params *alerts.GetV2Params, opts ...alerts.ClientOption) (*alerts.GetV2OK, error)
+	GetAggregateV2(params *alerts.GetAggregateV2Params, opts ...alerts.ClientOption) (*alerts.GetAggregateV2OK, error)
 	UpdateV3(params *alerts.UpdateV3Params, opts ...alerts.ClientOption) (*alerts.UpdateV3OK, error)
 }
 
@@ -90,9 +91,17 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	}, m.getDetectionDetails)
 
 	base.AddTool(r, &mcp.Tool{
+		Name: "aggregate_detections",
+		Description: "Count and summarize detections (also called alerts) without retrieving each record. " +
+			"Use this for \"how many\" and \"top N\" questions — alerts per severity, status, tactic, or host, distinct host counts, and alert volume over time — instead of paging through falcon_search_detections. Consult falcon://detections/search/fql-guide before constructing filter expressions. " +
+			"Returns one aggregation per request holding `buckets`, which key on `label` with a `count`; single-value aggregations (`cardinality`, `max`, `min`, `avg`, `sum`) report their answer as `value` instead.",
+		InputSchema: aggregateDetectionsSchema,
+	}, m.aggregateDetections)
+
+	base.AddTool(r, &mcp.Tool{
 		Name:        "update_detections",
 		Description: "Update one or more detections/alerts: status, assignment, comments, tags, or UI visibility.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.updateDetections)
 }
 
@@ -138,6 +147,9 @@ func (m *Module) searchDetections(ctx context.Context, req *mcp.CallToolRequest,
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
+	}
+	if in.IncludeHidden != nil {
+		params.IncludeHidden = in.IncludeHidden
 	}
 
 	queryResp, err := m.API.QueryV2(params)

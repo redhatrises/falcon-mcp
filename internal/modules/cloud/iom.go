@@ -19,6 +19,9 @@ type detectionsAPI interface {
 }
 
 // SearchIOMFindingsInput is the input for falcon_search_iom_findings.
+//
+// Pagination is offset-based: pass the starting index of the overall result set
+// to skip earlier findings, alongside limit to size each page.
 type SearchIOMFindingsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter. See the fql-guide resource for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of IOM findings to return"`
@@ -29,6 +32,7 @@ type SearchIOMFindingsInput struct {
 var searchIOMFindingsSchema = base.SchemaFor[SearchIOMFindingsInput](func(s *jsonschema.Schema) {
 	s.Properties["filter"].Description = iomFindingsFilterDescription
 	s.Properties["sort"].Description = iomFindingsSortDescription
+	s.Properties["offset"].Description = iomFindingsOffsetDescription
 	limitBounds(1000, 100)(s)
 })
 

@@ -168,10 +168,13 @@ func registerFlags(cmd *cobra.Command) {
 	f.String("metrics-addr", "", "address for the /metrics endpoint; empty disables")
 	f.String("pprof-addr", "", "address for /debug/pprof profiling; empty disables")
 	f.String("user-agent", "", "Custom user agent appended to API requests")
-	f.Bool("dynamic", false, "expose only the 3 meta-tools (falcon_search_tools/execute_tool/list_enabled_modules) instead of all tools")
+	f.Bool("dynamic", false, "expose only the meta-tools (falcon_search_tools/execute_tool/list_enabled_tools) instead of all tools")
 	f.Bool("stateless-http", false, "run the streamable-http transport in stateless mode")
 	f.String("api-key", "", "static secret required in the x-api-key header for http/sse clients")
 	f.StringSliceP("modules", "m", nil, "a specific set of modules to enable (comma-separated)")
+	f.Bool("read-only", false, "expose only read-only tools; drops every mutating tool (takes precedence over --tools)")
+	f.StringSlice("tools", nil, "an additive allowlist of falcon_-prefixed tool names to enable (comma-separated); alone, only these load")
+	f.StringSlice("exclude-tools", nil, "a denylist of falcon_-prefixed tool names to drop (comma-separated); overrides --tools")
 	f.Duration("keep-alive", 0, "interval to ping idle sessions and hold long-lived http/sse connections open")
 	f.Duration("api-response-timeout", 30*time.Second, "max wait for Falcon API response headers before a request is abandoned; raise for heavy FQL queries")
 	f.Duration("http-idle-timeout", 120*time.Second, "max time an idle keep-alive http/sse connection is held open before reaping")
@@ -235,6 +238,9 @@ func bindEnv(v *viper.Viper) {
 	_ = v.BindEnv("stateless_http", "FALCON_MCP_STATELESS_HTTP")
 	_ = v.BindEnv("api_key", "FALCON_MCP_API_KEY")
 	_ = v.BindEnv("modules", "FALCON_MCP_MODULES")
+	_ = v.BindEnv("read_only", "FALCON_MCP_READ_ONLY")
+	_ = v.BindEnv("tools", "FALCON_MCP_TOOLS")
+	_ = v.BindEnv("exclude_tools", "FALCON_MCP_EXCLUDE_TOOLS")
 	// FALCON_MCP_PROXY is this server's own name; FALCON_PROXY_URL is the upstream
 	// falcon-mcp alias, accepted so existing Python configs keep working.
 	_ = v.BindEnv("proxy", "FALCON_MCP_PROXY", "FALCON_PROXY_URL")
@@ -275,6 +281,9 @@ func resolve(v *viper.Viper) config.Config {
 		StatelessHTTP: v.GetBool("stateless_http"),
 		APIKey:        v.GetString("api_key"),
 		Modules:       v.GetStringSlice("modules"),
+		ReadOnly:      v.GetBool("read_only"),
+		Tools:         v.GetStringSlice("tools"),
+		ExcludeTools:  v.GetStringSlice("exclude_tools"),
 		UserAgent:     v.GetString("user_agent"),
 		KeepAlive:     v.GetDuration("keep_alive"),
 

@@ -85,21 +85,10 @@ func (m *Module) Description() string {
 	return "Query Falcon Shield (SaaS Security) posture, alerts, inventory, and activity"
 }
 
-// int64Ptr returns a pointer to int64(v) when v != 0, else nil, so a zero/unset
-// paging value is omitted from the request.
+// int64Ptr widens v to *int64, or nil when v is zero, so a zero/unset paging
+// value is omitted from the request.
 func int64Ptr(v int) *int64 {
-	if v == 0 {
-		return nil
-	}
-	return new(int64(v))
-}
-
-// strPtr returns a pointer to s when non-empty, else nil.
-func strPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return new(s)
+	return base.PtrIfSet(int64(v))
 }
 
 // normalizeImpact maps an impact value to the title-case form the Shield API

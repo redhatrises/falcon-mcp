@@ -26,6 +26,9 @@ var filterHints = map[string]string{
 		"Date filters: timestamp:>'now-24h' (relative) or timestamp:>'2026-01-01T00:00:00Z' (absolute). " +
 		"Sort by timestamp.desc for latest. " +
 		"Ex: status:'new'+severity_name:'Critical'",
+	"falcon_aggregate_detections": "Common fields: severity_name (Critical|High|Medium|Low|Informational), " +
+		"status (new|in_progress|closed|reopened), product (epp|idp|xdr|overwatch), " +
+		"device.hostname, tactic, technique_id, assigned_to_name, filename.",
 
 	// === Hosts ===
 	"falcon_search_hosts": "Common fields: hostname, platform_name (Windows|Linux|Mac), " +
@@ -40,6 +43,15 @@ var filterHints = map[string]string{
 	"falcon_search_cases": "Common fields: status (new|in_progress|closed|reopened), " +
 		"severity (Integer 1-100: Informational=1, Low~25, Medium~50, High~75, Critical=100), " +
 		"name, assigned_to_name, created_timestamp (UTC datetime), tags.",
+	"falcon_aggregate_case_slas": "Common fields: name, id, cid, created_by_name, updated_by_name, " +
+		"created_timestamp, updated_timestamp.",
+	"falcon_aggregate_case_templates": "Common fields: name, id, cid, created_by_name, updated_by_name, " +
+		"created_timestamp, updated_timestamp.",
+	"falcon_aggregate_case_access_tags": "Common fields: key, id, cid — access tags accept no other field.",
+	"falcon_aggregate_case_notification_groups": "Common fields: name, id, cid, created_by_name, updated_by_name, " +
+		"created_timestamp, updated_timestamp.",
+	"falcon_aggregate_case_file_details": "Common fields: name (file name), case_id, id (file id), cid, " +
+		"file_size (a string such as '114.8 KB', not a number).",
 
 	// === Cloud: Kubernetes Containers ===
 	"falcon_search_kubernetes_containers": "Common fields: cluster_name, namespace, container_name, " +

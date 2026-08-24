@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -49,36 +50,41 @@ func TestCheckConnectivityNilChecker(t *testing.T) {
 	}
 }
 
-func TestListModulesReturnsAvailable(t *testing.T) {
+func TestListEnabledToolsReportsKept(t *testing.T) {
 	t.Parallel()
-	c := &coreTools{available: []string{"hosts", "detections", "cloud"}}
-	_, out, err := c.listModules(context.Background(), nil, struct{}{})
+	reg := newRegistration()
+	reg.kept["hosts"] = []string{"falcon_search_hosts", "falcon_get_host_details"}
+	reg.kept["detections"] = []string{"falcon_search_detections"}
+	c := &coreTools{reg: reg, policy: newToolPolicy(&config.Config{})}
+
+	_, out, err := c.listEnabledTools(context.Background(), nil, struct{}{})
 	if err != nil {
-		t.Fatalf("listModules: %v", err)
+		t.Fatalf("listEnabledTools: %v", err)
 	}
-	if len(out.Modules) != 3 {
-		t.Fatalf("modules = %v, want 3", out.Modules)
+	if out.Total != 3 {
+		t.Fatalf("Total = %d, want 3", out.Total)
 	}
-	// Defensive copy: mutating the result must not affect the core slice.
-	out.Modules[0] = "mutated"
-	if c.available[0] != "hosts" {
-		t.Fatal("listModules mutated shared available slice")
+	assertSameSet(t, out.Tools, []string{"falcon_search_hosts", "falcon_get_host_details", "falcon_search_detections"})
+	assertSameSet(t, out.ByModule["hosts"], []string{"falcon_search_hosts", "falcon_get_host_details"})
+	// No deliberate filter is active, so the summary field stays empty.
+	if out.FiltersActive != "" {
+		t.Errorf("FiltersActive = %q, want empty (no filter active)", out.FiltersActive)
 	}
 }
 
-func TestListModulesIgnoresEnabledFilter(t *testing.T) {
+func TestListEnabledToolsReportsActiveFilters(t *testing.T) {
 	t.Parallel()
-	// available is the full registry; enabled is a subset — list_modules always
-	// reports the full set.
-	c := &coreTools{
-		available: []string{"hosts", "detections", "cloud", "intel"},
-		enabled:   []base.Module{fakeToolModule{name: "hosts"}},
-	}
-	_, out, err := c.listModules(context.Background(), nil, struct{}{})
+	reg := newRegistration()
+	reg.kept["hosts"] = []string{"falcon_search_hosts"}
+	c := &coreTools{reg: reg, policy: newToolPolicy(&config.Config{ReadOnly: true})}
+
+	_, out, err := c.listEnabledTools(context.Background(), nil, struct{}{})
 	if err != nil {
-		t.Fatalf("listModules: %v", err)
+		t.Fatalf("listEnabledTools: %v", err)
 	}
-	assertSameSet(t, out.Modules, []string{"hosts", "detections", "cloud", "intel"})
+	if out.FiltersActive != "read-only" {
+		t.Errorf("FiltersActive = %q, want %q", out.FiltersActive, "read-only")
+	}
 }
 
 func TestListEnabledModulesSubset(t *testing.T) {
@@ -103,15 +109,10 @@ func TestListEnabledModulesSubset(t *testing.T) {
 	}
 }
 
-// TestNormalModeCoreToolsCallable drives the three core tools end-to-end over
-// an in-memory MCP session against a real Server in normal mode.
+// TestNormalModeCoreToolsCallable drives the core tools end-to-end over an
+// in-memory MCP session against a real Server in normal mode.
 func TestNormalModeCoreToolsCallable(t *testing.T) {
 	t.Parallel()
-	// Override New's probe by constructing via registerModules path with a stub.
-	// Using New with empty cfg would still register tools; the probe would hit
-	// the network with empty credentials and return false — which is fine for
-	// list_modules / list_enabled_modules, but we assert check_connectivity
-	// structure either way.
 	srv, err := New(
 		&config.Config{Modules: []string{"hosts"}},
 		&client.CrowdStrikeAPISpecification{},
@@ -140,30 +141,29 @@ func TestNormalModeCoreToolsCallable(t *testing.T) {
 		t.Fatalf("enabled = %+v, want single hosts module", enabled)
 	}
 
-	// list_modules: full registry, not just enabled.
-	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_list_modules"})
+	// list_enabled_tools: the hosts module's tools survived the (empty) policy.
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_list_enabled_tools"})
 	if err != nil {
-		t.Fatalf("list_modules: %v", err)
+		t.Fatalf("list_enabled_tools: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("list_modules error: %v", res.Content)
+		t.Fatalf("list_enabled_tools error: %v", res.Content)
 	}
-	var all ListModulesResult
-	if err := decodeStructured(t, res.StructuredContent, &all); err != nil {
-		t.Fatalf("decode all: %v", err)
+	var tools EnabledToolsResult
+	if err := decodeStructured(t, res.StructuredContent, &tools); err != nil {
+		t.Fatalf("decode tools: %v", err)
 	}
-	if len(all.Modules) < 2 {
-		t.Fatalf("list_modules returned %d modules, want full registry", len(all.Modules))
+	if tools.Total == 0 {
+		t.Fatalf("list_enabled_tools returned no tools")
 	}
-	foundHosts := false
-	for _, n := range all.Modules {
-		if n == "hosts" {
-			foundHosts = true
-			break
+	if !slices.Contains(tools.Tools, "falcon_search_hosts") {
+		t.Fatalf("list_enabled_tools missing falcon_search_hosts: %v", tools.Tools)
+	}
+	// The core and meta tools are not module tools, so they must not appear.
+	for _, n := range tools.Tools {
+		if n == "falcon_list_enabled_tools" || n == "falcon_check_connectivity" || n == "falcon_list_enabled_modules" {
+			t.Errorf("list_enabled_tools should not list core tool %q", n)
 		}
-	}
-	if !foundHosts {
-		t.Fatalf("list_modules missing hosts: %v", all.Modules)
 	}
 
 	// check_connectivity: with empty credentials the probe fails closed.
@@ -193,9 +193,11 @@ checked:
 	}
 }
 
-// TestDynamicModeStillHasListEnabledModules ensures list_enabled_modules stays
-// available when Dynamic=true (moved off MetaModule onto always-on core).
-func TestDynamicModeStillHasListEnabledModules(t *testing.T) {
+// TestDynamicModeMetaToolSurface pins the dynamic-mode core/meta surface: the
+// always-on falcon_list_enabled_tools is present, while the normal-only
+// falcon_check_connectivity and falcon_list_enabled_modules are absent (dynamic
+// mode keeps the client's context window down to the meta-tools).
+func TestDynamicModeMetaToolSurface(t *testing.T) {
 	t.Parallel()
 	srv, err := New(
 		&config.Config{Dynamic: true, Modules: []string{"hosts", "detections"}},
@@ -209,20 +211,42 @@ func TestDynamicModeStillHasListEnabledModules(t *testing.T) {
 	ctx := context.Background()
 	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 
-	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_list_enabled_modules"})
+	tools, err := cs.ListTools(ctx, nil)
 	if err != nil {
-		t.Fatalf("list_enabled_modules: %v", err)
+		t.Fatalf("ListTools: %v", err)
+	}
+	got := map[string]bool{}
+	for _, tool := range tools.Tools {
+		got[tool.Name] = true
+	}
+	for _, present := range []string{"falcon_list_enabled_tools", "falcon_search_tools", "falcon_execute_tool"} {
+		if !got[present] {
+			t.Errorf("dynamic mode missing meta-tool %q", present)
+		}
+	}
+	for _, absent := range []string{"falcon_check_connectivity", "falcon_list_enabled_modules", "falcon_list_modules"} {
+		if got[absent] {
+			t.Errorf("dynamic mode advertised %q, want absent", absent)
+		}
+	}
+	// The real module tools must not be advertised directly in dynamic mode.
+	if got["falcon_search_hosts"] {
+		t.Errorf("dynamic mode advertised module tool falcon_search_hosts directly, want absent")
+	}
+
+	// falcon_list_enabled_tools still reports the module tools behind the catalog.
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_list_enabled_tools"})
+	if err != nil {
+		t.Fatalf("list_enabled_tools: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("list_enabled_modules error: %v", res.Content)
+		t.Fatalf("list_enabled_tools error: %v", res.Content)
 	}
-	var enabled EnabledModulesResult
-	if err := decodeStructured(t, res.StructuredContent, &enabled); err != nil {
+	var enabledTools EnabledToolsResult
+	if err := decodeStructured(t, res.StructuredContent, &enabledTools); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	names := make([]string, len(enabled.Modules))
-	for i, m := range enabled.Modules {
-		names[i] = m.Name
+	if enabledTools.Total == 0 {
+		t.Fatalf("list_enabled_tools returned no tools in dynamic mode")
 	}
-	assertSameSet(t, names, []string{"hosts", "detections"})
 }

@@ -259,6 +259,54 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			name: "read-only passes through",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, ReadOnly: true},
+			check: func(t *testing.T, c *Config) {
+				if !c.ReadOnly {
+					t.Errorf("readOnly = false, want true")
+				}
+			},
+		},
+		{
+			name: "tools normalized: trimmed and empties dropped",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Tools: []string{" falcon_search_hosts ", "", "  ", "falcon_search_detections"}},
+			check: func(t *testing.T, c *Config) {
+				want := []string{"falcon_search_hosts", "falcon_search_detections"}
+				if len(c.Tools) != len(want) {
+					t.Fatalf("tools = %v, want %v", c.Tools, want)
+				}
+				for i, m := range want {
+					if c.Tools[i] != m {
+						t.Errorf("tools[%d] = %q, want %q", i, c.Tools[i], m)
+					}
+				}
+			},
+		},
+		{
+			name: "exclude-tools normalized: trimmed and empties dropped",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, ExcludeTools: []string{" falcon_update_detects ", "", "falcon_add_ioc"}},
+			check: func(t *testing.T, c *Config) {
+				want := []string{"falcon_update_detects", "falcon_add_ioc"}
+				if len(c.ExcludeTools) != len(want) {
+					t.Fatalf("excludeTools = %v, want %v", c.ExcludeTools, want)
+				}
+				for i, m := range want {
+					if c.ExcludeTools[i] != m {
+						t.Errorf("excludeTools[%d] = %q, want %q", i, c.ExcludeTools[i], m)
+					}
+				}
+			},
+		},
+		{
+			name: "tools all empty normalized to nil",
+			in:   Config{ClientID: validID, ClientSecret: validSecret, Tools: []string{"", "   "}},
+			check: func(t *testing.T, c *Config) {
+				if c.Tools != nil {
+					t.Errorf("tools = %v, want nil", c.Tools)
+				}
+			},
+		},
+		{
 			name: "user agent absent gets versioned prefix only",
 			in:   valid,
 			check: func(t *testing.T, c *Config) {
