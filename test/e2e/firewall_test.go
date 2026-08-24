@@ -4,7 +4,6 @@ import (
 	"context"
 
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -32,20 +31,16 @@ var _ = Describe("firewall module", Label("integration", "firewall"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElement("falcon_search_firewall_rules"))
-		Expect(names).To(ContainElement("falcon_search_firewall_rule_groups"))
-		Expect(names).To(ContainElement("falcon_search_firewall_policy_rules"))
-		Expect(names).To(ContainElement("falcon_create_firewall_rule_group"))
-		Expect(names).To(ContainElement("falcon_delete_firewall_rule_groups"))
-	})
+	itAdvertisesTools(
+		"falcon_search_firewall_rules",
+		"falcon_search_firewall_rule_groups",
+		"falcon_search_firewall_policy_rules",
+		"falcon_create_firewall_rule_group",
+		"falcon_delete_firewall_rule_groups",
+	)
 
 	It("searches firewall rules and returns full rule records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_firewall_rules", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_firewall_rules", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no firewall rules to validate details against")
 		// id is the field the module keys detail results on, confirming the
 		// two-step query->details fetch returned full records, not bare IDs.
@@ -53,38 +48,31 @@ var _ = Describe("firewall module", Label("integration", "firewall"), func() {
 	})
 
 	It("searches firewall rule groups and returns full rule group records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_firewall_rule_groups", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_firewall_rule_groups", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no firewall rule groups to validate details against")
 		expectSearchReturnsDetails(res, "id", "name")
 	})
 
 	It("searches firewall rule groups with an FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_firewall_rule_groups", map[string]any{
+		res := callOK(ctx, "falcon_search_firewall_rule_groups", map[string]any{
 			"filter": "enabled:true",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no enabled firewall rule groups")
 		expectSearchReturnsDetails(res, "id", "enabled")
 	})
 
 	It("searches firewall policy rules for a policy discovered from a rule group", func() {
-		cs := newSession(ctx)
 		// Rule groups carry the policy_ids they belong to; use one to scope the
 		// policy-rule search so this works against any tenant without a hardcoded
 		// policy id.
-		groups := callTool(ctx, cs, "falcon_search_firewall_rule_groups", map[string]any{"limit": 10})
-		expectNoToolError(groups)
+		groups := callOK(ctx, "falcon_search_firewall_rule_groups", map[string]any{"limit": 10})
 		policyID := firstPolicyID(groups)
 
-		res := callTool(ctx, cs, "falcon_search_firewall_policy_rules", map[string]any{
+		res := callOK(ctx, "falcon_search_firewall_policy_rules", map[string]any{
 			"policy_id": policyID,
 			"limit":     3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "policy container has no rules to validate details against")
 		expectSearchReturnsDetails(res, "id", "name")
 	})

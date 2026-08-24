@@ -10,6 +10,7 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 func TestCheckConnectivityTrue(t *testing.T) {
@@ -120,19 +121,8 @@ func TestNormalModeCoreToolsCallable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = srv.Close() })
 
-	clientT, serverT := mcp.NewInMemoryTransports()
 	ctx := context.Background()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 
 	// list_enabled_modules: only hosts (from --modules allowlist).
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_list_enabled_modules"})
@@ -216,19 +206,8 @@ func TestDynamicModeStillHasListEnabledModules(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = srv.Close() })
 
-	clientT, serverT := mcp.NewInMemoryTransports()
 	ctx := context.Background()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_list_enabled_modules"})
 	if err != nil {

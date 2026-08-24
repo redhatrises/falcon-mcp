@@ -3,7 +3,6 @@ package recon
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"reflect"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
@@ -30,11 +30,7 @@ var (
 	quotaPending = int32(0)
 )
 
-// testLogger discards output; modules require a non-nil logger.
-var testLogger = slog.New(slog.DiscardHandler)
-
-func str(s string) *string { return &s }
-func i32(v int32) *int32   { return &v }
+var testLogger = testutil.DiscardLogger()
 
 // fakeRecon is a configurable test double for the reconAPI interface. Each
 // operation records its call count and returns the preconfigured response/error.
@@ -101,8 +97,8 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 		notifGetResp: &recon.GetNotificationsDetailedV1OK{Payload: &models.DomainNotificationDetailsResponseV1{
 			// Returned out of query order to exercise reordering by id.
 			Resources: []*models.DomainDetailedNotificationV1{
-				{ID: str("n2")},
-				{ID: str("n1")},
+				{ID: new("n2")},
+				{ID: new("n1")},
 			},
 		}},
 	}
@@ -157,7 +153,7 @@ func TestSearchNotificationsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &recon.QueryNotificationsV1BadRequest{Payload: &models.DomainErrorsOnly{
-		Errors: []*models.DomainReconAPIError{{Code: i32(400), Message: str("invalid filter")}},
+		Errors: []*models.DomainReconAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	f := &fakeRecon{notifQueryErr: badReq}
 	m := newModule(f)
@@ -211,7 +207,7 @@ func TestSearchRulesSuccess(t *testing.T) {
 			},
 		}},
 		rulesGetResp: &recon.GetRulesV1OK{Payload: &models.DomainRulesEntitiesResponseV1{
-			Resources: []*models.SadomainRule{{ID: str("r1")}},
+			Resources: []*models.SadomainRule{{ID: new("r1")}},
 		}},
 	}
 	m := newModule(f)
@@ -235,7 +231,7 @@ func TestSearchRulesFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &recon.QueryRulesV1BadRequest{Payload: &models.DomainErrorsOnly{
-		Errors: []*models.DomainReconAPIError{{Code: i32(400), Message: str("bad rule filter")}},
+		Errors: []*models.DomainReconAPIError{{Code: new(int32(400)), Message: new("bad rule filter")}},
 	}}
 	f := &fakeRecon{rulesQueryErr: badReq}
 	m := newModule(f)
@@ -264,8 +260,8 @@ func TestSearchExposedDataRecordsSuccess(t *testing.T) {
 		}},
 		edrGetResp: &recon.GetNotificationsExposedDataRecordsV1OK{Payload: &models.APINotificationExposedDataRecordEntitiesResponseV1{
 			Resources: []*models.APINotificationExposedDataRecordV1{
-				{ID: str("e1")},
-				{ID: str("e2")},
+				{ID: new("e1")},
+				{ID: new("e2")},
 			},
 		}},
 	}
@@ -290,7 +286,7 @@ func TestSearchExposedDataRecordsFQLError(t *testing.T) {
 	t.Parallel()
 
 	badReq := &recon.QueryNotificationsExposedDataRecordsV1BadRequest{Payload: &models.DomainErrorsOnly{
-		Errors: []*models.DomainReconAPIError{{Code: i32(400), Message: str("bad edr filter")}},
+		Errors: []*models.DomainReconAPIError{{Code: new(int32(400)), Message: new("bad edr filter")}},
 	}}
 	f := &fakeRecon{edrQueryErr: badReq}
 	m := newModule(f)
@@ -313,7 +309,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
 	var entries []base.ToolEntry
-	reg := captureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
+	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	newModule(&fakeRecon{}).RegisterTools(reg)
 
 	names := []string{
@@ -333,77 +329,19 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if tool == nil {
 			t.Fatalf("missing %s", n)
 		}
-		assertReadOnlyAnnotations(t, n, tool.Annotations)
+		testutil.AssertReadOnlyAnnotations(t, n, tool.Annotations)
 	}
 }
 
 func TestRegisterResourcesServesFQLGuides(t *testing.T) {
 	t.Parallel()
 
-	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
-	newModule(&fakeRecon{}).RegisterResources(srv)
-
-	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-
-	list, err := cs.ListResources(ctx, nil)
-	if err != nil {
-		t.Fatalf("ListResources: %v", err)
-	}
-	if len(list.Resources) != 3 {
-		t.Fatalf("expected 3 resources, got %d", len(list.Resources))
-	}
-
-	want := map[string]string{
-		notificationsFQLGuideURI:      "falcon_search_recon_notifications_fql_guide",
-		rulesFQLGuideURI:              "falcon_search_recon_rules_fql_guide",
-		exposedDataRecordsFQLGuideURI: "falcon_search_recon_exposed_data_records_fql_guide",
-	}
-	byURI := map[string]string{}
-	for _, r := range list.Resources {
-		byURI[r.URI] = r.Name
-	}
-	for uri, name := range want {
-		if byURI[uri] != name {
-			t.Fatalf("resource %s = %q, want %q", uri, byURI[uri], name)
-		}
-		read, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
-		if err != nil {
-			t.Fatalf("ReadResource %s: %v", uri, err)
-		}
-		if len(read.Contents) != 1 || read.Contents[0].Text == "" {
-			t.Fatalf("read content empty for %s", uri)
-		}
-	}
-}
-
-// captureRegistrar adapts a func to base.Registrar for registration tests.
-type captureRegistrar func(base.ToolEntry)
-
-func (f captureRegistrar) Add(e base.ToolEntry) { f(e) }
-
-func assertReadOnlyAnnotations(t *testing.T, name string, a *mcp.ToolAnnotations) {
-	t.Helper()
-	if a == nil {
-		t.Fatalf("%s: annotations nil", name)
-	}
-	if !a.ReadOnlyHint {
-		t.Errorf("%s: ReadOnlyHint = false, want true", name)
-	}
-	if a.DestructiveHint == nil || *a.DestructiveHint {
-		t.Errorf("%s: DestructiveHint = %v, want non-nil false", name, a.DestructiveHint)
-	}
+	testutil.AssertServesFQLGuide(context.Background(), t,
+		newModule(&fakeRecon{}).RegisterResources,
+		testutil.FQLGuideExpectation{Name: "falcon_search_recon_notifications_fql_guide", URI: notificationsFQLGuideURI, Body: notificationsFQLGuide},
+		testutil.FQLGuideExpectation{Name: "falcon_search_recon_rules_fql_guide", URI: rulesFQLGuideURI, Body: rulesFQLGuide},
+		testutil.FQLGuideExpectation{Name: "falcon_search_recon_exposed_data_records_fql_guide", URI: exposedDataRecordsFQLGuideURI, Body: exposedDataRecordsFQLGuide},
+	)
 }
 
 // forbiddenErr is a gofalcon-style error reporting HTTP 403 via the go-openapi

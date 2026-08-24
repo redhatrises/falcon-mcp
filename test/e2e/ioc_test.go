@@ -20,42 +20,32 @@ var _ = Describe("ioc module", Label("integration", "ioc"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_iocs",
-			"falcon_add_ioc",
-			"falcon_remove_iocs",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_iocs",
+		"falcon_add_ioc",
+		"falcon_remove_iocs",
+	)
 
 	It("searches IOCs and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_iocs", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_iocs", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no custom IOCs to validate details against")
 		expectSearchReturnsDetails(res, "id", "type", "value")
 	})
 
 	It("searches IOCs with an FQL filter", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_iocs", map[string]any{
+		res := callOK(ctx, "falcon_search_iocs", map[string]any{
 			"filter": "type:'domain'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no domain IOCs in tenant")
 		expectSearchReturnsDetails(res, "id", "type", "value")
 	})
 
 	It("searches IOCs sorted by modified_on", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_iocs", map[string]any{
+		res := callOK(ctx, "falcon_search_iocs", map[string]any{
 			"sort":  "modified_on.desc",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no IOCs to sort")
 		expectSearchReturnsDetails(res, "id", "value")
 	})

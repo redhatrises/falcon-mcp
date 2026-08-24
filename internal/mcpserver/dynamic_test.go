@@ -9,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // --- test fixtures -----------------------------------------------------------
@@ -533,18 +534,7 @@ func TestExecuteToolThroughServer(t *testing.T) {
 	meta.RegisterTools(base.ServerRegistrar(srv))
 
 	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv)
 
 	// An object-valued "parameters" must pass falcon_execute_tool's own schema
 	// validation and dispatch to the underlying tool.

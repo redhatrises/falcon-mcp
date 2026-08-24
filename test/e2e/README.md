@@ -129,11 +129,13 @@ a visible reason rather than failing.
 
 The other module suites (cases, discover, firewall, idp, ngsiem, policies,
 scheduled_reports, serverless, shield) require read access to their respective
-resources; see each `<module>_test.go` for the tools it calls.
+resources; see each `test/e2e/<module>_test.go` for the tools it calls.
 
 ## Adding a module suite
 
-Copy `hosts_test.go` as a template:
+The module specs live in `test/e2e/` (`package e2e`); the shared harness and
+Ginkgo suite bootstrap live alongside them in the same package. Copy
+`hosts_test.go` as a template:
 
 1. New file `test/e2e/<module>_test.go`, `package e2e`.
 2. `Describe("<module> module", Label("integration", "<module>"), func() { ... })`.

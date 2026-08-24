@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -18,6 +17,7 @@ import (
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	hostsmod "github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/serverless"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 // stubHosts and stubGroups are no-op fakes sufficient to register the tools and
@@ -27,14 +27,11 @@ type stubHosts struct{}
 // stubQueryMeta is the response meta stubHosts reports, carrying the fields a
 // client acts on so the end-to-end tests can assert the trimmed meta shape.
 var stubQueryMeta = &models.MsaMetaInfo{
-	Pagination: &models.MsaPaging{Total: ptrTo(int64(120)), Limit: ptrTo(int32(50)), Offset: ptrTo(int32(10))},
-	QueryTime:  ptrTo(0.02),
-	TraceID:    ptrTo("trace-conformance"),
+	Pagination: &models.MsaPaging{Total: new(int64(120)), Limit: new(int32(50)), Offset: new(int32(10))},
+	QueryTime:  new(0.02),
+	TraceID:    new("trace-conformance"),
 	PoweredBy:  "crowdstrike-api",
 }
-
-// ptrTo returns a pointer to v, for populating gofalcon's pointer-typed fields.
-func ptrTo[T any](v T) *T { return &v }
 
 func (stubHosts) QueryDevicesByFilter(*gofalconhosts.QueryDevicesByFilterParams, ...gofalconhosts.ClientOption) (*gofalconhosts.QueryDevicesByFilterOK, error) {
 	return &gofalconhosts.QueryDevicesByFilterOK{Payload: &models.MsaQueryResponse{Resources: []string{}, Meta: stubQueryMeta}}, nil
@@ -78,25 +75,12 @@ func connectTestServer(t *testing.T) *mcp.ClientSession {
 	t.Helper()
 	srv := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp-test", Version: "test"}, nil)
 	reg := base.ServerRegistrar(srv)
-	for _, m := range []base.Module{&hostsmod.Module{API: stubHosts{}, Concurrency: 4, Logger: slog.New(slog.DiscardHandler)}, &hostgroups.Module{API: stubGroups{}, Logger: slog.New(slog.DiscardHandler)}, &serverless.Module{API: stubServerless{}, Logger: slog.New(slog.DiscardHandler)}} {
+	for _, m := range []base.Module{&hostsmod.Module{API: stubHosts{}, Concurrency: 4, Logger: testutil.DiscardLogger()}, &hostgroups.Module{API: stubGroups{}, Logger: testutil.DiscardLogger()}, &serverless.Module{API: stubServerless{}, Logger: testutil.DiscardLogger()}} {
 		m.RegisterTools(reg)
 		m.RegisterResources(srv)
 	}
 
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ctx := context.Background()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
-	cs, err := client.Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(context.Background(), t, srv)
 	return cs
 }
 
@@ -375,19 +359,7 @@ func TestModuleSelectionEndToEnd(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	c := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
-	cs, err := c.Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 
 	tools, err := cs.ListTools(ctx, nil)
 	if err != nil {
@@ -418,18 +390,7 @@ func connectNewServer(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 	t.Cleanup(func() { _ = srv.Close() })
 
 	ctx := context.Background()
-	clientT, serverT := mcp.NewInMemoryTransports()
-	ss, err := srv.MCP().Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	t.Cleanup(func() { _ = ss.Wait() })
-
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil).Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
 	return cs
 }
 

@@ -20,43 +20,33 @@ var _ = Describe("intel module", Label("integration", "intel"), func() {
 		ctx = newSpecContext()
 	})
 
-	It("advertises its tools with the falcon_ prefix", func() {
-		cs := newSession(ctx)
-		names := toolNames(ctx, cs)
-		Expect(names).To(ContainElements(
-			"falcon_search_actors",
-			"falcon_search_indicators",
-			"falcon_search_reports",
-			"falcon_get_mitre_report",
-		))
-	})
+	itAdvertisesTools(
+		"falcon_search_actors",
+		"falcon_search_indicators",
+		"falcon_search_reports",
+		"falcon_get_mitre_report",
+	)
 
 	It("searches actors and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_actors", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_actors", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no intel actors to validate details against")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches actors with a free-text query", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_actors", map[string]any{
+		res := callOK(ctx, "falcon_search_actors", map[string]any{
 			"q":     "panda",
 			"limit": 3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "no actors matched the free-text query")
 		expectSearchReturnsDetails(res, "id")
 	})
 
 	It("searches indicators and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_indicators", map[string]any{
+		res := callOK(ctx, "falcon_search_indicators", map[string]any{
 			"filter": "type:'domain'",
 			"limit":  3,
 		})
-		expectNoToolError(res)
 		skipIfEmpty(res, "tenant has no domain indicators")
 		// indicator is the value field; its presence confirms full records
 		// rather than bare IDs.
@@ -64,9 +54,7 @@ var _ = Describe("intel module", Label("integration", "intel"), func() {
 	})
 
 	It("searches reports and returns full records", func() {
-		cs := newSession(ctx)
-		res := callTool(ctx, cs, "falcon_search_reports", map[string]any{"limit": 3})
-		expectNoToolError(res)
+		res := callOK(ctx, "falcon_search_reports", map[string]any{"limit": 3})
 		skipIfEmpty(res, "tenant has no intel reports")
 		expectSearchReturnsDetails(res, "id", "name")
 	})
@@ -78,12 +66,10 @@ var _ = Describe("intel module", Label("integration", "intel"), func() {
 	// an error field, which is a valid live outcome and skips.
 	DescribeTable("gets a MITRE report for a known actor",
 		func(format, populatedField string) {
-			cs := newSession(ctx)
-			res := callTool(ctx, cs, "falcon_get_mitre_report", map[string]any{
+			res := callOK(ctx, "falcon_get_mitre_report", map[string]any{
 				"actor":  "WARP PANDA",
 				"format": format,
 			})
-			expectNoToolError(res)
 			obj := structured(res)
 			if _, hasErr := obj["error"]; hasErr {
 				Skip("intel/MITRE not available for this tenant or actor")
