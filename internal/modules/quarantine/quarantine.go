@@ -124,7 +124,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"selected by IDs or filter. Provide `ids` for specific records, or `filter` to select " +
 			"by query. Consult falcon://quarantine/files/search/fql-guide before constructing " +
 			"filter expressions. Returns success with no records.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.updateQuarantinedFiles)
 
 	base.AddTool(r, &mcp.Tool{

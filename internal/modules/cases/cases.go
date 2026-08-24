@@ -1,22 +1,30 @@
-// Package cases implements the CrowdStrike Falcon case-management tools over two
-// gofalcon sub-clients: cases (search/get/create/update cases, evidence, and
-// tags) and case_management (listing case templates).
+// Package cases implements the CrowdStrike Falcon case-management tools over
+// three gofalcon sub-clients: cases (search/get/create/update cases, evidence,
+// and tags), case_management (case templates and configuration aggregates), and
+// case_files (case-attachment aggregates).
 //
-// It registers eight tools:
-//   - falcon_search_cases            — two-step FQL search of case entities
-//   - falcon_get_cases               — fetch full case records by ID
-//   - falcon_create_case             — create a case (mutating)
-//   - falcon_update_case             — update a case's fields (mutating)
-//   - falcon_add_case_alert_evidence — attach alert evidence (mutating)
-//   - falcon_add_case_event_evidence — attach LogScale event evidence (mutating)
-//   - falcon_manage_case_tags        — add or remove tags (mutating)
-//   - falcon_list_case_templates     — two-step list of case templates
+// It registers thirteen tools:
+//   - falcon_search_cases                    — two-step FQL search of case entities
+//   - falcon_get_cases                       — fetch full case records by ID
+//   - falcon_create_case                     — create a case (mutating)
+//   - falcon_update_case                     — update a case's fields (mutating)
+//   - falcon_add_case_alert_evidence         — attach alert evidence (mutating)
+//   - falcon_add_case_event_evidence         — attach LogScale event evidence (mutating)
+//   - falcon_manage_case_tags                — add or remove tags (mutating)
+//   - falcon_list_case_templates             — two-step list of case templates
+//   - falcon_aggregate_case_slas             — count SLA definitions by field
+//   - falcon_aggregate_case_templates        — count templates by field
+//   - falcon_aggregate_case_access_tags      — count access tags by field
+//   - falcon_aggregate_case_notification_groups — count notification groups by field
+//   - falcon_aggregate_case_file_details     — count case attachments by field
 //
 // The read tools follow the two-step query→detail pattern (query for IDs, then
 // bulk-fetch full records via base.FetchDetails). Case details come from
 // EntitiesCasesPostV2 (POST body Ids); template details come from
 // EntitiesTemplatesGetV1 (GET query params Ids). Both detail endpoints may
 // reorder results, so records are reordered back to the query step's sort by id.
+// The aggregate tools count case-configuration and case-attachment records
+// grouped by a field, in a single call.
 package cases
 
 import (
@@ -25,6 +33,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/crowdstrike/gofalcon/falcon/client/case_files"
 	"github.com/crowdstrike/gofalcon/falcon/client/case_management"
 	"github.com/crowdstrike/gofalcon/falcon/client/cases"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -35,14 +44,16 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 )
 
-// Factory builds the cases module from shared deps. It consumes two gofalcon
-// sub-clients: Cases for case CRUD, evidence, and tags, and CaseManagement for
-// case templates. The generated aggregator (internal/mcpserver) collects the
+// Factory builds the cases module from shared deps. It consumes three gofalcon
+// sub-clients: Cases for case CRUD, evidence, and tags; CaseManagement for case
+// templates and configuration aggregates; and CaseFiles for case-attachment
+// aggregates. The generated aggregator (internal/mcpserver) collects the
 // Factory, so the module needs no init side effect.
 var Factory registry.Factory = func(d registry.Deps) base.Module {
 	return &Module{
 		Cases:       d.API.Cases,
 		Templates:   d.API.CaseManagement,
+		CaseFiles:   d.API.CaseFiles,
 		Concurrency: d.Concurrency,
 		Logger:      d.Logger,
 	}
@@ -64,6 +75,15 @@ const detailBatchSize = 100
 // fqlGuideURI is the MCP resource URI for the case-search FQL guide, matching
 // falcon-mcp's falcon://cases/search/fql-guide.
 const fqlGuideURI = "falcon://cases/search/fql-guide"
+
+// aggregatesFQLGuideURI is the MCP resource URI for the case-configuration
+// aggregates FQL guide (SLAs, templates, access tags, notification groups),
+// matching falcon-mcp's falcon://cases/aggregates/fql-guide.
+const aggregatesFQLGuideURI = "falcon://cases/aggregates/fql-guide"
+
+// fileAggregatesFQLGuideURI is the MCP resource URI for the case-file aggregates
+// FQL guide, matching falcon-mcp's falcon://cases/file-aggregates/fql-guide.
+const fileAggregatesFQLGuideURI = "falcon://cases/file-aggregates/fql-guide"
 
 // errInvalidInput classifies client-side validation failures in the mutating
 // tools so handlers can distinguish them from API errors.
@@ -92,10 +112,23 @@ type casesAPI interface {
 }
 
 // templatesAPI is the minimal slice of the gofalcon case_management client this
-// module consumes, for listing case templates.
+// module consumes: listing case templates and counting case-configuration
+// records (SLAs, templates, access tags, notification groups). The four
+// aggregate ops share one request body and response shape; notification groups
+// is a V2 op, the rest V1.
 type templatesAPI interface {
 	QueriesTemplatesGetV1(params *case_management.QueriesTemplatesGetV1Params, opts ...case_management.ClientOption) (*case_management.QueriesTemplatesGetV1OK, error)
 	EntitiesTemplatesGetV1(params *case_management.EntitiesTemplatesGetV1Params, opts ...case_management.ClientOption) (*case_management.EntitiesTemplatesGetV1OK, error)
+	AggregatesSlasPostV1(params *case_management.AggregatesSlasPostV1Params, opts ...case_management.ClientOption) (*case_management.AggregatesSlasPostV1OK, error)
+	AggregatesTemplatesPostV1(params *case_management.AggregatesTemplatesPostV1Params, opts ...case_management.ClientOption) (*case_management.AggregatesTemplatesPostV1OK, error)
+	AggregatesAccessTagsPostV1(params *case_management.AggregatesAccessTagsPostV1Params, opts ...case_management.ClientOption) (*case_management.AggregatesAccessTagsPostV1OK, error)
+	AggregatesNotificationGroupsPostV2(params *case_management.AggregatesNotificationGroupsPostV2Params, opts ...case_management.ClientOption) (*case_management.AggregatesNotificationGroupsPostV2OK, error)
+}
+
+// caseFilesAPI is the minimal slice of the gofalcon case_files client this
+// module consumes, for counting the files attached to cases.
+type caseFilesAPI interface {
+	AggregatesFileDetailsPostV1(params *case_files.AggregatesFileDetailsPostV1Params, opts ...case_files.ClientOption) (*case_files.AggregatesFileDetailsPostV1OK, error)
 }
 
 // Module registers the cases tools. It holds only the shared, concurrency-safe
@@ -104,6 +137,7 @@ type templatesAPI interface {
 type Module struct {
 	Cases       casesAPI
 	Templates   templatesAPI
+	CaseFiles   caseFilesAPI
 	Concurrency int // bounds concurrent detail fetches
 	Logger      *slog.Logger
 }
@@ -146,7 +180,7 @@ var updateCaseSchema = base.SchemaFor[UpdateInput](func(s *jsonschema.Schema) {
 	s.Properties["severity"].Maximum = jsonschema.Ptr(100.0)
 })
 
-// RegisterTools registers the eight case-management tools into r.
+// RegisterTools registers the thirteen case-management tools into r.
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name: "search_cases",
@@ -172,7 +206,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"Optionally attach alert or event evidence, assign a user, apply a template, and set tags. " +
 			"Returns the created case record.",
 		InputSchema: createCaseSchema,
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.createCase)
 
 	base.AddTool(r, &mcp.Tool{
@@ -181,7 +215,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"Use expected_version for optimistic concurrency control to prevent conflicting updates. " +
 			"Returns the updated case record with incremented version.",
 		InputSchema: updateCaseSchema,
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.updateCase)
 
 	base.AddTool(r, &mcp.Tool{
@@ -189,7 +223,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Attach alert evidence to an existing case. Provide alert composite_id values " +
 			"from the Alerts v2 API (e.g. from falcon_search_detections). Each case supports a maximum " +
 			"of 100 combined evidence items. Returns the updated case record.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.addCaseAlertEvidence)
 
 	base.AddTool(r, &mcp.Tool{
@@ -197,14 +231,14 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: "Attach LogScale event evidence to an existing case. Provide event IDs obtained " +
 			"from falcon_search_ngsiem or the Falcon console. Each case supports a maximum of 100 " +
 			"combined evidence items. Returns the updated case record.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.addCaseEventEvidence)
 
 	base.AddTool(r, &mcp.Tool{
 		Name: "manage_case_tags",
 		Description: "Add or remove tags on a case. Set action to 'add' to attach new tags, or " +
 			"'remove' to delete existing tags. Returns the updated case record.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.manageCaseTags)
 
 	base.AddTool(r, &mcp.Tool{
@@ -214,10 +248,64 @@ func (m *Module) RegisterTools(r base.Registrar) {
 			"and SLA configuration.",
 		InputSchema: listTemplatesSchema,
 	}, m.listCaseTemplates)
+
+	base.AddTool(r, &mcp.Tool{
+		Name: "aggregate_case_slas",
+		Description: "Count case SLA definitions grouped by a field.\n\n" +
+			"Use this to summarize the SLA policies configured in your tenant — for example how many " +
+			"exist, or who created them — rather than to list them individually. Consult " +
+			"falcon://cases/aggregates/fql-guide before constructing filter expressions. Returns buckets " +
+			"of `label` and `count`. Requires the Case Templates:read scope.",
+		InputSchema: caseAggregateSchema,
+	}, m.aggregateCaseSlas)
+
+	base.AddTool(r, &mcp.Tool{
+		Name: "aggregate_case_templates",
+		Description: "Count case templates grouped by a field.\n\n" +
+			"Use this to summarize the case templates configured in your tenant, such as how many exist " +
+			"or which users author them; falcon_list_case_templates returns the individual template " +
+			"records instead. Consult falcon://cases/aggregates/fql-guide before constructing filter " +
+			"expressions. Returns buckets of `label` and `count`. Requires the Case Templates:read scope.",
+		InputSchema: caseAggregateSchema,
+	}, m.aggregateCaseTemplates)
+
+	base.AddTool(r, &mcp.Tool{
+		Name: "aggregate_case_access_tags",
+		Description: "Count case access tags grouped by a field.\n\n" +
+			"Use this to see which access tags control case visibility in your tenant and how many of " +
+			"each exist. Access tags accept a narrower field set than the other case aggregates — only " +
+			"key, id, and cid. Consult falcon://cases/aggregates/fql-guide before constructing filter " +
+			"expressions. Returns buckets of `label` and `count`. Requires the Case Templates:read scope.",
+		InputSchema: caseAccessTagsAggregateSchema,
+	}, m.aggregateCaseAccessTags)
+
+	base.AddTool(r, &mcp.Tool{
+		Name: "aggregate_case_notification_groups",
+		Description: "Count case notification groups grouped by a field.\n\n" +
+			"Use this to summarize the notification groups that receive case updates, such as how many " +
+			"are configured or who created them. Consult falcon://cases/aggregates/fql-guide before " +
+			"constructing filter expressions. Returns buckets of `label` and `count`. Requires the " +
+			"Case Templates:read scope.",
+		InputSchema: caseAggregateSchema,
+	}, m.aggregateCaseNotificationGroups)
+
+	base.AddTool(r, &mcp.Tool{
+		Name: "aggregate_case_file_details",
+		Description: "Report the files attached to cases, grouped and counted by a field.\n\n" +
+			"Use this whenever a question mentions files, attachments or screenshots on a case, " +
+			"including \"what files are attached to case X\" and \"how many files does case X have\" — " +
+			"pass the case IDs as case_ids. Case records from falcon_get_cases do not list attachments; " +
+			"their `analysis_results.files` field holds forensic artifacts from detections and is empty " +
+			"for cases that do have attachments. Consult falcon://cases/file-aggregates/fql-guide before " +
+			"constructing filter expressions. Returns buckets of `label` and `count`. Requires the " +
+			"Cases:read scope.",
+		InputSchema: caseFileAggregateSchema,
+	}, m.aggregateCaseFileDetails)
 }
 
-// RegisterResources publishes the case-search FQL guide as an MCP resource,
-// mirroring falcon-mcp's falcon://cases/search/fql-guide resource.
+// RegisterResources publishes the case FQL guides as MCP resources, mirroring
+// falcon-mcp's falcon://cases/search/fql-guide, falcon://cases/aggregates/fql-guide,
+// and falcon://cases/file-aggregates/fql-guide resources.
 func (m *Module) RegisterResources(s *mcp.Server) {
 	base.TextResource(s,
 		fqlGuideURI,
@@ -225,6 +313,22 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 		"Contains the guide for the `filter` param of the `falcon_search_cases` tool.",
 		"text/markdown",
 		fqlGuide,
+	)
+	base.TextResource(s,
+		aggregatesFQLGuideURI,
+		"aggregate_case_config_fql_guide",
+		"Contains the guide for the `filter` param of the case-configuration aggregate tools "+
+			"(falcon_aggregate_case_slas, falcon_aggregate_case_templates, "+
+			"falcon_aggregate_case_access_tags, falcon_aggregate_case_notification_groups).",
+		"text/markdown",
+		aggregatesFQLGuide,
+	)
+	base.TextResource(s,
+		fileAggregatesFQLGuideURI,
+		"aggregate_case_file_details_fql_guide",
+		"Contains the guide for the `filter` param of the `falcon_aggregate_case_file_details` tool.",
+		"text/markdown",
+		fileAggregatesFQLGuide,
 	)
 }
 

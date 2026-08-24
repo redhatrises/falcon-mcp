@@ -91,7 +91,7 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "add_ioc",
 		Description: "Create one or more custom IOCs. Provide type/value (plus optional action, severity, expiration, etc.) for a single IOC, or a bulk indicators array. Returns the created indicator records.",
-		Annotations: base.MutatingAnnotations(),
+		Annotations: base.MutatingAnnotations(false),
 	}, m.addIOC)
 
 	base.AddTool(r, &mcp.Tool{
