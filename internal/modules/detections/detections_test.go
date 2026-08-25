@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/alerts"
@@ -31,6 +32,12 @@ type fakeAlerts struct {
 	lastQueryParams *alerts.QueryV2Params
 	lastAggParams   *alerts.GetAggregateV2Params
 	getCalls        int
+
+	// updateBatches records the composite-ID count of each UpdateV3 call, in
+	// order. updateFailOnCall (1-based) makes that call return updateErr; 0
+	// disables scripted failure.
+	updateBatches    []int
+	updateFailOnCall int
 }
 
 func (f *fakeAlerts) QueryV2(p *alerts.QueryV2Params, _ ...alerts.ClientOption) (*alerts.QueryV2OK, error) {
@@ -50,10 +57,14 @@ func (f *fakeAlerts) GetAggregateV2(p *alerts.GetAggregateV2Params, _ ...alerts.
 
 func (f *fakeAlerts) UpdateV3(p *alerts.UpdateV3Params, _ ...alerts.ClientOption) (*alerts.UpdateV3OK, error) {
 	f.lastUpdateBody = p.Body
-	if f.updateResp != nil {
-		return f.updateResp, f.updateErr
+	f.updateBatches = append(f.updateBatches, len(p.Body.CompositeIds))
+	if f.updateFailOnCall != 0 && len(f.updateBatches) == f.updateFailOnCall {
+		return nil, f.updateErr
 	}
-	return &alerts.UpdateV3OK{Payload: &models.DetectsapiResponseFields{}}, f.updateErr
+	if f.updateResp != nil {
+		return f.updateResp, nil
+	}
+	return &alerts.UpdateV3OK{Payload: &models.DetectsapiResponseFields{}}, nil
 }
 
 func TestSearchDetectionsEmpty(t *testing.T) {
@@ -355,6 +366,84 @@ func TestUpdateDetectionsMetaPassthrough(t *testing.T) {
 	}
 	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
 		t.Fatalf("expected meta passthrough, got %+v", out.Meta)
+	}
+}
+
+// makeIDs returns n distinct composite IDs for chunking tests.
+func makeIDs(n int) []string {
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = "id" + strconv.Itoa(i)
+	}
+	return ids
+}
+
+// TestUpdateDetectionsChunksLargeRequest verifies a request over the 1000-ID cap
+// is split into successive UpdateV3 calls of at most maxUpdateCompositeIDs.
+func TestUpdateDetectionsChunksLargeRequest(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeAlerts{}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+	_, out, err := m.updateDetections(context.Background(), nil, UpdateInput{IDs: makeIDs(2500), Status: "in_progress"})
+	if err != nil {
+		t.Fatalf("updateDetections: %v", err)
+	}
+	if !out.Ok || out.Partial != nil {
+		t.Fatalf("expected full success with no partial, got %+v", out)
+	}
+	if want := []int{1000, 1000, 500}; !reflect.DeepEqual(f.updateBatches, want) {
+		t.Fatalf("batch sizes = %v, want %v", f.updateBatches, want)
+	}
+}
+
+// TestUpdateDetectionsPartialSuccessOnMidBatchFailure verifies a batch failure
+// after progress returns a data result (nil Go error) carrying the applied and
+// remaining IDs, and stops issuing further batches.
+func TestUpdateDetectionsPartialSuccessOnMidBatchFailure(t *testing.T) {
+	t.Parallel()
+
+	ids := makeIDs(2500)
+	f := &fakeAlerts{updateFailOnCall: 2, updateErr: errors.New("boom")}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+	_, out, err := m.updateDetections(context.Background(), nil, UpdateInput{IDs: ids, Status: "in_progress"})
+	if err != nil {
+		t.Fatalf("mid-batch failure must be a data result, got Go error: %v", err)
+	}
+	if out.Ok || out.Partial == nil {
+		t.Fatalf("expected Ok:false with partial success, got %+v", out)
+	}
+	if out.Partial.UpdatedCount != 1000 {
+		t.Fatalf("UpdatedCount = %d, want 1000", out.Partial.UpdatedCount)
+	}
+	if !reflect.DeepEqual(out.Partial.UpdatedIDs, ids[:1000]) {
+		t.Fatalf("UpdatedIDs mismatch: got %d ids", len(out.Partial.UpdatedIDs))
+	}
+	if !reflect.DeepEqual(out.Partial.FailedAndRemainingIDs, ids[1000:]) {
+		t.Fatalf("FailedAndRemainingIDs mismatch: got %d ids", len(out.Partial.FailedAndRemainingIDs))
+	}
+	// The failing batch is the last call attempted: no batch is issued after it.
+	if len(f.updateBatches) != 2 {
+		t.Fatalf("expected 2 UpdateV3 calls before stopping, got %d", len(f.updateBatches))
+	}
+}
+
+// TestUpdateDetectionsFirstBatchFailureReturnsError verifies a failure on the
+// first batch (nothing applied) surfaces as a Go error with no partial result.
+func TestUpdateDetectionsFirstBatchFailureReturnsError(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeAlerts{updateFailOnCall: 1, updateErr: errors.New("boom")}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+	_, out, err := m.updateDetections(context.Background(), nil, UpdateInput{IDs: makeIDs(2500), Status: "in_progress"})
+	if err == nil {
+		t.Fatalf("expected Go error when the first batch fails, got %+v", out)
+	}
+	if out.Partial != nil {
+		t.Fatalf("expected no partial result on first-batch failure, got %+v", out.Partial)
+	}
+	if len(f.updateBatches) != 1 {
+		t.Fatalf("expected to stop after the first failed batch, got %d calls", len(f.updateBatches))
 	}
 }
 

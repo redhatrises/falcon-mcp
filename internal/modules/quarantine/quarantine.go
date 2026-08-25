@@ -158,7 +158,7 @@ type SearchInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter expression. See falcon://quarantine/files/search/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of quarantine file IDs to return (max 500)"`
 	Offset int    `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
-	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort such as date_updated|desc or hostname|asc"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort such as date_updated.desc or hostname.asc (prefer the dot separator, supported on every Falcon sort endpoint)"`
 }
 
 func (m *Module) searchQuarantinedFiles(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, base.SearchResult[*models.QuarantineQuarantinedFile], error) {

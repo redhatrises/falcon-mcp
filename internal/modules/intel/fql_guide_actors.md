@@ -66,7 +66,8 @@ IMPORTANT: Use + for AND and , for OR — do NOT use the words AND/OR.
 
 === SORT FIELDS ===
 
-Use `{field}|asc` or `{field}|desc`. Valid values: name, target_countries,
+Use `{field}.asc` or `{field}.desc` — prefer the dot separator, supported on
+every Falcon sort endpoint. Valid values: name, target_countries,
 target_industries, type, created_date, last_activity_date, last_modified_date.
 
 === EXAMPLE USAGE ===
@@ -74,7 +75,7 @@ target_industries, type, created_date, last_activity_date, last_modified_date.
 • animal_classifier:'BEAR'
 • name:'FANCY BEAR'
 • animal_classifier:'BEAR',animal_classifier:'SPIDER'
-• sort="created_date|desc"
+• sort="created_date.desc"
 
 === IMPORTANT NOTES ===
 • Use single quotes around string values: 'value'

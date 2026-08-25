@@ -89,9 +89,10 @@ Supported sorting fields:
 • updated_timestamp: When the vulnerability was last updated
 
 Sort either asc (ascending) or desc (descending).
-Format: 'field|direction'
+Format: 'field.direction' — prefer the dot separator, supported
+on every Falcon sort endpoint.
 
-Examples: 'created_timestamp|desc', 'updated_timestamp|desc', 'closed_timestamp|asc'`
+Examples: 'created_timestamp.desc', 'updated_timestamp.desc', 'closed_timestamp.asc'`
 
 	facetParamDescription = `Select one or more detail blocks to be returned for each vulnerability.
 
@@ -108,6 +109,8 @@ Use host_info when you need asset context, remediation for fix information,
 cve for detailed vulnerability scoring, and evaluation_logic for assessment details.`
 
 	afterParamDescription = "A pagination token used with the limit parameter to manage pagination of results. On your first request, don't provide an after token. On subsequent requests, provide the after token from the previous response to continue from that place in the results."
+
+	limitParamDescription = "Maximum number of results to return. (Max: 5000, Default: 10) For large pulls, a single big page can time out on busy tenants; prefer smaller pages combined with `after`-based pagination (pass `pagination.next` from the previous response as the `after` parameter) instead of raising this to the maximum."
 )
 
 // searchVulnerabilitiesSchema is the input schema for
@@ -120,6 +123,7 @@ var searchVulnerabilitiesSchema = base.SchemaFor[SearchInput](func(s *jsonschema
 	s.Properties["sort"].Description = sortParamDescription
 	s.Properties["facet"].Description = facetParamDescription
 	s.Properties["after"].Description = afterParamDescription
+	s.Properties["limit"].Description = limitParamDescription
 	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["limit"].Maximum = jsonschema.Ptr(5000.0)
 	s.Properties["limit"].Default = json.RawMessage(`10`)
@@ -161,7 +165,7 @@ func (m *Module) RegisterPrompts(_ *mcp.Server) {}
 type SearchInput struct {
 	Filter string   `json:"filter,omitempty" jsonschema:"FQL filter (e.g. status:'open', cve.severity:'HIGH')"`
 	Limit  int      `json:"limit,omitempty" jsonschema:"maximum records to return"`
-	Sort   string   `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_timestamp|desc)"`
+	Sort   string   `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_timestamp.desc)"`
 	After  string   `json:"after,omitempty" jsonschema:"pagination token from a previous response"`
 	Facet  []string `json:"facet,omitempty" jsonschema:"detail blocks to return (host_info, remediation, cve, evaluation_logic)"`
 }

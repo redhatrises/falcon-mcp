@@ -24,8 +24,8 @@ field_name:[operator]'value'
 === SORT OPTIONS ===
 Valid sort fields: id, created_timestamp, updated_timestamp, severity, status, name, reference_id
 
-Sort formats: 'field.asc', 'field.desc', 'field|asc', 'field|desc'
-Examples: 'created_timestamp.desc', 'severity|desc'
+Prefer the dot separator ('field.desc'), which is supported on every Falcon sort endpoint; the pipe form ('field|asc') also works here.
+Examples: 'created_timestamp.desc', 'severity.desc'
 
 === falcon_search_cases FQL filter options ===
 

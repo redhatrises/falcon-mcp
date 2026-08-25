@@ -172,6 +172,24 @@ func buildIOABody(in MutateInput, id string) (any, error) {
 			"ifn_regex and cl_regex cannot both be '.*' (this would exclude everything); "+
 				"provide more specific regexes")
 	}
+	for _, f := range []struct{ name, re string }{
+		{"ifn_regex", in.IfnRegex},
+		{"cl_regex", in.ClRegex},
+		{"parent_ifn_regex", in.ParentIfnRegex},
+		{"parent_cl_regex", in.ParentClRegex},
+		{"grandparent_ifn_regex", in.GrandparentIfnRegex},
+		{"grandparent_cl_regex", in.GrandparentClRegex},
+	} {
+		if f.re == "" {
+			continue
+		}
+		if tok := findZeroWidthAssertion(f.re); tok != "" {
+			return nil, wrapInvalid(mutateOp("ioa", id), fmt.Sprintf(
+				"%q contains the zero-width assertion %q, which the IOA regex engine does not "+
+					"support; remove ^, $, \\b, \\A, and \\Z (escape as \\\\^ / \\\\$ or use a "+
+					"character class for a literal)", f.name, tok))
+		}
+	}
 	if err := rejectAppliedGlobally(in, mutateOp("ioa", id)); err != nil {
 		return nil, err
 	}
@@ -207,6 +225,76 @@ func buildIOABody(in MutateInput, id string) (any, error) {
 		HostGroups:          in.HostGroups,
 	}
 	return &models.DomainSsIoaExclusionsUpdateReqV2{Exclusions: []*models.DomainSsIoaExclusionUpdateReqV2{item}}, nil
+}
+
+// findZeroWidthAssertion returns the first zero-width regex assertion in re
+// ("^", "$", "\\b", "\\A", or "\\Z"), or "" when none is present. The IOA regex
+// engine rejects these anchors, so callers reject the exclusion before the API
+// call. An escaped anchor (\^, \$) and any character inside a character class
+// [...] are literals and are not reported.
+func findZeroWidthAssertion(re string) string {
+	runes := []rune(re)
+	inClass := false  // inside a [...] character class
+	classMembers := 0 // members seen since the class opened, for the leading-] and [^ rules
+	for i := 0; i < len(runes); i++ {
+		switch runes[i] {
+		case '\\':
+			next, ok := peek(runes, i+1)
+			if !ok {
+				// Trailing lone backslash: a literal with nothing to escape.
+				continue
+			}
+			if !inClass && (next == 'b' || next == 'A' || next == 'Z') {
+				return `\` + string(next)
+			}
+			i++ // the escaped rune is a literal; consume it
+			if inClass {
+				classMembers++
+			}
+		case '[':
+			if inClass {
+				classMembers++
+				continue
+			}
+			inClass = true
+			classMembers = 0
+		case ']':
+			if inClass && classMembers > 0 {
+				inClass = false
+				continue
+			}
+			// A leading ] (no members yet) is a literal member, not a close.
+			classMembers++
+		case '^':
+			if !inClass {
+				return "^"
+			}
+			// A leading ^ negates the class and is not a member; elsewhere it is
+			// a literal member.
+			if classMembers > 0 {
+				classMembers++
+			}
+		case '$':
+			if !inClass {
+				return "$"
+			}
+			classMembers++
+		default:
+			if inClass {
+				classMembers++
+			}
+		}
+	}
+	return ""
+}
+
+// peek returns runes[i] and true when i is in range, or the zero rune and false
+// otherwise, so a lookahead past the end is a single guarded call.
+func peek(runes []rune, i int) (rune, bool) {
+	if i >= len(runes) {
+		return 0, false
+	}
+	return runes[i], true
 }
 
 // buildMLBody builds the ML v2 request: create is wrapped, update is the SINGULAR

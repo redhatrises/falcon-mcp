@@ -144,7 +144,7 @@ type ActorsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. name:'FANCY BEAR', animal_classifier:'BEAR'). See falcon://intel/actors/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
-	Sort   string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. created_date|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. created_date.desc)"`
 	Q      string `json:"q,omitempty" jsonschema:"free-text search across all indexed fields"`
 }
 
@@ -191,7 +191,7 @@ type IndicatorsInput struct {
 	Filter           string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. type:'domain', malicious_confidence:'high'). See falcon://intel/indicators/fql-guide for syntax."`
 	Limit            int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset           int    `json:"offset,omitempty" jsonschema:"pagination offset"`
-	Sort             string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. published_date|desc)"`
+	Sort             string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. published_date.desc)"`
 	Q                string `json:"q,omitempty" jsonschema:"free-text search across all indexed fields"`
 	IncludeDeleted   bool   `json:"include_deleted,omitempty" jsonschema:"include deleted indicators as well as published ones"`
 	IncludeRelations bool   `json:"include_relations,omitempty" jsonschema:"include related indicators"`
@@ -247,7 +247,7 @@ type ReportsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"intel FQL filter (e.g. type:'notice', target_industries:'Technology'). See falcon://intel/reports/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum results to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
-	Sort   string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. created_date|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"intel FQL sort (e.g. created_date.desc)"`
 	Q      string `json:"q,omitempty" jsonschema:"free-text search across all indexed fields"`
 }
 

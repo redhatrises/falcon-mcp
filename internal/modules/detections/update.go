@@ -39,6 +39,10 @@ type UpdateInput struct {
 	RemoveTagsByPrefix string   `json:"remove_tags_by_prefix,omitempty" jsonschema:"remove all tags with this prefix"`
 }
 
+// maxUpdateCompositeIDs caps composite IDs per UpdateV3 call: PatchEntitiesAlertsV3
+// rejects more than 1000 in one request (HTTP 413).
+const maxUpdateCompositeIDs = 1000
+
 func (m *Module) updateDetections(ctx context.Context, _ *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	actions, err := in.actionParameters()
 	if err != nil {
@@ -54,14 +58,39 @@ func (m *Module) updateDetections(ctx context.Context, _ *mcp.CallToolRequest, i
 		"actions", len(actions),
 	)
 
-	params := alerts.NewUpdateV3ParamsWithContext(ctx)
-	params.Body = &models.DetectsapiPatchEntitiesAlertsV3Request{
-		CompositeIds:     in.IDs,
-		ActionParameters: actions,
-	}
-	resp, err := m.API.UpdateV3(params)
-	if e := base.APIError(err, resp, scopeAlertsWrite); e != nil {
-		return nil, base.ActionResult{}, e
+	// Chunk the composite IDs so a large request stays under the 413 cap. A batch
+	// failure after progress returns a data result carrying the applied and
+	// remaining IDs, so the caller can retry only the unfinished ones without
+	// re-applying the batches that already succeeded.
+	var lastMeta any
+	for start := 0; start < len(in.IDs); start += maxUpdateCompositeIDs {
+		if err := ctx.Err(); err != nil {
+			return nil, base.ActionResult{}, err
+		}
+		end := min(start+maxUpdateCompositeIDs, len(in.IDs))
+
+		params := alerts.NewUpdateV3ParamsWithContext(ctx)
+		params.Body = &models.DetectsapiPatchEntitiesAlertsV3Request{
+			CompositeIds:     in.IDs[start:end],
+			ActionParameters: actions,
+		}
+		resp, err := m.API.UpdateV3(params)
+		if e := base.APIError(err, resp, scopeAlertsWrite); e != nil {
+			if start == 0 {
+				return nil, base.ActionResult{}, e
+			}
+			return nil, base.ActionResult{
+				Ok: false,
+				Hint: fmt.Sprintf("updated %d of %d detections before a batch failed: %s; "+
+					"retry the ids in partial_success.failed_and_remaining_ids", start, len(in.IDs), e),
+				Partial: &base.PartialSuccess{
+					UpdatedIDs:            in.IDs[:start],
+					UpdatedCount:          start,
+					FailedAndRemainingIDs: in.IDs[start:],
+				},
+			}, nil
+		}
+		lastMeta = resp.Payload.Meta
 	}
 
 	// Advise when closing a detection without a resolution tag.
@@ -69,9 +98,9 @@ func (m *Module) updateDetections(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, base.ActionResult{
 			Ok:   true,
 			Hint: "Detection closed without a resolution tag (true_positive/false_positive/ignored). Consider adding one via add_tags.",
-		}.WithMeta(resp.Payload.Meta), nil
+		}.WithMeta(lastMeta), nil
 	}
-	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
+	return nil, base.ActionResult{Ok: true}.WithMeta(lastMeta), nil
 }
 
 // actionParameters validates the input and builds the ordered gofalcon action

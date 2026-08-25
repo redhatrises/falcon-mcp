@@ -87,7 +87,7 @@ type SearchAuditSessionsInput struct {
 	Filter          string `json:"filter,omitempty" jsonschema:"FQL filter. See falcon://rtr/audit/sessions/search/fql-guide for syntax (e.g. created_at:>'now-7d')."`
 	Limit           int    `json:"limit,omitempty" jsonschema:"maximum number of RTR audit session records to return (max 1000)"`
 	Offset          int    `json:"offset,omitempty" jsonschema:"starting index of the audit result set"`
-	Sort            string `json:"sort,omitempty" jsonschema:"RTR audit sort using pipe syntax (e.g. created_at|desc, updated_at|asc)"`
+	Sort            string `json:"sort,omitempty" jsonschema:"RTR audit sort using the dot separator, supported on every Falcon sort endpoint (e.g. created_at.desc, updated_at.asc)"`
 	WithCommandInfo bool   `json:"with_command_info,omitempty" jsonschema:"include command IDs and command log fields in the audit response"`
 }
 

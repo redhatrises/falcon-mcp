@@ -50,7 +50,7 @@ property_name:[operator]'value'
 
 === SORT FIELDS ===
 
-Use either `field.asc` / `field.desc` or `field|asc` / `field|desc`.
+Prefer the dot separator (`field.desc`), which is supported on every Falcon sort endpoint; the pipe form (`field|desc`) also works here.
 
 |Field|Description|
 |-|-|

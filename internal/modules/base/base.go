@@ -394,10 +394,23 @@ func (r EntitiesResult[T]) WithMeta(meta any) EntitiesResult[T] {
 // ActionResult is the structured output envelope for mutating tools that do
 // not return entity records. Ok is always true on success; Hint carries an
 // optional advisory message (e.g. closing a detection without a resolution tag).
+// Partial is set only when a chunked mutation applied some batches and then a
+// later batch failed, so the caller can retry just the unfinished IDs.
 type ActionResult struct {
-	Ok   bool   `json:"ok"`
-	Hint string `json:"hint,omitempty"`
-	Meta *Meta  `json:"meta,omitempty"`
+	Ok      bool            `json:"ok"`
+	Hint    string          `json:"hint,omitempty"`
+	Partial *PartialSuccess `json:"partial_success,omitempty"`
+	Meta    *Meta           `json:"meta,omitempty"`
+}
+
+// PartialSuccess reports how far a chunked mutation progressed before a batch
+// failed, so the caller can retry only the unfinished IDs. It is surfaced on a
+// data result (Ok:false, nil Go error) rather than an error, because the applied
+// batches are real state changes the caller must not lose.
+type PartialSuccess struct {
+	UpdatedIDs            []string `json:"updated_ids"`
+	UpdatedCount          int      `json:"updated_count"`
+	FailedAndRemainingIDs []string `json:"failed_and_remaining_ids"`
 }
 
 // WithMeta returns r with the API's response metadata attached, normalized to the

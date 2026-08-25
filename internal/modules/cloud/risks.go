@@ -27,7 +27,7 @@ type SearchCloudRisksInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter. See the fql-guide resource for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of risks to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"starting index of overall result set from which to return results"`
-	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. severity|desc, first_seen|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. severity.desc, first_seen.desc)"`
 }
 
 var searchCloudRisksSchema = base.SchemaFor[SearchCloudRisksInput](func(s *jsonschema.Schema) {
@@ -76,7 +76,7 @@ type SearchCloudGroupsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter. See the tool description for supported fields."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of cloud groups to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"starting index of overall result set from which to return results"`
-	Sort   string `json:"sort,omitempty" jsonschema:"sort groups (e.g. name|asc, created_at|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"sort groups (e.g. name.asc, created_at.desc)"`
 }
 
 var searchCloudGroupsSchema = base.SchemaFor[SearchCloudGroupsInput](func(s *jsonschema.Schema) {

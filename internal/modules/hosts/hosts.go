@@ -90,8 +90,10 @@ agent_version: CrowdStrike agent version
 os_version: Operating system version
 external_ip: External IP address
 
-Sort either asc (ascending) or desc (descending).
-Both formats are supported: 'hostname.desc' or 'hostname|desc'
+Sort either asc (ascending) or desc (descending). Use the dot
+separator ('hostname.desc'), which is supported on every Falcon
+sort endpoint. The pipe form ('hostname|desc') is accepted here
+but rejected by some endpoints, so prefer the dot form.
 
 Examples: 'hostname.asc', 'last_seen.desc', 'platform_name.asc'`
 )
@@ -178,6 +180,9 @@ func (m *Module) searchHosts(ctx context.Context, req *mcp.CallToolRequest, in S
 	}
 
 	queryResp, err := m.API.QueryDevicesByFilter(params)
+	if err != nil && in.Filter != "" && base.IsBadRequest(err) {
+		return nil, base.FQLError[*models.DeviceapiDeviceSwagger](nil, in.Filter, fqlGuide), nil
+	}
 	if e := base.APIError(err, queryResp, scopeHostsRead); e != nil {
 		return nil, zero, e
 	}

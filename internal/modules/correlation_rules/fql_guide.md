@@ -25,7 +25,7 @@ field_name:[operator]'value'
 
 === SORT OPTIONS ===
 Sort fields: created_on, last_updated_on, name, severity, status
-Sort formats: 'field.asc', 'field.desc', 'field|asc', 'field|desc'
+Prefer the dot separator ('field.desc'), which is supported on every Falcon sort endpoint; the pipe form ('field|desc') also works here.
 Example: 'last_updated_on.desc'
 
 === SEVERITY SCORES ===

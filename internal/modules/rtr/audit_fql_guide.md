@@ -18,10 +18,10 @@ field_name:[operator]'value'
 === SORT OPTIONS ===
 Available audit sort fields: created_at, updated_at, deleted_at.
 
-The RTR audit API uses pipe-style sort examples such as:
-• created_at|desc
-• updated_at|asc
-• deleted_at|desc
+Use the dot separator, supported on every Falcon sort endpoint:
+• created_at.desc
+• updated_at.asc
+• deleted_at.desc
 
 === COMMAND INFO ===
 Set with_command_info=true when the investigation needs cloud request IDs and command log fields.

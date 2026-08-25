@@ -74,6 +74,11 @@ func statusOf(err error) int {
 	return 0
 }
 
+// IsBadRequest reports whether err carries an HTTP 400 status. Search tools
+// whose gofalcon client exposes no typed BadRequest to match on use this to
+// classify a rejected filter and return the FQL guide instead of a raw error.
+func IsBadRequest(err error) bool { return err != nil && statusOf(err) == 400 }
+
 // scopeStrings flattens the console permission strings for the given scopes.
 func scopeStrings(scopes []Scope) []string {
 	var out []string

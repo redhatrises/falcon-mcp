@@ -53,7 +53,8 @@ IMPORTANT: Use + for AND and , for OR — do NOT use the words AND/OR.
 
 === SORT FIELDS ===
 
-Use `{field}|asc` or `{field}|desc`. Valid values: id, indicator, type,
+Use `{field}.asc` or `{field}.desc` — prefer the dot separator, supported on
+every Falcon sort endpoint. Valid values: id, indicator, type,
 published_date, last_updated, _marker.
 
 === EXAMPLE USAGE ===
@@ -63,7 +64,7 @@ published_date, last_updated, _marker.
 • type:'hash_md5'+malicious_confidence:'high'
 • malicious_confidence:'high'+published_date:>'now-7d'
 • published_date:>'now-30d'
-• sort="published_date|desc"
+• sort="published_date.desc"
 
 Relative dates supported: published_date:>'now-7d' | published_date:>'now-30d' (lowercase 'now', quoted)
 
