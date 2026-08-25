@@ -341,7 +341,7 @@ type SearchInput struct {
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of cases to return (default 10, max 500)"`
 	Offset int    `json:"offset,omitempty" jsonschema:"starting index for pagination"`
 	Q      string `json:"q,omitempty" jsonschema:"free-text search across all case metadata"`
-	Sort   string `json:"sort,omitempty" jsonschema:"sort order. Fields: created_timestamp, updated_timestamp, severity, status, name, reference_id. Formats: 'field.desc', 'field|asc' (e.g. created_timestamp.desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"sort order. Fields: created_timestamp, updated_timestamp, severity, status, name, reference_id. Prefer the dot separator ('field.desc'), which is supported on every Falcon sort endpoint; the pipe form ('field|asc') also works here. Example: 'created_timestamp.desc'"`
 }
 
 func (m *Module) searchCases(ctx context.Context, req *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, base.SearchResult[*models.SdkCaseVM], error) {

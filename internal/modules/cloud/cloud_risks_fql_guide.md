@@ -67,7 +67,7 @@ Values must be single-quoted.
 
 === falcon_search_cloud_risks FQL filter sort fields ===
 
-Use `field|asc` or `field|desc` suffix:
+Use `field.asc` or `field.desc` suffix (prefer the dot separator, supported on every Falcon sort endpoint):
 
 `account_id`, `account_name`, `asset_id`, `asset_name`, `asset_region`, `asset_type`,
 `cloud_provider`, `first_seen`, `last_seen`, `resolved_at`, `rule_name`,

@@ -124,8 +124,8 @@ Responses include ` + "`pagination.total`" + ` (the total number of records matc
 created_date: When the notification was created
 updated_date: When the notification was last updated
 
-Append |asc or |desc for direction (default desc).
-Examples: 'created_date|desc', 'updated_date|asc'`
+Append .asc or .desc for direction (default desc).
+Examples: 'created_date.desc', 'updated_date.asc'`
 
 	rulesSortDescription = `Sort rules using these options:
 created_timestamp: When the rule was created
@@ -133,15 +133,15 @@ last_updated_timestamp: When the rule was last modified
 priority: Rule priority level
 topic: Rule topic category
 
-Append |asc or |desc for direction (default desc).
-Examples: 'created_timestamp|desc', 'priority|asc'`
+Append .asc or .desc for direction (default desc).
+Examples: 'created_timestamp.desc', 'priority.asc'`
 
 	exposedDataRecordsSortDescription = `Sort records using these options:
 created_date: When the record was created
 exposure_date: When the data was exposed/breached
 
-Append |asc or |desc for direction (default desc).
-Examples: 'created_date|desc', 'exposure_date|desc'`
+Append .asc or .desc for direction (default desc).
+Examples: 'created_date.desc', 'exposure_date.desc'`
 
 	notificationsQDescription      = "Free text search across all notification metadata."
 	rulesQDescription              = "Free text search across all rule metadata."
@@ -228,7 +228,7 @@ type NotificationsInput struct {
 	Q      string `json:"q,omitempty" jsonschema:"free-text search across all notification metadata"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum records to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
-	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_date|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_date.desc)"`
 }
 
 func (m *Module) searchReconNotifications(ctx context.Context, req *mcp.CallToolRequest, in NotificationsInput) (*mcp.CallToolResult, base.SearchResult[*models.DomainDetailedNotificationV1], error) {
@@ -282,7 +282,7 @@ type RulesInput struct {
 	Q      string `json:"q,omitempty" jsonschema:"free-text search across all rule metadata"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum records to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
-	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_timestamp|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_timestamp.desc)"`
 }
 
 func (m *Module) searchReconRules(ctx context.Context, req *mcp.CallToolRequest, in RulesInput) (*mcp.CallToolResult, base.SearchResult[*models.SadomainRule], error) {
@@ -337,7 +337,7 @@ type ExposedDataRecordsInput struct {
 	Q      string `json:"q,omitempty" jsonschema:"free-text search across all exposed-data record fields"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum records to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"pagination offset"`
-	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_date|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. created_date.desc)"`
 }
 
 func (m *Module) searchReconExposedDataRecords(ctx context.Context, req *mcp.CallToolRequest, in ExposedDataRecordsInput) (*mcp.CallToolResult, base.SearchResult[*models.APINotificationExposedDataRecordV1], error) {

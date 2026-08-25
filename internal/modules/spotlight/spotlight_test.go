@@ -84,7 +84,7 @@ func TestSearchVulnerabilitiesForwardsParams(t *testing.T) {
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.searchVulnerabilities(context.Background(), nil, SearchInput{
-		Sort:  "created_timestamp|desc",
+		Sort:  "created_timestamp.desc",
 		After: "tok-123",
 		Facet: []string{"cve", "host_info"},
 	})
@@ -94,7 +94,7 @@ func TestSearchVulnerabilitiesForwardsParams(t *testing.T) {
 	if f.lastLimit != defaultLimit {
 		t.Errorf("limit = %d, want default %d", f.lastLimit, defaultLimit)
 	}
-	if f.lastSort != "created_timestamp|desc" {
+	if f.lastSort != "created_timestamp.desc" {
 		t.Errorf("sort = %q", f.lastSort)
 	}
 	if f.lastAfter != "tok-123" {
