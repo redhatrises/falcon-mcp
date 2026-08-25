@@ -21,6 +21,7 @@ var testLogger = testutil.DiscardLogger()
 
 type fakeHosts struct {
 	queryResp *hosts.QueryDevicesByFilterOK
+	queryErr  error
 	getResp   *hosts.PostDeviceDetailsV2OK
 	getCalls  int
 	lastIDs   []string
@@ -33,7 +34,7 @@ type fakeHosts struct {
 }
 
 func (f *fakeHosts) QueryDevicesByFilter(*hosts.QueryDevicesByFilterParams, ...hosts.ClientOption) (*hosts.QueryDevicesByFilterOK, error) {
-	return f.queryResp, nil
+	return f.queryResp, f.queryErr
 }
 
 func (f *fakeHosts) PostDeviceDetailsV2(p *hosts.PostDeviceDetailsV2Params, _ ...hosts.ClientOption) (*hosts.PostDeviceDetailsV2OK, error) {
@@ -150,6 +151,55 @@ func TestSearchHostsFetchesDetails(t *testing.T) {
 	}
 	if f.getCalls != 1 {
 		t.Fatalf("expected 1 detail-fetch call, got %d", f.getCalls)
+	}
+}
+
+// fakeStatusErr implements runtime.ClientResponseStatus for a chosen HTTP code,
+// standing in for the untyped 400 that QueryDevicesByFilter returns for a bad
+// filter (gofalcon exposes no typed BadRequest for this operation).
+type fakeStatusErr struct{ code int }
+
+func (e fakeStatusErr) Error() string       { return "status error" }
+func (e fakeStatusErr) IsSuccess() bool     { return e.code >= 200 && e.code < 300 }
+func (e fakeStatusErr) IsRedirect() bool    { return e.code >= 300 && e.code < 400 }
+func (e fakeStatusErr) IsClientError() bool { return e.code >= 400 && e.code < 500 }
+func (e fakeStatusErr) IsServerError() bool { return e.code >= 500 }
+func (e fakeStatusErr) IsCode(c int) bool   { return e.code == c }
+
+// TestSearchHostsFQLErrorReturnsGuide verifies a 400 with a filter present is
+// surfaced as a SearchResult carrying the FQL guide (a data result), not a Go
+// error — matching the sibling search tools' invalid-filter contract.
+func TestSearchHostsFQLErrorReturnsGuide(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeHosts{queryErr: fakeStatusErr{code: 400}}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+	_, out, err := m.searchHosts(context.Background(), nil, SearchInput{Filter: "bogus:'x'"})
+	if err != nil {
+		t.Fatalf("expected data result on 400, got Go error: %v", err)
+	}
+	if out.FQLGuide == "" {
+		t.Fatalf("expected FQL guide text in result, got %+v", out)
+	}
+	if out.FilterUsed != "bogus:'x'" {
+		t.Fatalf("FilterUsed = %q, want the rejected filter", out.FilterUsed)
+	}
+	if f.getCalls != 0 {
+		t.Fatalf("expected no detail fetch on filter error, got %d", f.getCalls)
+	}
+}
+
+// TestSearchHostsBadRequestNoFilterSurfacesError verifies a 400 with no filter
+// present is surfaced as a Go error: with nothing to blame on FQL, returning
+// the guide would be misleading.
+func TestSearchHostsBadRequestNoFilterSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeHosts{queryErr: fakeStatusErr{code: 400}}
+	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
+	_, _, err := m.searchHosts(context.Background(), nil, SearchInput{})
+	if err == nil {
+		t.Fatal("expected Go error for a 400 with no filter, got nil")
 	}
 }
 
