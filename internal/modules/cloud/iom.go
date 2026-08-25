@@ -26,7 +26,7 @@ type SearchIOMFindingsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter. See the fql-guide resource for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of IOM findings to return"`
 	Offset int    `json:"offset,omitempty" jsonschema:"starting index of overall result set from which to return findings"`
-	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. severity|desc, last_detected|desc)"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. severity.desc, last_detected.desc)"`
 }
 
 var searchIOMFindingsSchema = base.SchemaFor[SearchIOMFindingsInput](func(s *jsonschema.Schema) {

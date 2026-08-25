@@ -375,6 +375,10 @@ func TestCreateExclusionValidation(t *testing.T) {
 		{"ioa valid", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b"}, false},
 		{"ioa applied_globally true unsupported", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", AppliedGlobally: &tru}, true},
 		{"ioa applied_globally false ok", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", AppliedGlobally: &fls}, false},
+		{"ioa zero-width in cl_regex", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "^b"}, true},
+		{"ioa zero-width in parent field", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "b", ParentClRegex: `foo\bbar`}, true},
+		{"ioa escaped anchor ok", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: `a\^`, ClRegex: `b\$`}, false},
+		{"ioa class literal anchor ok", MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "[$^]a", ClRegex: "b"}, false},
 		// ML
 		{"ml missing value", MutateInput{ExclusionType: "ml"}, true},
 		{"ml valid", MutateInput{ExclusionType: "ml", Value: "/x"}, false},
@@ -441,6 +445,65 @@ func TestMutateExclusionAppliedGloballyOpPrefix(t *testing.T) {
 			}
 			if want := "update " + tc.exclusionType + " exclusion"; !strings.Contains(err.Error(), want) {
 				t.Errorf("updateExclusion error = %q, want prefix %q", err, want)
+			}
+		})
+	}
+}
+
+// TestMutateExclusionZeroWidthOpPrefix verifies a zero-width regex rejection
+// names the operation being performed: the create path prefixes "create ioa
+// exclusion" and the update path "update ioa exclusion".
+func TestMutateExclusionZeroWidthOpPrefix(t *testing.T) {
+	t.Parallel()
+
+	in := MutateInput{ExclusionType: "ioa", Name: "n", PatternID: "1", IfnRegex: "a", ClRegex: "^b"}
+	m := moduleWith("ioa", &fakeBackend{})
+
+	_, _, err := m.createExclusion(context.Background(), nil, in)
+	if err == nil || !strings.Contains(err.Error(), "create ioa exclusion") {
+		t.Errorf("createExclusion error = %v, want prefix %q", err, "create ioa exclusion")
+	}
+
+	withID := in
+	withID.ID = "abc123"
+	_, _, err = m.updateExclusion(context.Background(), nil, withID)
+	if err == nil || !strings.Contains(err.Error(), "update ioa exclusion") {
+		t.Errorf("updateExclusion error = %v, want prefix %q", err, "update ioa exclusion")
+	}
+}
+
+// TestFindZeroWidthAssertion covers the scanner directly: bare anchors are
+// flagged, escaped anchors and character-class members are not, and the class
+// edge cases (leading ], leading ^ negation) treat their anchors as literals.
+func TestFindZeroWidthAssertion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		re   string
+		want string
+	}{
+		{"caret", "^abc", "^"},
+		{"dollar", "abc$", "$"},
+		{"word-boundary", `foo\bbar`, `\b`},
+		{"start-of-string", `\Afoo`, `\A`},
+		{"end-of-string", `foo\Z`, `\Z`},
+		{"caret mid", "ab^cd", "^"},
+		{"escaped caret", `a\^b`, ""},
+		{"escaped dollar", `a\$b`, ""},
+		{"class with anchors", "[$^]a", ""},
+		{"negated class", "[^abc]", ""},
+		{"leading close-bracket member", "[]^]a", ""},
+		{"escaped b in class", `[\b]a`, ""},
+		{"trailing backslash", `abc\`, ""},
+		{"no anchors", "foo.*bar", ""},
+		{"empty", "", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := findZeroWidthAssertion(tc.re); got != tc.want {
+				t.Errorf("findZeroWidthAssertion(%q) = %q, want %q", tc.re, got, tc.want)
 			}
 		})
 	}

@@ -115,8 +115,10 @@ last_seen: Timestamp when the container was last seen
 first_seen: Timestamp when the container was first seen
 running_status: Container running status which is either true or false
 
-Sort either asc (ascending) or desc (descending).
-Both formats are supported: 'container_name.desc' or 'container_name|desc'
+Sort either asc (ascending) or desc (descending). Use the dot
+separator ('container_name.desc'), which is supported on every
+Falcon sort endpoint. The pipe form ('container_name|desc') is
+accepted here but rejected by some endpoints, so prefer the dot form.
 
 When searching containers running vulnerable images, use 'image_vulnerability_count.desc' to get container with most images vulnerabilities.
 
@@ -131,8 +133,10 @@ cve_id: CVE ID of the image vulnerability
 cvss_score: CVSS score of the image vulnerability
 images_impacted: Number of images impacted by the vulnerability
 
-Sort either asc (ascending) or desc (descending).
-Both formats are supported: 'container_name.desc' or 'container_name|desc'
+Sort either asc (ascending) or desc (descending). Use the dot
+separator ('cvss_score.desc'), which is supported on every Falcon
+sort endpoint. The pipe form ('cvss_score|desc') is accepted here
+but rejected by some endpoints, so prefer the dot form.
 
 Examples: 'cvss_score.desc', 'cps_current_rating.asc'`
 
@@ -148,8 +152,10 @@ region: Cloud region
 creation_time: When the asset was created
 updated_at: When the asset was last updated
 
-Sort either asc (ascending) or desc (descending).
-Both formats are supported: 'updated_at.desc' or 'updated_at|desc'
+Sort either asc (ascending) or desc (descending). Use the dot
+separator ('updated_at.desc'), which is supported on every Falcon
+sort endpoint. The pipe form ('updated_at|desc') is accepted here
+but rejected by some endpoints, so prefer the dot form.
 
 Examples: 'updated_at.desc', 'resource_type.asc'`
 
@@ -159,7 +165,8 @@ Examples: 'updated_at.desc', 'resource_type.asc'`
 
 	iomFindingsOffsetDescription = "Starting index of overall result set from which to return findings."
 
-	iomFindingsSortDescription = `Sort IOM findings. Use |asc or |desc suffix to specify direction.
+	iomFindingsSortDescription = `Sort IOM findings. Use a .asc or .desc suffix to specify direction.
+Prefer the dot separator, supported on every Falcon sort endpoint.
 
 Common sort fields:
 severity: Finding severity level
@@ -169,19 +176,19 @@ cloud_provider: Cloud provider name
 service: Cloud service name
 status: Finding status
 
-Examples: 'severity|desc', 'last_detected|desc', 'first_detected|asc'`
+Examples: 'severity.desc', 'last_detected.desc', 'first_detected.asc'`
 
 	cloudRisksFilterDescription = "FQL filter expression. See `falcon://cloud/cloud-risks/fql-guide` for syntax."
 
-	cloudRisksSortDescription = `Sort risks using field|asc or field|desc syntax.
+	cloudRisksSortDescription = `Sort risks using field.asc or field.desc syntax. Prefer the dot separator, supported on every Falcon sort endpoint.
 
 Supported fields: account_id, account_name, asset_id, asset_name, asset_region, asset_type, cloud_provider, first_seen, last_seen, resolved_at, rule_name, service_category, severity, status
 
-Examples: 'severity|desc', 'first_seen|desc', 'account_name|asc'`
+Examples: 'severity.desc', 'first_seen.desc', 'account_name.asc'`
 
 	cloudGroupsFilterDescription = `FQL filter expression. Supports group properties: name, description, created_at, updated_at. Selector properties: cloud_provider, account_id, region. Group tags: business_unit, business_impact, environment.
 
 Examples: "name:'prod-group'", "environment:'production'"`
 
-	cloudGroupsSortDescription = "Sort groups. Default: name|asc. Examples: 'name|asc', 'created_at|desc'"
+	cloudGroupsSortDescription = "Sort groups. Default: name.asc. Prefer the dot separator, supported on every Falcon sort endpoint. Examples: 'name.asc', 'created_at.desc'"
 )
