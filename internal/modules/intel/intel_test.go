@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/intel"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -78,9 +76,7 @@ func TestSearchActorsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "name:'FANCY BEAR'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.actorsResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.actorsResp.Payload.Meta)
 }
 
 func TestSearchActorsFQLError(t *testing.T) {
@@ -132,9 +128,7 @@ func TestSearchIndicatorsSuccess(t *testing.T) {
 	if out.FilterUsed != "type:'domain'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.indicatorsResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.indicatorsResp.Payload.Meta)
 }
 
 func TestSearchIndicatorsFQLError(t *testing.T) {
@@ -171,9 +165,7 @@ func TestSearchReportsSuccess(t *testing.T) {
 	if out.FilterUsed != "type:'notice'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.reportsResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.reportsResp.Payload.Meta)
 }
 
 // TestSearchReportsFQLError verifies the report 400 path: gofalcon's
@@ -300,8 +292,8 @@ func TestGetMitreReportMissingID(t *testing.T) {
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.getMitreReport(context.Background(), nil, MitreInput{Actor: "NO ID"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -320,8 +312,8 @@ func TestGetMitreReportValidation(t *testing.T) {
 			t.Parallel()
 			m := &Module{API: &fakeIntel{}, Logger: testLogger}
 			_, _, err := m.getMitreReport(context.Background(), nil, tc.in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 		})
 	}
@@ -346,10 +338,7 @@ func TestRegisterResourcesServesFQLGuides(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
-	m := &Module{API: &fakeIntel{}, Logger: testLogger}
-	m.RegisterTools(reg)
+	byName := testutil.CollectTools(&Module{API: &fakeIntel{}, Logger: testLogger})
 
 	names := []string{
 		"falcon_search_actors",
@@ -357,12 +346,8 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		"falcon_search_reports",
 		"falcon_get_mitre_report",
 	}
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
-	if len(entries) != len(names) {
-		t.Fatalf("expected %d tools, got %d", len(names), len(entries))
+	if len(byName) != len(names) {
+		t.Fatalf("expected %d tools, got %d", len(names), len(byName))
 	}
 	for _, n := range names {
 		tool := byName[n]

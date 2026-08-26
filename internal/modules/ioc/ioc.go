@@ -32,10 +32,6 @@ var Factory registry.Factory = func(d registry.Deps) base.Module {
 // defaultLimit is the search page size applied when the caller omits limit.
 const defaultLimit = 10
 
-// errInvalidInput classifies client-side validation failures in the mutating
-// tools.
-var errInvalidInput = errors.New("ioc: invalid input")
-
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
 var (

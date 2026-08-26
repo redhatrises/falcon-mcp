@@ -3,13 +3,11 @@ package data_protection
 import (
 	"context"
 	"errors"
-	"reflect"
 	"slices"
 	"testing"
 
 	dp "github.com/crowdstrike/gofalcon/falcon/client/data_protection_configuration"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -123,9 +121,7 @@ func TestSearchClassificationsReturnsDetails(t *testing.T) {
 	if len(f.classGetIDs) != 2 || f.classGetIDs[0] != "c1" {
 		t.Fatalf("detail fetch did not receive the query IDs: %v", f.classGetIDs)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.classQueryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.classQueryResp.Payload.Meta)
 }
 
 func TestSearchClassificationsFQLError(t *testing.T) {
@@ -198,8 +194,8 @@ func TestSearchPoliciesRejectsInvalidPlatform(t *testing.T) {
 			m := &Module{API: f, Logger: testLogger}
 
 			_, _, err := m.searchPolicies(context.Background(), nil, SearchPoliciesInput{PlatformName: platform})
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("platform %q: expected errInvalidInput, got %v", platform, err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("platform %q: expected base.ErrInvalidInput, got %v", platform, err)
 			}
 		})
 	}
@@ -229,9 +225,7 @@ func TestSearchPoliciesForwardsPlatformName(t *testing.T) {
 	if f.policyGetCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.policyGetCalls)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.policyQueryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.policyQueryResp.Payload.Meta)
 }
 
 func TestSearchPoliciesEmpty(t *testing.T) {
@@ -293,9 +287,7 @@ func TestSearchContentPatternsReturnsDetails(t *testing.T) {
 	if f.patternGetCalls != 1 {
 		t.Fatalf("expected one detail fetch, got %d", f.patternGetCalls)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.patternQueryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.patternQueryResp.Payload.Meta)
 }
 
 func TestSearchContentPatternsFQLError(t *testing.T) {
@@ -343,23 +335,22 @@ func TestRegisterToolsNamesAndAnnotations(t *testing.T) {
 	t.Parallel()
 
 	m := &Module{API: &fakeAPI{}, Concurrency: 4, Logger: testLogger}
-	var tools []*mcp.Tool
-	m.RegisterTools(testutil.CaptureRegistrar(func(e base.ToolEntry) { tools = append(tools, e.Tool) }))
+	byName := testutil.CollectTools(m)
 
 	want := map[string]bool{
 		"falcon_search_data_protection_classifications":  false,
 		"falcon_search_data_protection_policies":         false,
 		"falcon_search_data_protection_content_patterns": false,
 	}
-	for _, tool := range tools {
-		if _, ok := want[tool.Name]; !ok {
-			t.Fatalf("unexpected tool registered: %q", tool.Name)
+	for name, tool := range byName {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected tool registered: %q", name)
 		}
-		want[tool.Name] = true
+		want[name] = true
 		// All three are read-only search tools; AddTool applies the read-only
 		// default when Annotations is nil.
 		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-			t.Fatalf("tool %q should carry read-only annotations, got %+v", tool.Name, tool.Annotations)
+			t.Fatalf("tool %q should carry read-only annotations, got %+v", name, tool.Annotations)
 		}
 	}
 	for name, seen := range want {

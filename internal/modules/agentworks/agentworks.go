@@ -39,11 +39,6 @@ const (
 	spansFQLGuideURI         = "falcon://agentworks/spans/fql-guide"
 )
 
-// errInvalidInput is returned for caller-side argument errors (e.g. an empty id,
-// or deadline_seconds below the minimum). Wrapped with %w and matched via
-// errors.Is.
-var errInvalidInput = errors.New("agentworks: invalid input")
-
 // errUnexpectedResponse is returned when the invoke API succeeds but its payload
 // is missing the invocation record or its id. Wrapped with %w and matched via
 // errors.Is.
@@ -407,7 +402,7 @@ func (m *Module) searchAgents(ctx context.Context, req *mcp.CallToolRequest, in 
 			}
 			return resp.Payload.Resources, nil
 		},
-		keyFn: agentID,
+		keyFn: func(a *models.APIAgent) string { return base.Deref(a.ID) },
 	})
 	return nil, res, err
 }
@@ -449,7 +444,7 @@ func (m *Module) searchAgentVersions(ctx context.Context, req *mcp.CallToolReque
 			}
 			return resp.Payload.Resources, nil
 		},
-		keyFn: agentVersionID,
+		keyFn: func(v *models.APIAgentVersion) string { return base.Deref(v.ID) },
 	})
 	return nil, res, err
 }
@@ -490,7 +485,7 @@ func (m *Module) searchSpans(ctx context.Context, req *mcp.CallToolRequest, in S
 			}
 			return resp.Payload.Resources, nil
 		},
-		keyFn: spanID,
+		keyFn: func(s *models.DomainSpan) string { return base.Deref(s.ID) },
 	})
 	return nil, res, err
 }
@@ -503,7 +498,7 @@ type GetInvocationInput struct {
 func (m *Module) getInvocation(ctx context.Context, _ *mcp.CallToolRequest, in GetInvocationInput) (*mcp.CallToolResult, base.EntitiesResult[*models.APIAgentInvocationResponseResource], error) {
 	var zero base.EntitiesResult[*models.APIAgentInvocationResponseResource]
 	if in.ID == "" {
-		return nil, zero, fmt.Errorf("%w: id must not be empty", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: id must not be empty", base.ErrInvalidInput)
 	}
 	m.Logger.Debug("get_agentworks_agent_invocation", "id", in.ID)
 	params := agent_invocation.NewGetAgentInvocationV3ParamsWithContext(ctx)
@@ -513,28 +508,4 @@ func (m *Module) getInvocation(ctx context.Context, _ *mcp.CallToolRequest, in G
 		return nil, zero, e
 	}
 	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
-}
-
-// agentID extracts an agent's ID for query-order restoration.
-func agentID(a *models.APIAgent) string {
-	if a == nil || a.ID == nil {
-		return ""
-	}
-	return *a.ID
-}
-
-// agentVersionID extracts an agent version's ID for query-order restoration.
-func agentVersionID(v *models.APIAgentVersion) string {
-	if v == nil || v.ID == nil {
-		return ""
-	}
-	return *v.ID
-}
-
-// spanID extracts a span's ID for query-order restoration.
-func spanID(s *models.DomainSpan) string {
-	if s == nil || s.ID == nil {
-		return ""
-	}
-	return *s.ID
 }

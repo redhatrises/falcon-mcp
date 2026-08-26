@@ -24,6 +24,19 @@ type Error struct {
 // Error implements the error interface.
 func (e *Error) Error() string { return e.Message }
 
+// ErrInvalidInput is the shared sentinel for caller-side argument validation
+// failures (empty required field, out-of-range value, mutually exclusive flags).
+// Modules wrap it with InvalidInput and callers classify with
+// errors.Is(err, base.ErrInvalidInput).
+var ErrInvalidInput = errors.New("invalid input")
+
+// InvalidInput builds an ErrInvalidInput-wrapped error for op with detail,
+// formatted as "op: invalid input: detail". op names the operation, so the
+// message needs no package prefix.
+func InvalidInput(op, detail string) error {
+	return fmt.Errorf("%s: %w: %s", op, ErrInvalidInput, detail)
+}
+
 // APIError converts a gofalcon transport error plus a gofalcon *OK response
 // into a single *Error, or nil on success. scopes are the API scopes the
 // operation requires; on a 403 they are attached so the caller learns exactly

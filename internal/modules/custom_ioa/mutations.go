@@ -79,10 +79,10 @@ type CreateGroupInput struct {
 func (m *Module) createRuleGroup(ctx context.Context, _ *mcp.CallToolRequest, in CreateGroupInput) (*mcp.CallToolResult, base.EntitiesResult[*models.APIRuleGroupV1], error) {
 	var zero base.EntitiesResult[*models.APIRuleGroupV1]
 	if in.Name == "" {
-		return nil, zero, wrapInvalid("create IOA rule group", "name must not be empty")
+		return nil, zero, base.InvalidInput("create IOA rule group", "name must not be empty")
 	}
 	if !validPlatforms[in.Platform] {
-		return nil, zero, wrapInvalid("create IOA rule group", fmt.Sprintf("invalid platform %q (want windows, mac, or linux)", in.Platform))
+		return nil, zero, base.InvalidInput("create IOA rule group", fmt.Sprintf("invalid platform %q (want windows, mac, or linux)", in.Platform))
 	}
 	m.Logger.Debug("create_ioa_rule_group", "name", in.Name, "platform", in.Platform)
 
@@ -122,7 +122,7 @@ type UpdateGroupInput struct {
 func (m *Module) updateRuleGroup(ctx context.Context, _ *mcp.CallToolRequest, in UpdateGroupInput) (*mcp.CallToolResult, base.EntitiesResult[*models.APIRuleGroupV1], error) {
 	var zero base.EntitiesResult[*models.APIRuleGroupV1]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("update IOA rule group", "id must not be empty")
+		return nil, zero, base.InvalidInput("update IOA rule group", "id must not be empty")
 	}
 	m.Logger.Debug("update_ioa_rule_group", "id", in.ID, "version", in.RulegroupVersion)
 
@@ -161,7 +161,7 @@ type DeleteGroupsInput struct {
 
 func (m *Module) deleteRuleGroups(ctx context.Context, _ *mcp.CallToolRequest, in DeleteGroupsInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	if len(in.IDs) == 0 {
-		return nil, base.ActionResult{}, wrapInvalid("delete IOA rule groups", "ids must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("delete IOA rule groups", "ids must not be empty")
 	}
 	m.Logger.Debug("delete_ioa_rule_groups", "ids", len(in.IDs))
 
@@ -225,19 +225,19 @@ func (m *Module) createRule(ctx context.Context, _ *mcp.CallToolRequest, in Crea
 // validate enforces the client-side constraints on a rule create request.
 func (in CreateRuleInput) validate() error {
 	if in.RulegroupID == "" {
-		return wrapInvalid("create IOA rule", "rulegroup_id must not be empty")
+		return base.InvalidInput("create IOA rule", "rulegroup_id must not be empty")
 	}
 	if in.Name == "" {
-		return wrapInvalid("create IOA rule", "name must not be empty")
+		return base.InvalidInput("create IOA rule", "name must not be empty")
 	}
 	if in.RuletypeID == "" {
-		return wrapInvalid("create IOA rule", "ruletype_id must not be empty")
+		return base.InvalidInput("create IOA rule", "ruletype_id must not be empty")
 	}
 	if !validSeverities[in.PatternSeverity] {
-		return wrapInvalid("create IOA rule", fmt.Sprintf("invalid pattern_severity %q (want critical, high, medium, low, or informational)", in.PatternSeverity))
+		return base.InvalidInput("create IOA rule", fmt.Sprintf("invalid pattern_severity %q (want critical, high, medium, low, or informational)", in.PatternSeverity))
 	}
 	if len(in.FieldValues) == 0 {
-		return wrapInvalid("create IOA rule", "field_values must not be empty")
+		return base.InvalidInput("create IOA rule", "field_values must not be empty")
 	}
 	return nil
 }
@@ -311,13 +311,13 @@ func (m *Module) updateRule(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 // validate enforces the client-side constraints on a rule update request.
 func (in UpdateRuleInput) validate() error {
 	if in.RulegroupID == "" {
-		return wrapInvalid("update IOA rule", "rulegroup_id must not be empty")
+		return base.InvalidInput("update IOA rule", "rulegroup_id must not be empty")
 	}
 	if in.InstanceID == "" {
-		return wrapInvalid("update IOA rule", "instance_id must not be empty")
+		return base.InvalidInput("update IOA rule", "instance_id must not be empty")
 	}
 	if in.PatternSeverity != "" && !validSeverities[in.PatternSeverity] {
-		return wrapInvalid("update IOA rule", fmt.Sprintf("invalid pattern_severity %q (want critical, high, medium, low, or informational)", in.PatternSeverity))
+		return base.InvalidInput("update IOA rule", fmt.Sprintf("invalid pattern_severity %q (want critical, high, medium, low, or informational)", in.PatternSeverity))
 	}
 	return nil
 }
@@ -331,10 +331,10 @@ type DeleteRulesInput struct {
 
 func (m *Module) deleteRules(ctx context.Context, _ *mcp.CallToolRequest, in DeleteRulesInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	if in.RuleGroupID == "" {
-		return nil, base.ActionResult{}, wrapInvalid("delete IOA rules", "rule_group_id must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("delete IOA rules", "rule_group_id must not be empty")
 	}
 	if len(in.IDs) == 0 {
-		return nil, base.ActionResult{}, wrapInvalid("delete IOA rules", "ids must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("delete IOA rules", "ids must not be empty")
 	}
 	m.Logger.Debug("delete_ioa_rules", "rule_group_id", in.RuleGroupID, "ids", len(in.IDs))
 
@@ -350,9 +350,4 @@ func (m *Module) deleteRules(ctx context.Context, _ *mcp.CallToolRequest, in Del
 		return nil, base.ActionResult{}, e
 	}
 	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

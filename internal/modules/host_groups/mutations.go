@@ -58,13 +58,13 @@ func (m *Module) createHostGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 // rejects an assignment rule on non-dynamic groups, so fail fast here.
 func (in CreateInput) validate() error {
 	if in.Name == "" {
-		return wrapInvalid("create host group", "name must not be empty")
+		return base.InvalidInput("create host group", "name must not be empty")
 	}
 	if !validGroupTypes[in.GroupType] {
-		return wrapInvalid("create host group", fmt.Sprintf("invalid group_type %q (want static, staticByID, or dynamic)", in.GroupType))
+		return base.InvalidInput("create host group", fmt.Sprintf("invalid group_type %q (want static, staticByID, or dynamic)", in.GroupType))
 	}
 	if in.AssignmentRule != "" && in.GroupType != "dynamic" {
-		return wrapInvalid("create host group", "assignment_rule is only valid for dynamic groups")
+		return base.InvalidInput("create host group", "assignment_rule is only valid for dynamic groups")
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ type UpdateInput struct {
 func (m *Module) updateHostGroup(ctx context.Context, _ *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, base.EntitiesResult[*models.HostGroupsHostGroupV1], error) {
 	var zero base.EntitiesResult[*models.HostGroupsHostGroupV1]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("update host group", "id must not be empty")
+		return nil, zero, base.InvalidInput("update host group", "id must not be empty")
 	}
 	m.Logger.Debug("update_host_group", "id", in.ID, "set_name", in.Name != "", "set_description", in.Description != "", "set_rule", in.AssignmentRule != nil)
 
@@ -114,7 +114,7 @@ type DeleteInput struct {
 
 func (m *Module) deleteHostGroups(ctx context.Context, _ *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	if len(in.IDs) == 0 {
-		return nil, base.ActionResult{}, wrapInvalid("delete host groups", "ids must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("delete host groups", "ids must not be empty")
 	}
 	m.Logger.Debug("delete_host_groups", "ids", len(in.IDs))
 
@@ -161,18 +161,13 @@ func (m *Module) performHostGroupAction(ctx context.Context, _ *mcp.CallToolRequ
 // validate enforces the client-side constraints on a membership action.
 func (in ActionInput) validate() error {
 	if !validActions[in.ActionName] {
-		return wrapInvalid("perform host group action", fmt.Sprintf("invalid action_name %q (want add-hosts or remove-hosts)", in.ActionName))
+		return base.InvalidInput("perform host group action", fmt.Sprintf("invalid action_name %q (want add-hosts or remove-hosts)", in.ActionName))
 	}
 	if len(in.IDs) == 0 {
-		return wrapInvalid("perform host group action", "ids must not be empty")
+		return base.InvalidInput("perform host group action", "ids must not be empty")
 	}
 	if in.Filter == "" {
-		return wrapInvalid("perform host group action", "filter must not be empty")
+		return base.InvalidInput("perform host group action", "filter must not be empty")
 	}
 	return nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

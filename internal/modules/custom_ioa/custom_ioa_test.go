@@ -8,8 +8,6 @@ import (
 
 	"github.com/crowdstrike/gofalcon/falcon/client/custom_ioa"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/go-openapi/runtime"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -117,20 +115,6 @@ func (f *fakeCustomIOA) DeleteRules(p *custom_ioa.DeleteRulesParams, _ ...custom
 	return &custom_ioa.DeleteRulesOK{Payload: &models.MsaReplyMetaOnly{Meta: f.deleteRulesMeta}}, f.deleteRulesErr
 }
 
-// status400Err is a minimal runtime.ClientResponseStatus reporting HTTP 400, so
-// tests can exercise the status-based FQL classification without a live call.
-type status400Err struct{}
-
-func (status400Err) Error() string        { return "status 400" }
-func (status400Err) IsCode(code int) bool { return code == 400 }
-func (status400Err) IsSuccess() bool      { return false }
-func (status400Err) IsRedirect() bool     { return false }
-func (status400Err) IsClientError() bool  { return true }
-func (status400Err) IsServerError() bool  { return false }
-
-// assert the fake satisfies the runtime interface at compile time.
-var _ runtime.ClientResponseStatus = status400Err{}
-
 // --- search_ioa_rule_groups ---
 
 func TestSearchRuleGroupsSuccess(t *testing.T) {
@@ -149,9 +133,7 @@ func TestSearchRuleGroupsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "platform:'windows'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryGroupsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryGroupsResp.Payload.Meta)
 }
 
 func TestSearchRuleGroupsEmpty(t *testing.T) {
@@ -236,7 +218,7 @@ func TestSearchRuleGroupsFQLError(t *testing.T) {
 
 	// This endpoint has no typed *BadRequest; a bad FQL filter surfaces as a
 	// generic 400. The module must classify by status and return a data result.
-	f := &fakeCustomIOA{queryGroupsErr: status400Err{}}
+	f := &fakeCustomIOA{queryGroupsErr: testutil.StatusErr(400)}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchRuleGroups(context.Background(), nil, SearchInput{Filter: "bogus(("})
@@ -284,9 +266,7 @@ func TestGetPlatforms(t *testing.T) {
 	if out.Total != 3 || out.Resources[0].ID != "windows" {
 		t.Fatalf("unexpected platforms: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryPlatformsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryPlatformsResp.Payload.Meta)
 }
 
 func TestGetPlatformsEmpty(t *testing.T) {
@@ -336,9 +316,7 @@ func TestGetRuleTypesTwoStep(t *testing.T) {
 	if f.lastGetRuleTypeIDs[0] != "1" || f.lastGetRuleTypeIDs[1] != "2" {
 		t.Fatalf("expected get called with query IDs, got %v", f.lastGetRuleTypeIDs)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryRuleTypesResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryRuleTypesResp.Payload.Meta)
 }
 
 func TestGetRuleTypesEmptySkipsFetch(t *testing.T) {
@@ -382,8 +360,8 @@ func TestCreateRuleGroupValidation(t *testing.T) {
 			f := &fakeCustomIOA{createGroupResp: &custom_ioa.CreateRuleGroupMixin0Created{Payload: &models.APIRuleGroupsResponse{}}}
 			m := &Module{API: f, Logger: testLogger}
 			_, _, err := m.createRuleGroup(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -410,9 +388,7 @@ func TestCreateRuleGroupBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createGroupResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.createGroupResp.Payload.Meta)
 	b := f.lastCreateGroupBody
 	if *b.Name != "Grp" || *b.Platform != "windows" || b.Description == nil || *b.Description != "desc" || b.Comment == nil || *b.Comment != "why" {
 		t.Fatalf("unexpected create body: %+v", b)
@@ -443,8 +419,8 @@ func TestUpdateRuleGroup(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 		_, _, err := m.updateRuleGroup(context.Background(), nil, UpdateGroupInput{Name: "x"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -465,9 +441,7 @@ func TestUpdateRuleGroup(t *testing.T) {
 		if out.Total != 1 {
 			t.Fatalf("expected updated record, got %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.updateGroupResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.updateGroupResp.Payload.Meta)
 		b := f.lastUpdateGroupBody
 		if *b.ID != "g1" || *b.RulegroupVersion != 7 || b.Name == nil || *b.Name != "renamed" {
 			t.Fatalf("unexpected update body: %+v", b)
@@ -500,8 +474,8 @@ func TestDeleteRuleGroups(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 		_, _, err := m.deleteRuleGroups(context.Background(), nil, DeleteGroupsInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -522,9 +496,7 @@ func TestDeleteRuleGroups(t *testing.T) {
 		if f.lastDeleteGroupCmt == nil || *f.lastDeleteGroupCmt != "cleanup" {
 			t.Fatalf("expected comment passed, got %v", f.lastDeleteGroupCmt)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteGroupsMeta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.deleteGroupsMeta)
 	})
 }
 
@@ -552,8 +524,8 @@ func TestCreateRuleValidation(t *testing.T) {
 			t.Parallel()
 			m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 			_, _, err := m.createRule(context.Background(), nil, tc.in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 		})
 	}
@@ -581,9 +553,7 @@ func TestCreateRuleBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createRuleResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.createRuleResp.Payload.Meta)
 	b := f.lastCreateRuleBody
 	if *b.RulegroupID != "g1" || *b.Name != "Block" || *b.RuletypeID != "5" || *b.DispositionID != 30 || *b.PatternSeverity != "critical" {
 		t.Fatalf("unexpected create rule body: %+v", b)
@@ -618,8 +588,8 @@ func TestUpdateRuleValidation(t *testing.T) {
 			t.Parallel()
 			m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 			_, _, err := m.updateRule(context.Background(), nil, tc.in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 		})
 	}
@@ -647,9 +617,7 @@ func TestUpdateRuleBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected updated record, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.updateRulesResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.updateRulesResp.Payload.Meta)
 	b := f.lastUpdateRulesBody
 	if *b.RulegroupID != "g1" || *b.RulegroupVersion != 3 {
 		t.Fatalf("unexpected update envelope: %+v", b)
@@ -694,8 +662,8 @@ func TestDeleteRules(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 		_, _, err := m.deleteRules(context.Background(), nil, DeleteRulesInput{IDs: []string{"r1"}})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -703,8 +671,8 @@ func TestDeleteRules(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
 		_, _, err := m.deleteRules(context.Background(), nil, DeleteRulesInput{RuleGroupID: "g1"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -722,9 +690,7 @@ func TestDeleteRules(t *testing.T) {
 		if f.lastDeleteRulesGrp != "g1" || len(f.lastDeleteRulesIDs) != 2 {
 			t.Fatalf("expected group g1 and 2 ids, got grp=%q ids=%v", f.lastDeleteRulesGrp, f.lastDeleteRulesIDs)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteRulesMeta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.deleteRulesMeta)
 	})
 }
 
@@ -765,15 +731,8 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeCustomIOA{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	// Read-only tools.
 	for _, name := range []string{

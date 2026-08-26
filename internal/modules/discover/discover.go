@@ -45,10 +45,6 @@ const managedFilter = "entity_type:'managed'"
 // base.APIError.
 var scopeAssetsRead = base.Scope{Name: "Assets", Read: true}
 
-// errInvalidInput classifies client-side validation failures (e.g. a missing
-// required filter) so the handler can distinguish them from API errors.
-var errInvalidInput = errors.New("discover: invalid input")
-
 // Factory builds the discover module from shared deps. The generated aggregator
 // (internal/mcpserver) collects it, so the module needs no init side effect.
 // Both tools are one-call queries, so the module ignores Deps.Concurrency.
@@ -273,7 +269,7 @@ type ApplicationsInput struct {
 func (m *Module) searchApplications(ctx context.Context, _ *mcp.CallToolRequest, in ApplicationsInput) (*mcp.CallToolResult, base.SearchResult[*models.DomainDiscoverAPIApplication], error) {
 	var zero base.SearchResult[*models.DomainDiscoverAPIApplication]
 	if in.Filter == "" {
-		return nil, zero, fmt.Errorf("%w: filter is required (the combined applications endpoint rejects an unfiltered query)", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: filter is required (the combined applications endpoint rejects an unfiltered query)", base.ErrInvalidInput)
 	}
 	limit := int64(in.Limit)
 	if limit == 0 {

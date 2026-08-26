@@ -9,7 +9,6 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client/identity_protection"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
-	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
@@ -385,14 +384,13 @@ func TestToolRegistersReadOnly(t *testing.T) {
 	t.Parallel()
 	f := &fakeIDP{}
 	m := newModule(f)
-	var entries []base.ToolEntry
-	m.RegisterTools(testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) }))
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 tool, got %d", len(entries))
+	byName := testutil.CollectTools(m)
+	if len(byName) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(byName))
 	}
-	tool := entries[0].Tool
-	if tool.Name != "falcon_idp_investigate_entity" {
-		t.Fatalf("expected falcon_ prefixed name, got %q", tool.Name)
+	tool := byName["falcon_idp_investigate_entity"]
+	if tool == nil {
+		t.Fatalf("expected falcon_idp_investigate_entity to be registered")
 	}
 	if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 		t.Fatalf("expected read-only annotations, got %+v", tool.Annotations)

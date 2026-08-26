@@ -140,9 +140,7 @@ func TestSearchHostsFetchesDetails(t *testing.T) {
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 fetched resources, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the query meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryResp.Payload.Meta)
 	if got := *out.Resources[0].DeviceID; got != "d1" {
 		t.Fatalf("expected query order restored (d1 first), got %q", got)
 	}
@@ -154,25 +152,13 @@ func TestSearchHostsFetchesDetails(t *testing.T) {
 	}
 }
 
-// fakeStatusErr implements runtime.ClientResponseStatus for a chosen HTTP code,
-// standing in for the untyped 400 that QueryDevicesByFilter returns for a bad
-// filter (gofalcon exposes no typed BadRequest for this operation).
-type fakeStatusErr struct{ code int }
-
-func (e fakeStatusErr) Error() string       { return "status error" }
-func (e fakeStatusErr) IsSuccess() bool     { return e.code >= 200 && e.code < 300 }
-func (e fakeStatusErr) IsRedirect() bool    { return e.code >= 300 && e.code < 400 }
-func (e fakeStatusErr) IsClientError() bool { return e.code >= 400 && e.code < 500 }
-func (e fakeStatusErr) IsServerError() bool { return e.code >= 500 }
-func (e fakeStatusErr) IsCode(c int) bool   { return e.code == c }
-
 // TestSearchHostsFQLErrorReturnsGuide verifies a 400 with a filter present is
 // surfaced as a SearchResult carrying the FQL guide (a data result), not a Go
 // error — matching the sibling search tools' invalid-filter contract.
 func TestSearchHostsFQLErrorReturnsGuide(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeHosts{queryErr: fakeStatusErr{code: 400}}
+	f := &fakeHosts{queryErr: testutil.StatusErr(400)}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
 	_, out, err := m.searchHosts(context.Background(), nil, SearchInput{Filter: "bogus:'x'"})
 	if err != nil {
@@ -195,7 +181,7 @@ func TestSearchHostsFQLErrorReturnsGuide(t *testing.T) {
 func TestSearchHostsBadRequestNoFilterSurfacesError(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeHosts{queryErr: fakeStatusErr{code: 400}}
+	f := &fakeHosts{queryErr: testutil.StatusErr(400)}
 	m := &Module{API: f, Concurrency: 4, Logger: testLogger}
 	_, _, err := m.searchHosts(context.Background(), nil, SearchInput{})
 	if err == nil {
@@ -233,8 +219,8 @@ func TestManageGroupingTagsValidation(t *testing.T) {
 			f := &fakeHosts{}
 			m := &Module{API: f, Concurrency: 4, Logger: testLogger}
 			_, _, err := m.manageGroupingTags(context.Background(), nil, tc.in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if f.tagsCalls != 0 {
 				t.Fatalf("expected no API call on validation failure, got %d", f.tagsCalls)
@@ -305,27 +291,20 @@ func TestManageGroupingTagsSurfacesAcceptedPayload(t *testing.T) {
 // advertise it as read-only, and neither conformance nor lint would catch it.
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]base.ToolEntry{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e
-	}
+	byName := testutil.CollectTools(m)
 
 	for _, name := range []string{"falcon_search_hosts", "falcon_get_host_details"} {
 		e, ok := byName[name]
 		if !ok {
 			t.Fatalf("missing tool %s", name)
 		}
-		testutil.AssertReadOnlyAnnotations(t, name, e.Tool.Annotations)
+		testutil.AssertReadOnlyAnnotations(t, name, e.Annotations)
 	}
 
 	tags, ok := byName["falcon_manage_host_grouping_tags"]
 	if !ok {
 		t.Fatal("missing falcon_manage_host_grouping_tags")
 	}
-	testutil.AssertMutatingAnnotations(t, "falcon_manage_host_grouping_tags", tags.Tool.Annotations, true)
+	testutil.AssertMutatingAnnotations(t, "falcon_manage_host_grouping_tags", tags.Annotations, true)
 }

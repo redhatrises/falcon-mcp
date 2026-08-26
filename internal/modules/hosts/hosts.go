@@ -237,11 +237,6 @@ func (m *Module) fetchDetails(ctx context.Context, req *mcp.CallToolRequest, ids
 		},
 		// PostDeviceDetailsV2 may reorder devices; reorder to the query step's
 		// sort. Field verified against the live API: device_id.
-		KeyFn: func(d *models.DeviceapiDeviceSwagger) string {
-			if d == nil || d.DeviceID == nil {
-				return ""
-			}
-			return *d.DeviceID
-		},
+		KeyFn: func(d *models.DeviceapiDeviceSwagger) string { return base.Deref(d.DeviceID) },
 	})
 }

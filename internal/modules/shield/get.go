@@ -87,7 +87,7 @@ type GetAffectedInput struct {
 func (m *Module) getShieldCheckAffectedEntities(ctx context.Context, _ *mcp.CallToolRequest, in GetAffectedInput) (*mcp.CallToolResult, base.SearchResult[*models.AffectedEntityGetAffected], error) {
 	var zero base.SearchResult[*models.AffectedEntityGetAffected]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("get shield check affected entities", "id must not be empty")
+		return nil, zero, base.InvalidInput("get shield check affected entities", "id must not be empty")
 	}
 	p := saas_security.NewGetSecurityCheckAffectedV3ParamsWithContext(ctx)
 	p.ID = in.ID
@@ -152,7 +152,7 @@ type GetComplianceInput struct {
 func (m *Module) getShieldCheckCompliance(ctx context.Context, _ *mcp.CallToolRequest, in GetComplianceInput) (*mcp.CallToolResult, base.SearchResult[*models.CriteriaGetSecurityCompliance], error) {
 	var zero base.SearchResult[*models.CriteriaGetSecurityCompliance]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("get shield check compliance", "id must not be empty")
+		return nil, zero, base.InvalidInput("get shield check compliance", "id must not be empty")
 	}
 	p := saas_security.NewGetSecurityCheckComplianceV3ParamsWithContext(ctx)
 	p.ID = in.ID
@@ -226,7 +226,7 @@ type GetAppUsersInput struct {
 func (m *Module) getShieldAppUsers(ctx context.Context, _ *mcp.CallToolRequest, in GetAppUsersInput) (*mcp.CallToolResult, base.SearchResult[*models.AppUsersAppInventoryUsers], error) {
 	var zero base.SearchResult[*models.AppUsersAppInventoryUsers]
 	if in.ItemID == "" {
-		return nil, zero, wrapInvalid("get shield app users", "item_id must not be empty")
+		return nil, zero, base.InvalidInput("get shield app users", "item_id must not be empty")
 	}
 	p := saas_security.NewGetAppInventoryUsersParamsWithContext(ctx)
 	p.ItemID = in.ItemID

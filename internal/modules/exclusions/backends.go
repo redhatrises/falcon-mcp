@@ -418,7 +418,7 @@ func applyQuery(a queryArgs, filter **string, sort **string, limit **int64, offs
 // is the operation's *MsaMetaInfo; it is returned as-is (WithMeta normalizes a
 // typed-nil pointer so it is omitted rather than serialized as null).
 func recordsAndMeta[T any](resources []T, meta any) ([]map[string]any, any, error) {
-	records, err := modelsToMaps(resources)
+	records, err := base.ModelsToMaps(resources)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -41,13 +41,13 @@ type CreateInput struct {
 func (m *Module) createCase(ctx context.Context, _ *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, base.EntitiesResult[*models.SdkCaseVM], error) {
 	var zero base.EntitiesResult[*models.SdkCaseVM]
 	if in.Name == "" {
-		return nil, zero, wrapInvalid("create case", "name must not be empty")
+		return nil, zero, base.InvalidInput("create case", "name must not be empty")
 	}
 	if in.Severity < 1 || in.Severity > 100 {
-		return nil, zero, wrapInvalid("create case", "severity must be between 1 and 100")
+		return nil, zero, base.InvalidInput("create case", "severity must be between 1 and 100")
 	}
 	if in.DescriptionFormat != "" && !validDescriptionFormat(in.DescriptionFormat) {
-		return nil, zero, wrapInvalid("create case", fmt.Sprintf("invalid description_format %q (want 'markdown' or 'plaintext')", in.DescriptionFormat))
+		return nil, zero, base.InvalidInput("create case", fmt.Sprintf("invalid description_format %q (want 'markdown' or 'plaintext')", in.DescriptionFormat))
 	}
 	m.Logger.Debug("create_case", "name", in.Name, "severity", in.Severity, "alerts", len(in.AlertIDs), "events", len(in.EventIDs))
 
@@ -124,13 +124,13 @@ type UpdateInput struct {
 func (m *Module) updateCase(ctx context.Context, _ *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, base.EntitiesResult[*models.SdkCaseVM], error) {
 	var zero base.EntitiesResult[*models.SdkCaseVM]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("update case", "id must not be empty")
+		return nil, zero, base.InvalidInput("update case", "id must not be empty")
 	}
 	if in.Severity != nil && (*in.Severity < 1 || *in.Severity > 100) {
-		return nil, zero, wrapInvalid("update case", "severity must be between 1 and 100")
+		return nil, zero, base.InvalidInput("update case", "severity must be between 1 and 100")
 	}
 	if in.DescriptionFormat != "" && !validDescriptionFormat(in.DescriptionFormat) {
-		return nil, zero, wrapInvalid("update case", fmt.Sprintf("invalid description_format %q (want 'markdown' or 'plaintext')", in.DescriptionFormat))
+		return nil, zero, base.InvalidInput("update case", fmt.Sprintf("invalid description_format %q (want 'markdown' or 'plaintext')", in.DescriptionFormat))
 	}
 
 	fields := &models.OperationsCaseFieldChanges{}
@@ -168,7 +168,7 @@ func (m *Module) updateCase(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 		hasField = true
 	}
 	if !hasField {
-		return nil, zero, wrapInvalid("update case", "at least one field to update must be provided")
+		return nil, zero, base.InvalidInput("update case", "at least one field to update must be provided")
 	}
 	m.Logger.Debug("update_case", "id", in.ID, "has_expected_version", in.ExpectedVersion != nil)
 
@@ -199,10 +199,10 @@ type AlertEvidenceInput struct {
 func (m *Module) addCaseAlertEvidence(ctx context.Context, _ *mcp.CallToolRequest, in AlertEvidenceInput) (*mcp.CallToolResult, base.EntitiesResult[*models.SdkCaseVM], error) {
 	var zero base.EntitiesResult[*models.SdkCaseVM]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("add case alert evidence", "id must not be empty")
+		return nil, zero, base.InvalidInput("add case alert evidence", "id must not be empty")
 	}
 	if len(in.AlertIDs) == 0 {
-		return nil, zero, wrapInvalid("add case alert evidence", "alert_ids must not be empty")
+		return nil, zero, base.InvalidInput("add case alert evidence", "alert_ids must not be empty")
 	}
 	m.Logger.Debug("add_case_alert_evidence", "id", in.ID, "alerts", len(in.AlertIDs))
 
@@ -230,10 +230,10 @@ type EventEvidenceInput struct {
 func (m *Module) addCaseEventEvidence(ctx context.Context, _ *mcp.CallToolRequest, in EventEvidenceInput) (*mcp.CallToolResult, base.EntitiesResult[*models.SdkCaseVM], error) {
 	var zero base.EntitiesResult[*models.SdkCaseVM]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("add case event evidence", "id must not be empty")
+		return nil, zero, base.InvalidInput("add case event evidence", "id must not be empty")
 	}
 	if len(in.EventIDs) == 0 {
-		return nil, zero, wrapInvalid("add case event evidence", "event_ids must not be empty")
+		return nil, zero, base.InvalidInput("add case event evidence", "event_ids must not be empty")
 	}
 	m.Logger.Debug("add_case_event_evidence", "id", in.ID, "events", len(in.EventIDs))
 
@@ -262,13 +262,13 @@ type TagsInput struct {
 func (m *Module) manageCaseTags(ctx context.Context, _ *mcp.CallToolRequest, in TagsInput) (*mcp.CallToolResult, base.EntitiesResult[*models.SdkCaseVM], error) {
 	var zero base.EntitiesResult[*models.SdkCaseVM]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("manage case tags", "id must not be empty")
+		return nil, zero, base.InvalidInput("manage case tags", "id must not be empty")
 	}
 	if !validTagActions[in.Action] {
-		return nil, zero, wrapInvalid("manage case tags", fmt.Sprintf("invalid action %q (want 'add' or 'remove')", in.Action))
+		return nil, zero, base.InvalidInput("manage case tags", fmt.Sprintf("invalid action %q (want 'add' or 'remove')", in.Action))
 	}
 	if len(in.Tags) == 0 {
-		return nil, zero, wrapInvalid("manage case tags", "tags must not be empty")
+		return nil, zero, base.InvalidInput("manage case tags", "tags must not be empty")
 	}
 	m.Logger.Debug("manage_case_tags", "id", in.ID, "action", in.Action, "tags", len(in.Tags))
 
@@ -291,9 +291,4 @@ func (m *Module) manageCaseTags(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, zero, e
 	}
 	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }
