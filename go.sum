@@ -7,8 +7,8 @@ github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2y
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
-github.com/crowdstrike/gofalcon v0.21.2-0.20260721210035-2f1aefc09382 h1:co4EfC7/bIg9JHgrBiFgEW4PD5kLa/Z7IBkAW2iIWlk=
-github.com/crowdstrike/gofalcon v0.21.2-0.20260721210035-2f1aefc09382/go.mod h1:G3XfEBnyN68Ew/GFXbdy48k11ghlLRAFSdDURyWUtX4=
+github.com/crowdstrike/gofalcon v0.22.1-0.20260825181438-6258503751bf h1:xcaWs9phfNJ71B8dpq7hXntrXDY2Mxc9fmLwg0cKHS8=
+github.com/crowdstrike/gofalcon v0.22.1-0.20260825181438-6258503751bf/go.mod h1:G3XfEBnyN68Ew/GFXbdy48k11ghlLRAFSdDURyWUtX4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

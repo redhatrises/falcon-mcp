@@ -56,6 +56,57 @@ func TestLoad(t *testing.T) {
 				if c.DetailFetchConcurrency != defaultDetailFetchConcurrency {
 					t.Errorf("detailFetchConcurrency = %d, want %d", c.DetailFetchConcurrency, defaultDetailFetchConcurrency)
 				}
+				if c.NgsiemPollInterval != defaultNgsiemPollInterval {
+					t.Errorf("ngsiemPollInterval = %v, want %v", c.NgsiemPollInterval, defaultNgsiemPollInterval)
+				}
+				if c.NgsiemTimeout != defaultNgsiemTimeout {
+					t.Errorf("ngsiemTimeout = %v, want %v", c.NgsiemTimeout, defaultNgsiemTimeout)
+				}
+				if c.AgentworksPollInterval != defaultAgentworksPollInterval {
+					t.Errorf("agentworksPollInterval = %v, want %v", c.AgentworksPollInterval, defaultAgentworksPollInterval)
+				}
+				if c.AgentworksTimeout != defaultAgentworksTimeout {
+					t.Errorf("agentworksTimeout = %v, want %v", c.AgentworksTimeout, defaultAgentworksTimeout)
+				}
+			},
+		},
+		{
+			name: "non-positive poll-loop durations replaced by defaults",
+			in: Config{ClientID: validID, ClientSecret: validSecret,
+				NgsiemPollInterval: -1, NgsiemTimeout: 0, AgentworksPollInterval: 0, AgentworksTimeout: -1},
+			check: func(t *testing.T, c *Config) {
+				if c.NgsiemPollInterval != defaultNgsiemPollInterval {
+					t.Errorf("ngsiemPollInterval = %v, want %v", c.NgsiemPollInterval, defaultNgsiemPollInterval)
+				}
+				if c.NgsiemTimeout != defaultNgsiemTimeout {
+					t.Errorf("ngsiemTimeout = %v, want %v", c.NgsiemTimeout, defaultNgsiemTimeout)
+				}
+				if c.AgentworksPollInterval != defaultAgentworksPollInterval {
+					t.Errorf("agentworksPollInterval = %v, want %v", c.AgentworksPollInterval, defaultAgentworksPollInterval)
+				}
+				if c.AgentworksTimeout != defaultAgentworksTimeout {
+					t.Errorf("agentworksTimeout = %v, want %v", c.AgentworksTimeout, defaultAgentworksTimeout)
+				}
+			},
+		},
+		{
+			name: "positive poll-loop durations pass through",
+			in: Config{ClientID: validID, ClientSecret: validSecret,
+				NgsiemPollInterval: 2 * time.Second, NgsiemTimeout: 120 * time.Second,
+				AgentworksPollInterval: 3 * time.Second, AgentworksTimeout: 60 * time.Second},
+			check: func(t *testing.T, c *Config) {
+				if c.NgsiemPollInterval != 2*time.Second {
+					t.Errorf("ngsiemPollInterval = %v, want 2s", c.NgsiemPollInterval)
+				}
+				if c.NgsiemTimeout != 120*time.Second {
+					t.Errorf("ngsiemTimeout = %v, want 120s", c.NgsiemTimeout)
+				}
+				if c.AgentworksPollInterval != 3*time.Second {
+					t.Errorf("agentworksPollInterval = %v, want 3s", c.AgentworksPollInterval)
+				}
+				if c.AgentworksTimeout != 60*time.Second {
+					t.Errorf("agentworksTimeout = %v, want 60s", c.AgentworksTimeout)
+				}
 			},
 		},
 		{

@@ -105,12 +105,21 @@ var filterHints = map[string]string{
 		"external_ip, local_ip_addresses, os_version, " +
 		"first_seen_timestamp (UTC datetime), last_seen_timestamp (UTC datetime).",
 
+	// === Discover: Managed Assets ===
+	"falcon_search_managed_assets": "Common fields: hostname, platform_name (Windows|Linux|Mac), " +
+		"os_version, product_type_desc (Workstation|Server), criticality (Critical|High|Noncritical|Unassigned), " +
+		"internet_exposure (Yes|No|Pending), encryption_status (Encrypted|Not Encrypted|Partially Encrypted), " +
+		"os_security.secure_boot_requested_status, os_security.credential_guard_status, " +
+		"first_seen_timestamp (UTC datetime), last_seen_timestamp (UTC datetime).",
+
 	// === Firewall Rules ===
-	"falcon_search_firewall_rules": "Common fields: platform (windows|mac|linux), name, " +
+	// name uses the contains operator: name:~'value' (whole-word substring) or
+	// name:*'*value*' (arbitrary substring); a trailing-glob name:'value*' is literal and matches nothing.
+	"falcon_search_firewall_rules": "Common fields: platform (windows|mac|linux), name (contains: name:~'value'), " +
 		"enabled (true|false), created_on (UTC datetime).",
-	"falcon_search_firewall_rule_groups": "Common fields: platform (windows|mac|linux), name, " +
+	"falcon_search_firewall_rule_groups": "Common fields: platform (windows|mac|linux), name (contains: name:~'value'), " +
 		"enabled (true|false), created_on (UTC datetime).",
-	"falcon_search_firewall_policy_rules": "Common fields: platform (windows|mac|linux), name, " +
+	"falcon_search_firewall_policy_rules": "Common fields: platform (windows|mac|linux), name (contains: name:~'value'), " +
 		"enabled (true|false), created_on (UTC datetime).",
 
 	// === Intel: Actors ===
@@ -210,6 +219,15 @@ var filterHints = map[string]string{
 		"rule.topic (SA_DOMAIN|...), " +
 		"created_date:>'now-7d' (relative date). " +
 		"Ex: domain:'example.com'+credential_status:'newly_reported'",
+	"falcon_aggregate_recon_notifications": "Filter narrows which notifications are counted; same fields as " +
+		"falcon_search_recon_notifications: status (new|in-progress|closed-false-positive|closed-true-positive), " +
+		"rule_priority (low|medium|high), rule_topic (SA_DOMAIN|SA_TYPOSQUATTING|SA_EMAIL|SA_IP|SA_BRAND_PRODUCT), " +
+		"created_date:>'now-7d' (relative date). " +
+		"Ex: field='status', filter=rule_priority:'high'",
+	"falcon_aggregate_recon_exposed_data_records": "Filter narrows which exposed-data records are counted; same fields as " +
+		"falcon_search_recon_exposed_data_records: credential_status (newly_reported|confirmed_active|previously_reported), " +
+		"site, source_category, rule.topic (SA_DOMAIN|...), created_date:>'now-7d' (relative date). " +
+		"Ex: field='credential_status', filter=site:'stealer_logs'",
 
 	// === Scheduled Reports ===
 	"falcon_search_scheduled_reports": "Common fields: name, type, status (Active|Inactive|Expired), " +
@@ -232,4 +250,38 @@ var filterHints = map[string]string{
 		"cve.exprt_rating (Critical|High|Medium|Low), " +
 		"status (open|closed|reopen), host_info.hostname, " +
 		"cve.exploit_status, created_timestamp (UTC datetime).",
+
+	// === Fusion SOAR ===
+	"falcon_search_workflow_definitions": "Common fields: name.raw (exact: name.raw:'Full Name'; substring: name.raw:*'*part*'), " +
+		"id, enabled (true|false), trigger.type (On demand|Signal|Scheduled), version, " +
+		"description, last_modified_timestamp. " +
+		"Use name.raw, NOT name — name is analyzed and matches whole tokens only. " +
+		"trigger.type:'On demand' workflows are the ones to execute; 'Signal' ones are refused. " +
+		"Date filters: last_modified_timestamp:>'now-30d' (relative). " +
+		"Sort uses dots (name.asc), not pipes. " +
+		"Ex: enabled:true+trigger.type:'On demand'",
+	"falcon_search_workflow_executions": "Common fields: id (the response calls it execution_id), definition_id, " +
+		"ui_status (Completed|Failed|In progress|Action required), definition_name (~ token match), " +
+		"definition_version, test_mode, contains_mocks. " +
+		"Filter status via ui_status — the `status` field uses a different vocabulary " +
+		"('Succeeded' not 'Completed'). " +
+		"Date filters: started_timestamp:>'now-7d', completed_timestamp:>'now-1d' " +
+		"(NOT start_timestamp/end_timestamp — those are response-only names). " +
+		"Ex: ui_status:'Completed'+started_timestamp:>'now-7d'",
+
+	// === AgentWorks (Charlotte AI) ===
+	"falcon_search_agentworks_agents": "Common fields: template_id, active_version.model, " +
+		"published_version_ids (supports negation, e.g. published_version_ids:!'' for agents with a " +
+		"published version), created_date (UTC datetime, also the sort field). " +
+		"Ex: template_id:'general'+active_version.model:'gpt-4o'",
+	"falcon_search_agentworks_agent_versions": "Common fields: agent_id (scope to one agent's versions), " +
+		"name (exact match), model, is_published (true|false), is_enabled (true|false), " +
+		"created_at (UTC datetime, also the sort field). " +
+		"Ex: agent_id:'abc123'+is_published:true",
+	"falcon_search_agentworks_spans": "ALWAYS filter, usually by trace_id (the ai_trace_id from " +
+		"falcon_invoke_agentworks_agent). Common fields: trace_id, " +
+		"span_type (llm|aw_agent|aiplatform_agent|aw_agent_response|aiplatform_agent_response|charlotteai_reply|charlotteai_agent), " +
+		"status (unset|ok|error), name (exact match), duration_ms (number), " +
+		"start_time (UTC datetime, last ~90 days, also the sort field). " +
+		"Ex: trace_id:'abc123'+status:'error'",
 }

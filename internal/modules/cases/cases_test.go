@@ -499,6 +499,72 @@ func TestUpdateCase(t *testing.T) {
 	})
 }
 
+// TestCaseDescriptionFormat verifies description_format is validated against the
+// {markdown, plaintext} set and, when valid, forwarded to the create body and
+// the update field patch; when unset it is omitted so no empty value is sent.
+func TestCaseDescriptionFormat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("create rejects invalid format", func(t *testing.T) {
+		t.Parallel()
+		m := newModule(&fakeCases{}, &fakeTemplates{})
+		_, _, err := m.createCase(context.Background(), nil, CreateInput{Name: "x", Severity: 50, DescriptionFormat: "html"})
+		if !errors.Is(err, errInvalidInput) {
+			t.Fatalf("expected errInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("create forwards valid format", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeCases{createResp: &cases.EntitiesCasesPutV2Created{Payload: &models.OperationsCreateCaseResponseVM{}}}
+		m := newModule(f, &fakeTemplates{})
+		_, _, err := m.createCase(context.Background(), nil, CreateInput{Name: "x", Severity: 50, DescriptionFormat: "markdown"})
+		if err != nil {
+			t.Fatalf("createCase: %v", err)
+		}
+		if f.lastCreateBody.DescriptionFormat != "markdown" {
+			t.Fatalf("description_format = %q, want markdown", f.lastCreateBody.DescriptionFormat)
+		}
+	})
+
+	t.Run("create omits format when unset", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeCases{createResp: &cases.EntitiesCasesPutV2Created{Payload: &models.OperationsCreateCaseResponseVM{}}}
+		m := newModule(f, &fakeTemplates{})
+		_, _, err := m.createCase(context.Background(), nil, CreateInput{Name: "x", Severity: 50})
+		if err != nil {
+			t.Fatalf("createCase: %v", err)
+		}
+		if f.lastCreateBody.DescriptionFormat != "" {
+			t.Fatalf("expected empty description_format when unset, got %q", f.lastCreateBody.DescriptionFormat)
+		}
+	})
+
+	t.Run("update rejects invalid format", func(t *testing.T) {
+		t.Parallel()
+		m := newModule(&fakeCases{}, &fakeTemplates{})
+		_, _, err := m.updateCase(context.Background(), nil, UpdateInput{ID: "c1", DescriptionFormat: "rtf"})
+		if !errors.Is(err, errInvalidInput) {
+			t.Fatalf("expected errInvalidInput, got %v", err)
+		}
+	})
+
+	t.Run("update forwards valid format as a field change", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeCases{patchResp: &cases.EntitiesCasesPatchV2OK{Payload: &models.OperationsUpdateCaseResponseVM{
+			Resources: []*models.SdkCaseVM{{ID: new("c1")}},
+		}}}
+		m := newModule(f, &fakeTemplates{})
+		_, _, err := m.updateCase(context.Background(), nil, UpdateInput{ID: "c1", DescriptionFormat: "plaintext"})
+		if err != nil {
+			t.Fatalf("updateCase: %v", err)
+		}
+		if f.lastPatchBody.Fields == nil || f.lastPatchBody.Fields.DescriptionFormat != "plaintext" {
+			t.Fatalf("description_format field = %+v, want plaintext", f.lastPatchBody.Fields)
+		}
+	})
+}
+
 func TestAddCaseAlertEvidence(t *testing.T) {
 	t.Parallel()
 

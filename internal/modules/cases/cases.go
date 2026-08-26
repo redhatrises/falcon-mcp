@@ -172,12 +172,14 @@ var listTemplatesSchema = base.SchemaFor[TemplatesInput](func(s *jsonschema.Sche
 var createCaseSchema = base.SchemaFor[CreateInput](func(s *jsonschema.Schema) {
 	s.Properties["severity"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["severity"].Maximum = jsonschema.Ptr(100.0)
+	base.Enum(s, "description_format", descriptionFormats, "")
 })
 
 // updateCaseSchema is the input schema for falcon_update_case.
 var updateCaseSchema = base.SchemaFor[UpdateInput](func(s *jsonschema.Schema) {
 	s.Properties["severity"].Minimum = jsonschema.Ptr(1.0)
 	s.Properties["severity"].Maximum = jsonschema.Ptr(100.0)
+	base.Enum(s, "description_format", descriptionFormats, "")
 })
 
 // RegisterTools registers the thirteen case-management tools into r.
