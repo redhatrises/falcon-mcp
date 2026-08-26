@@ -2,8 +2,6 @@ package shield
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/saas_security"
@@ -11,15 +9,6 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
-
-// errInvalidInput classifies a client input validation failure (empty required
-// field, unparseable date). Wrapped with wrapInvalid so callers can branch.
-var errInvalidInput = errors.New("shield: invalid input")
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
-}
 
 const dismissShieldCheckDescription = "Dismiss a Falcon Shield (SaaS Security) posture check to suppress it from the failed checks list.\n\n" +
 	"Use this only when a check is intentionally accepted as a known risk; omit entities to dismiss " +
@@ -40,10 +29,10 @@ type DismissInput struct {
 // return no entity records, so the tool returns an ActionResult.
 func (m *Module) dismissShieldCheck(ctx context.Context, _ *mcp.CallToolRequest, in DismissInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	if in.ID == "" {
-		return nil, base.ActionResult{}, wrapInvalid("dismiss shield check", "id must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("dismiss shield check", "id must not be empty")
 	}
 	if in.Reason == "" {
-		return nil, base.ActionResult{}, wrapInvalid("dismiss shield check", "reason must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("dismiss shield check", "reason must not be empty")
 	}
 	m.Logger.Debug("dismiss_shield_check", "id", in.ID, "scoped_entities", in.Entities != "")
 

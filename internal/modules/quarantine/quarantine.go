@@ -13,7 +13,6 @@ package quarantine
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -45,9 +44,6 @@ const quarantineBatchSize = 500
 // validRestoreActions are the reversible action values accepted by
 // falcon_update_quarantined_files.
 var validRestoreActions = map[string]bool{"release": true, "unrelease": true}
-
-// errInvalidInput classifies client-side validation failures in the tools.
-var errInvalidInput = errors.New("quarantine: invalid input")
 
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
@@ -236,7 +232,7 @@ func (m *Module) fetchDetails(ctx context.Context, req *mcp.CallToolRequest, ids
 func (m *Module) previewQuarantineActions(ctx context.Context, _ *mcp.CallToolRequest, in PreviewInput) (*mcp.CallToolResult, base.EntitiesResult[*models.MsaAggregationResult], error) {
 	var zero base.EntitiesResult[*models.MsaAggregationResult]
 	if in.Filter == "" {
-		return nil, zero, wrapInvalid("preview quarantine actions", "filter must not be empty")
+		return nil, zero, base.InvalidInput("preview quarantine actions", "filter must not be empty")
 	}
 	m.Logger.Debug("preview_quarantine_actions", "filter", in.Filter)
 
@@ -260,12 +256,7 @@ type PreviewInput struct {
 func normalizeRestoreAction(action string) (string, error) {
 	lowered := strings.ToLower(strings.TrimSpace(action))
 	if !validRestoreActions[lowered] {
-		return "", wrapInvalid("update quarantined files", fmt.Sprintf("unsupported action %q (want release or unrelease)", action))
+		return "", base.InvalidInput("update quarantined files", fmt.Sprintf("unsupported action %q (want release or unrelease)", action))
 	}
 	return lowered, nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

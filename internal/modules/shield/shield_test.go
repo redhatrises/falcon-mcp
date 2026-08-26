@@ -7,7 +7,6 @@ import (
 
 	"github.com/crowdstrike/gofalcon/falcon/client/saas_security"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -323,8 +322,8 @@ func TestAlertsInvalidDate(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error on invalid date")
 	}
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -334,8 +333,8 @@ func TestGetAffectedRequiresID(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
 	_, _, err := m.getShieldCheckAffectedEntities(context.Background(), nil, GetAffectedInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty id, got %v", err)
 	}
 }
 
@@ -343,8 +342,8 @@ func TestGetComplianceRequiresID(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
 	_, _, err := m.getShieldCheckCompliance(context.Background(), nil, GetComplianceInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty id, got %v", err)
 	}
 }
 
@@ -352,8 +351,8 @@ func TestGetAppUsersRequiresItemID(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
 	_, _, err := m.getShieldAppUsers(context.Background(), nil, GetAppUsersInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty item_id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty item_id, got %v", err)
 	}
 }
 
@@ -406,11 +405,11 @@ func TestDismissScopedEntities(t *testing.T) {
 func TestDismissRequiresIDAndReason(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
-	if _, _, err := m.dismissShieldCheck(context.Background(), nil, DismissInput{Reason: "r"}); !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty id, got %v", err)
+	if _, _, err := m.dismissShieldCheck(context.Background(), nil, DismissInput{Reason: "r"}); !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty id, got %v", err)
 	}
-	if _, _, err := m.dismissShieldCheck(context.Background(), nil, DismissInput{ID: "x"}); !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty reason, got %v", err)
+	if _, _, err := m.dismissShieldCheck(context.Background(), nil, DismissInput{ID: "x"}); !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty reason, got %v", err)
 	}
 }
 
@@ -432,18 +431,11 @@ func TestDismissBlankEntitiesFallsBackToWholeCheck(t *testing.T) {
 
 func TestRegisterToolsNamesAndAnnotations(t *testing.T) {
 	t.Parallel()
-	m := newModule(&fakeShield{})
-	var entries []base.ToolEntry
-	m.RegisterTools(testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) }))
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(newModule(&fakeShield{}))
 
 	// 16 tools total, all prefixed with falcon_
-	if len(entries) != 16 {
-		t.Fatalf("expected 16 tools, got %d", len(entries))
+	if len(byName) != 16 {
+		t.Fatalf("expected 16 tools, got %d", len(byName))
 	}
 	wantReadOnly := []string{
 		"falcon_search_shield_checks", "falcon_search_shield_alerts",

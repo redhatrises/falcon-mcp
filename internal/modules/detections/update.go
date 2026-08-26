@@ -109,7 +109,7 @@ func (m *Module) updateDetections(ctx context.Context, _ *mcp.CallToolRequest, i
 // else).
 func (in UpdateInput) actionParameters() ([]*models.MsaspecActionParameter, error) {
 	if len(in.IDs) == 0 {
-		return nil, fmt.Errorf("update detections: %w: ids must not be empty", errInvalidInput)
+		return nil, fmt.Errorf("update detections: %w: ids must not be empty", base.ErrInvalidInput)
 	}
 	if err := in.validate(); err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (in UpdateInput) actionParameters() ([]*models.MsaspecActionParameter, erro
 	}
 
 	if len(actions) == 0 {
-		return nil, fmt.Errorf("update detections: %w: no update fields provided", errInvalidInput)
+		return nil, fmt.Errorf("update detections: %w: no update fields provided", base.ErrInvalidInput)
 	}
 	return actions, nil
 }
@@ -162,7 +162,7 @@ func (in UpdateInput) actionParameters() ([]*models.MsaspecActionParameter, erro
 // validate enforces the client-side constraints on an update request.
 func (in UpdateInput) validate() error {
 	if in.Status != "" && !validStatuses[in.Status] {
-		return fmt.Errorf("update detections: %w: invalid status %q", errInvalidInput, in.Status)
+		return fmt.Errorf("update detections: %w: invalid status %q", base.ErrInvalidInput, in.Status)
 	}
 
 	assignCount := 0
@@ -172,10 +172,10 @@ func (in UpdateInput) validate() error {
 		}
 	}
 	if assignCount > 1 {
-		return fmt.Errorf("update detections: %w: assign_to_uuid, assign_to_user_id, and assign_to_name are mutually exclusive", errInvalidInput)
+		return fmt.Errorf("update detections: %w: assign_to_uuid, assign_to_user_id, and assign_to_name are mutually exclusive", base.ErrInvalidInput)
 	}
 	if in.Unassign && assignCount > 0 {
-		return fmt.Errorf("update detections: %w: unassign cannot be combined with an assignment", errInvalidInput)
+		return fmt.Errorf("update detections: %w: unassign cannot be combined with an assignment", base.ErrInvalidInput)
 	}
 	return nil
 }

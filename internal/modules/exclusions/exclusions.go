@@ -63,11 +63,6 @@ var limitCap = map[string]int64{
 	"certificate":       100,
 }
 
-// errInvalidInput classifies client-side validation failures (invalid type,
-// missing required fields) so the handler returns a guiding data result rather
-// than an opaque API error.
-var errInvalidInput = errors.New("exclusions: invalid input")
-
 // CrowdStrike API scopes required by this module's operations, surfaced on a 403
 // via base.APIError. Certificate-based exclusions and the certificate lookup are
 // governed by the Machine Learning Exclusions scope (per the Python module).
@@ -240,7 +235,7 @@ func (m *Module) searchExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, zero, err
 	}
 	// Restore the query-step sort order in case the get endpoint reorders results.
-	records = reorderByID(ids, records)
+	records = base.ReorderMapsByID(ids, records)
 	m.Logger.Debug("search_exclusions complete", "type", in.ExclusionType, "matched", len(records))
 	// Pagination lives on the query-step meta; the get-step meta is discarded.
 	return nil, base.Found(records, in.Filter).WithMeta(meta), nil
@@ -256,7 +251,7 @@ type CertDetailsInput struct {
 func (m *Module) getCertificateDetails(ctx context.Context, _ *mcp.CallToolRequest, in CertDetailsInput) (*mcp.CallToolResult, base.EntitiesResult[map[string]any], error) {
 	var zero base.EntitiesResult[map[string]any]
 	if in.SHA256 == "" {
-		return nil, zero, wrapInvalid("get certificate details", "sha256 must not be empty")
+		return nil, zero, base.InvalidInput("get certificate details", "sha256 must not be empty")
 	}
 	m.Logger.Debug("get_certificate_details", "sha256", in.SHA256)
 
@@ -267,74 +262,11 @@ func (m *Module) getCertificateDetails(ctx context.Context, _ *mcp.CallToolReque
 	if e := base.APIError(err, resp, scopeMLRead); e != nil {
 		return nil, zero, e
 	}
-	records, err := modelsToMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	if err != nil {
 		return nil, zero, err
 	}
 	return nil, base.Entities(records).WithMeta(resp.Payload.Meta), nil
-}
-
-// modelsToMaps marshals typed gofalcon records and unmarshals them back into
-// uniform map records, giving every record-returning path (search, create,
-// update, and get_certificate_details) one map[string]any shape regardless of
-// the four types' heterogeneous models. The JSON round-trip reproduces the raw
-// API body faithfully — a field the API sent is preserved and a field it omitted
-// stays absent — which matches the Python module's raw-dict output. This depends
-// on the response models tagging optional value fields as nullable pointers so
-// false/"" round-trip rather than being dropped by omitempty (see gofalcon
-// ExclusionV1.groups and the IOA/CB applied_globally/comment/description fixes).
-func modelsToMaps[T any](in []T) ([]map[string]any, error) {
-	out := make([]map[string]any, 0, len(in))
-	for _, rec := range in {
-		b, err := json.Marshal(rec)
-		if err != nil {
-			return nil, fmt.Errorf("encode exclusion record: %w", err)
-		}
-		var m map[string]any
-		if err := json.Unmarshal(b, &m); err != nil {
-			return nil, fmt.Errorf("decode exclusion record: %w", err)
-		}
-		out = append(out, m)
-	}
-	return out, nil
-}
-
-// reorderByID reorders records to match the query-step id order, keyed by each
-// record's "id" field. Records without a string id, or whose id is not in ids,
-// are appended in their original order and never dropped.
-func reorderByID(ids []string, records []map[string]any) []map[string]any {
-	if len(records) == 0 {
-		return records
-	}
-	byID := make(map[string]map[string]any, len(records))
-	for _, rec := range records {
-		if id, ok := rec["id"].(string); ok && id != "" {
-			if _, dup := byID[id]; !dup {
-				byID[id] = rec
-			}
-		}
-	}
-	out := make([]map[string]any, 0, len(records))
-	placed := make(map[string]struct{}, len(records))
-	for _, id := range ids {
-		if rec, ok := byID[id]; ok {
-			if _, done := placed[id]; !done {
-				out = append(out, rec)
-				placed[id] = struct{}{}
-			}
-		}
-	}
-	for _, rec := range records {
-		id, _ := rec["id"].(string)
-		if id == "" {
-			out = append(out, rec)
-			continue
-		}
-		if _, done := placed[id]; !done {
-			out = append(out, rec)
-		}
-	}
-	return out
 }
 
 // normalizeSort appends a .desc direction for the types that require one. IOA,
@@ -366,12 +298,7 @@ func clampLimit(exclusionType string, limit int) int64 {
 
 // invalidType builds the guiding error returned for an unknown exclusion_type.
 func invalidType(t string) error {
-	return fmt.Errorf("exclusions: %w: invalid exclusion_type %q (want one of %v)", errInvalidInput, t, exclusionTypes)
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
+	return fmt.Errorf("exclusions: %w: invalid exclusion_type %q (want one of %v)", base.ErrInvalidInput, t, exclusionTypes)
 }
 
 // errorsAs is a thin wrapper over errors.As, kept in this package so backends.go

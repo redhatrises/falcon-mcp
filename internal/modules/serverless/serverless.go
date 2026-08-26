@@ -48,10 +48,6 @@ const fqlGuideURI = "falcon://serverless/vulnerabilities/fql-guide"
 // operation ("Falcon Container Image:read"). Surfaced on a 403 via base.APIError.
 var scopeContainerImageRead = base.Scope{Name: "Falcon Container Image", Read: true}
 
-// errInvalidInput classifies client-side validation failures (e.g. a missing
-// required filter) so the handler can distinguish them from API errors.
-var errInvalidInput = errors.New("serverless: invalid input")
-
 // Factory builds the serverless module from shared deps. The gofalcon client is
 // wrapped by serverlessClient so the handler can recover the raw SARIF body the
 // generated reader cannot decode. The generated aggregator (internal/mcpserver)
@@ -246,7 +242,7 @@ type SearchInput struct {
 func (m *Module) searchServerlessVulnerabilities(ctx context.Context, _ *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, base.SearchResult[*models.ModelsRun], error) {
 	var zero base.SearchResult[*models.ModelsRun]
 	if in.Filter == "" {
-		return nil, zero, errInvalidInput
+		return nil, zero, base.ErrInvalidInput
 	}
 	limit := int64(in.Limit)
 	if limit == 0 {

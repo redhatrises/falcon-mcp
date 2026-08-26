@@ -3,7 +3,6 @@ package rtr
 import (
 	"context"
 	"errors"
-	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -169,9 +168,7 @@ func TestSearchSessionsTwoStep(t *testing.T) {
 	if len(f.lastIDs) != 2 || f.lastIDs[0] != "s1" {
 		t.Fatalf("expected ids threaded to details call, got %v", f.lastIDs)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.listAllResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.listAllResp.Payload.Meta)
 }
 
 func TestSearchSessionsReordersByQueryOrder(t *testing.T) {
@@ -265,9 +262,7 @@ func TestSearchAuditSessions(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "created_at:>'now-7d'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.resp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.resp.Payload.Meta)
 }
 
 func TestSearchAuditSessionsFQLError(t *testing.T) {
@@ -307,9 +302,7 @@ func TestAggregateSessions(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected one aggregation result, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.aggResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.aggResp.Payload.Meta)
 	if len(f.lastAgg) != 1 {
 		t.Fatalf("expected one aggregate query in body")
 	}
@@ -329,8 +322,8 @@ func TestAggregateSessionsRequiresField(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeRTR{}, nil)
 	_, _, err := m.aggregateSessions(context.Background(), nil, AggregateInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -338,8 +331,8 @@ func TestAggregateSessionsRejectsBadType(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeRTR{}, nil)
 	_, _, err := m.aggregateSessions(context.Background(), nil, AggregateInput{Field: "hostname", AggregateType: "term"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for bad aggregate_type, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for bad aggregate_type, got %v", err)
 	}
 }
 
@@ -405,8 +398,8 @@ func TestListSessionFiles(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeRTR{}, nil)
 		_, _, err := m.listSessionFiles(context.Background(), nil, ListFilesInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -424,9 +417,7 @@ func TestListSessionFiles(t *testing.T) {
 		if out.Total != 1 {
 			t.Fatalf("expected one file, got %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.filesResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.filesResp.Payload.Meta)
 	})
 }
 
@@ -439,8 +430,8 @@ func TestInitSession(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeRTR{}, nil)
 		_, _, err := m.initSession(context.Background(), nil, InitInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -464,9 +455,7 @@ func TestInitSession(t *testing.T) {
 		if f.lastInit.Origin == nil || *f.lastInit.Origin != defaultOrigin {
 			t.Fatalf("expected default origin, got %+v", f.lastInit.Origin)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.initResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.initResp.Payload.Meta)
 	})
 }
 
@@ -484,9 +473,7 @@ func TestPulseSession(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected one session record, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.pulseResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.pulseResp.Payload.Meta)
 }
 
 func TestDeleteSession(t *testing.T) {
@@ -496,8 +483,8 @@ func TestDeleteSession(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeRTR{}, nil)
 		_, _, err := m.deleteSession(context.Background(), nil, DeleteInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -517,9 +504,7 @@ func TestDeleteSession(t *testing.T) {
 		if f.lastDeleteID != "s1" {
 			t.Fatalf("expected session id passed, got %q", f.lastDeleteID)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.deleteResp.Payload.Meta)
 	})
 }
 
@@ -536,8 +521,8 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 		} {
 			m := newModule(&fakeRTR{}, nil)
 			_, _, err := m.executeReadOnlyCommand(context.Background(), nil, in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput for %+v, got %v", in, err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput for %+v, got %v", in, err)
 			}
 		}
 	})
@@ -563,9 +548,7 @@ func TestExecuteReadOnlyCommand(t *testing.T) {
 		if got.CommandString == nil || *got.CommandString != "ls C:\\" {
 			t.Fatalf("expected command_string sent, got %+v", got.CommandString)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.execResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.execResp.Payload.Meta)
 	})
 }
 
@@ -576,8 +559,8 @@ func TestCheckCommandStatus(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeRTR{}, nil)
 		_, _, err := m.checkCommandStatus(context.Background(), nil, CheckStatusInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -597,9 +580,7 @@ func TestCheckCommandStatus(t *testing.T) {
 		if len(f.lastSeqIDs) != 1 || f.lastSeqIDs[0] != 2 {
 			t.Fatalf("expected sequence_id 2 passed, got %v", f.lastSeqIDs)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.statusResps[0].Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.statusResps[0].Payload.Meta)
 	})
 }
 
@@ -765,8 +746,8 @@ func TestWaitMissingCloudRequestID(t *testing.T) {
 	}}}
 	m := newModule(f, nil)
 	_, _, err := m.runReadOnlyCommandAndWait(context.Background(), nil, WaitInput{SessionID: "s1", BaseCommand: "ps"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for missing cloud_request_id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for missing cloud_request_id, got %v", err)
 	}
 }
 
@@ -774,17 +755,10 @@ func TestWaitMissingCloudRequestID(t *testing.T) {
 
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
-	newModule(&fakeRTR{}, nil).RegisterTools(reg)
+	byName := testutil.CollectTools(newModule(&fakeRTR{}, nil))
 
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
-
-	if len(entries) != 11 {
-		t.Fatalf("expected 11 tools registered, got %d", len(entries))
+	if len(byName) != 11 {
+		t.Fatalf("expected 11 tools registered, got %d", len(byName))
 	}
 
 	// Mutating (non-destructive) tools.

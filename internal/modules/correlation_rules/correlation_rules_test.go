@@ -3,13 +3,11 @@ package correlation_rules
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/correlation_rules"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/go-openapi/runtime"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -94,9 +92,7 @@ func TestSearchSuccess(t *testing.T) {
 	if f.lastSearch.Limit == nil || *f.lastSearch.Limit != defaultLimit {
 		t.Fatalf("expected default limit %d, got %v", defaultLimit, f.lastSearch.Limit)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.searchResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.searchResp.Payload.Meta)
 }
 
 func TestSearchAppliesParams(t *testing.T) {
@@ -196,8 +192,8 @@ func TestCreateValidation(t *testing.T) {
 			f := &fakeAPI{createResp: &correlation_rules.EntitiesRulesPostV1OK{Payload: &models.CorrelationrulesapiGetEntitiesRulesResponseV1{}}}
 			m := &Module{API: f, Logger: testLogger}
 			_, _, err := m.createCorrelationRule(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -227,9 +223,7 @@ func TestCreateBodyDefaults(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record returned, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.createResp.Payload.Meta)
 	body := f.lastCreate
 	if body == nil {
 		t.Fatal("expected create body to be sent")
@@ -334,13 +328,13 @@ func TestUpdateValidation(t *testing.T) {
 
 	m := &Module{API: &fakeAPI{}, Logger: testLogger}
 	_, _, err := m.updateCorrelationRule(context.Background(), nil, UpdateInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for missing rule_id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for missing rule_id, got %v", err)
 	}
 
 	_, _, err = m.updateCorrelationRule(context.Background(), nil, UpdateInput{RuleID: "r1", Severity: 42})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for invalid severity, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for invalid severity, got %v", err)
 	}
 }
 
@@ -363,9 +357,7 @@ func TestUpdateBodyPartial(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected updated record returned, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.patchResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.patchResp.Payload.Meta)
 	// The wire body is a single-element list of patch maps.
 	body, ok := f.lastPatchReq.([]map[string]any)
 	if !ok || len(body) != 1 {
@@ -493,8 +485,8 @@ func TestDeleteValidation(t *testing.T) {
 
 	m := &Module{API: &fakeAPI{}, Logger: testLogger}
 	_, _, err := m.deleteCorrelationRules(context.Background(), nil, DeleteInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty ids, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty ids, got %v", err)
 	}
 }
 
@@ -517,9 +509,7 @@ func TestDeleteSuccess(t *testing.T) {
 	if len(f.lastDelete) != 2 {
 		t.Fatalf("expected 2 ids passed, got %v", f.lastDelete)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.deleteResp.Payload.Meta)
 }
 
 func TestDeleteAPIError(t *testing.T) {
@@ -554,15 +544,8 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeAPI{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	search := byName["falcon_search_correlation_rules"]
 	if search == nil {

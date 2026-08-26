@@ -3,13 +3,11 @@ package firewall
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/firewall_management"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -122,9 +120,7 @@ func TestSearchFirewallRulesSuccess(t *testing.T) {
 	if f.getRulesCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.getRulesCalls)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryRulesResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryRulesResp.Payload.Meta)
 }
 
 func TestSearchFirewallRulesEmpty(t *testing.T) {
@@ -279,9 +275,7 @@ func TestSearchFirewallRuleGroupsSuccess(t *testing.T) {
 	if f.getGroupsCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", f.getGroupsCalls)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryGroupsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryGroupsResp.Payload.Meta)
 }
 
 func TestSearchFirewallRuleGroupsEmpty(t *testing.T) {
@@ -371,9 +365,7 @@ func TestSearchFirewallPolicyRulesSuccess(t *testing.T) {
 	if f.getRulesCalls != 1 {
 		t.Fatalf("expected rule detail fetch via GetRules, got %d", f.getRulesCalls)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryPolicyResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryPolicyResp.Payload.Meta)
 }
 
 func TestSearchFirewallPolicyRulesRequiresPolicyID(t *testing.T) {
@@ -381,8 +373,8 @@ func TestSearchFirewallPolicyRulesRequiresPolicyID(t *testing.T) {
 
 	m := newModule(&fakeFirewall{})
 	_, _, err := m.searchFirewallPolicyRules(context.Background(), nil, SearchPolicyRulesInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for missing policy_id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for missing policy_id, got %v", err)
 	}
 }
 
@@ -427,8 +419,8 @@ func TestCreateFirewallRuleGroupValidation(t *testing.T) {
 			f := &fakeFirewall{createResp: &firewall_management.CreateRuleGroupCreated{Payload: &models.FwmgrAPIQueryResponse{}}}
 			m := newModule(f)
 			_, _, err := m.createFirewallRuleGroup(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -459,9 +451,7 @@ func TestCreateFirewallRuleGroupBody(t *testing.T) {
 	if out.Total != 1 || out.Resources[0] != "new-group" {
 		t.Fatalf("expected created id returned, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.createResp.Payload.Meta)
 	body := f.lastCreateParams.Body
 	if body.Name == nil || *body.Name != "Prod Outbound" {
 		t.Errorf("name = %v, want Prod Outbound", body.Name)
@@ -535,8 +525,8 @@ func TestDeleteFirewallRuleGroupsValidation(t *testing.T) {
 
 	m := newModule(&fakeFirewall{})
 	_, _, err := m.deleteFirewallRuleGroups(context.Background(), nil, DeleteInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty ids, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty ids, got %v", err)
 	}
 }
 
@@ -556,9 +546,7 @@ func TestDeleteFirewallRuleGroupsSuccess(t *testing.T) {
 	if out.Total != 2 {
 		t.Fatalf("expected 2 deleted ids, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.deleteResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.deleteResp.Payload.Meta)
 	if len(f.lastDeleteParams.Ids) != 2 {
 		t.Fatalf("expected 2 ids passed, got %v", f.lastDeleteParams.Ids)
 	}
@@ -599,14 +587,7 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
-	newModule(&fakeFirewall{}).RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(newModule(&fakeFirewall{}))
 
 	for _, name := range []string{
 		"falcon_search_firewall_rules",

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -130,9 +129,7 @@ func TestSearchScheduledReportsSuccess(t *testing.T) {
 	if strings.Join(r.getIDs, ",") != "r1,r2" {
 		t.Fatalf("detail fetch got IDs %v", r.getIDs)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(r.queryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, r.queryResp.Payload.Meta)
 }
 
 func TestSearchScheduledReportsEmpty(t *testing.T) {
@@ -217,9 +214,7 @@ func TestLaunchScheduledReportSuccess(t *testing.T) {
 	if len(r.execBody) != 1 || r.execBody[0].ID == nil || *r.execBody[0].ID != "report1" {
 		t.Fatalf("execute body not shaped as [{id}]: %+v", r.execBody)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(r.execResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, r.execResp.Payload.Meta)
 }
 
 func TestLaunchScheduledReportRequiresID(t *testing.T) {
@@ -229,8 +224,8 @@ func TestLaunchScheduledReportRequiresID(t *testing.T) {
 	m := newModule(r, &fakeExecutions{})
 
 	_, _, err := m.launchScheduledReport(context.Background(), nil, LaunchInput{ID: "  "})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for blank id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for blank id, got %v", err)
 	}
 	if r.execCalls != 0 {
 		t.Fatalf("expected no execute call for blank id, got %d", r.execCalls)
@@ -266,9 +261,7 @@ func TestSearchReportExecutionsSuccess(t *testing.T) {
 	if e.getCalls != 1 {
 		t.Fatalf("expected 1 detail fetch, got %d", e.getCalls)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(e.queryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, e.queryResp.Payload.Meta)
 }
 
 func TestSearchReportExecutionsEmpty(t *testing.T) {
@@ -462,8 +455,8 @@ func TestDownloadReportExecutionRequiresID(t *testing.T) {
 	m := newModule(&fakeReports{}, e)
 
 	_, _, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: ""})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for blank id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for blank id, got %v", err)
 	}
 	if e.dlCalls != 0 {
 		t.Fatalf("expected no download call for blank id, got %d", e.dlCalls)
@@ -472,28 +465,13 @@ func TestDownloadReportExecutionRequiresID(t *testing.T) {
 
 // --- tool registration / annotations ---
 
-// recordingRegistrar captures registered tools so the test can assert on their
-// names and annotations without a live MCP server.
-type recordingRegistrar struct {
-	entries []base.ToolEntry
-}
-
-func (r *recordingRegistrar) Add(e base.ToolEntry) { r.entries = append(r.entries, e) }
-
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	m := newModule(&fakeReports{}, &fakeExecutions{})
-	reg := &recordingRegistrar{}
-	m.RegisterTools(reg)
+	byName := testutil.CollectTools(newModule(&fakeReports{}, &fakeExecutions{}))
 
-	if len(reg.entries) != 4 {
-		t.Fatalf("expected 4 tools, got %d", len(reg.entries))
-	}
-
-	byName := map[string]*base.ToolEntry{}
-	for i := range reg.entries {
-		byName[reg.entries[i].Tool.Name] = &reg.entries[i]
+	if len(byName) != 4 {
+		t.Fatalf("expected 4 tools, got %d", len(byName))
 	}
 
 	for _, want := range []string{
@@ -508,7 +486,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 	}
 
 	// launch is a non-destructive mutator.
-	launch := byName["falcon_launch_scheduled_report"].Tool
+	launch := byName["falcon_launch_scheduled_report"]
 	if launch.Annotations == nil || launch.Annotations.ReadOnlyHint {
 		t.Fatalf("launch should not be read-only: %+v", launch.Annotations)
 	}
@@ -525,7 +503,7 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		"falcon_search_report_executions",
 		"falcon_download_report_execution",
 	} {
-		ann := byName[name].Tool.Annotations
+		ann := byName[name].Annotations
 		if ann == nil || !ann.ReadOnlyHint {
 			t.Fatalf("%s should be read-only, got %+v", name, ann)
 		}
