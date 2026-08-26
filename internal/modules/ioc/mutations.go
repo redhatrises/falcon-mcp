@@ -75,7 +75,7 @@ func (in AddInput) body() (*models.APIIndicatorCreateReqsV1, error) {
 	}
 
 	if in.Type == "" || in.Value == "" {
-		return nil, wrapInvalid("add ioc", "type and value are required when indicators is not provided")
+		return nil, base.InvalidInput("add ioc", "type and value are required when indicators is not provided")
 	}
 
 	action := in.Action
@@ -106,7 +106,7 @@ func (in AddInput) body() (*models.APIIndicatorCreateReqsV1, error) {
 	if in.Expiration != "" {
 		exp, err := strfmt.ParseDateTime(in.Expiration)
 		if err != nil {
-			return nil, wrapInvalid("add ioc", fmt.Sprintf("invalid expiration %q (want ISO 8601, e.g. 2026-12-31T23:59:59Z)", in.Expiration))
+			return nil, base.InvalidInput("add ioc", fmt.Sprintf("invalid expiration %q (want ISO 8601, e.g. 2026-12-31T23:59:59Z)", in.Expiration))
 		}
 		indicator.Expiration = &exp
 	}
@@ -126,7 +126,7 @@ type RemoveInput struct {
 func (m *Module) removeIOCs(ctx context.Context, _ *mcp.CallToolRequest, in RemoveInput) (*mcp.CallToolResult, base.EntitiesResult[string], error) {
 	var zero base.EntitiesResult[string]
 	if len(in.IDs) == 0 && in.Filter == "" {
-		return nil, zero, wrapInvalid("remove iocs", "either ids or filter must be provided")
+		return nil, zero, base.InvalidInput("remove iocs", "either ids or filter must be provided")
 	}
 	m.Logger.Debug("remove_iocs", "ids", len(in.IDs), "filter", in.Filter)
 
@@ -149,9 +149,4 @@ func (m *Module) removeIOCs(ctx context.Context, _ *mcp.CallToolRequest, in Remo
 		return nil, zero, e
 	}
 	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

@@ -5,14 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/spotlight_vulnerabilities"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
-	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
@@ -67,9 +65,7 @@ func TestSearchVulnerabilitiesSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "status:'open'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.resp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.resp.Payload.Meta)
 	if *out.Resources[0].ID != "vuln-1" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}

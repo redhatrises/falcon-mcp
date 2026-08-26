@@ -69,13 +69,13 @@ type CreateInput struct {
 func (m *Module) createCorrelationRule(ctx context.Context, _ *mcp.CallToolRequest, in CreateInput) (*mcp.CallToolResult, base.EntitiesResult[*models.CorrelationrulesapiRuleV1], error) {
 	var zero base.EntitiesResult[*models.CorrelationrulesapiRuleV1]
 	if in.CustomerID == "" || in.Name == "" || in.SearchFilter == "" {
-		return nil, zero, wrapInvalid("create correlation rule", "customer_id, name, and search_filter are required")
+		return nil, zero, base.InvalidInput("create correlation rule", "customer_id, name, and search_filter are required")
 	}
 	if in.Severity == 0 {
-		return nil, zero, wrapInvalid("create correlation rule", "severity is required (one of 10, 30, 50, 70, 90)")
+		return nil, zero, base.InvalidInput("create correlation rule", "severity is required (one of 10, 30, 50, 70, 90)")
 	}
 	if _, ok := validSeverities[in.Severity]; !ok {
-		return nil, zero, wrapInvalid("create correlation rule", "severity must be one of 10, 30, 50, 70, 90")
+		return nil, zero, base.InvalidInput("create correlation rule", "severity must be one of 10, 30, 50, 70, 90")
 	}
 	m.Logger.Debug("create_correlation_rule", "name", in.Name, "severity", in.Severity)
 
@@ -161,11 +161,11 @@ type UpdateInput struct {
 func (m *Module) updateCorrelationRule(ctx context.Context, _ *mcp.CallToolRequest, in UpdateInput) (*mcp.CallToolResult, base.EntitiesResult[*models.CorrelationrulesapiRuleV1], error) {
 	var zero base.EntitiesResult[*models.CorrelationrulesapiRuleV1]
 	if in.RuleID == "" {
-		return nil, zero, wrapInvalid("update correlation rule", "rule_id is required")
+		return nil, zero, base.InvalidInput("update correlation rule", "rule_id is required")
 	}
 	if in.Severity != 0 {
 		if _, ok := validSeverities[in.Severity]; !ok {
-			return nil, zero, wrapInvalid("update correlation rule", "severity must be one of 10, 30, 50, 70, 90")
+			return nil, zero, base.InvalidInput("update correlation rule", "severity must be one of 10, 30, 50, 70, 90")
 		}
 	}
 	m.Logger.Debug("update_correlation_rule", "rule_id", in.RuleID)
@@ -264,7 +264,7 @@ type DeleteInput struct {
 func (m *Module) deleteCorrelationRules(ctx context.Context, _ *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, base.EntitiesResult[string], error) {
 	var zero base.EntitiesResult[string]
 	if len(in.IDs) == 0 {
-		return nil, zero, wrapInvalid("delete correlation rules", "ids must be provided")
+		return nil, zero, base.InvalidInput("delete correlation rules", "ids must be provided")
 	}
 	m.Logger.Debug("delete_correlation_rules", "ids", len(in.IDs))
 

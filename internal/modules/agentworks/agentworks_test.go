@@ -19,9 +19,6 @@ import (
 
 var testLogger = testutil.DiscardLogger()
 
-func strptr(s string) *string   { return &s }
-func f64ptr(v float64) *float64 { return &v }
-
 // fakeAPI stands in for all four gofalcon sub-clients the module spans. One
 // struct implements every consumed method so a single value can be wired into
 // all four Module fields; captured inputs and canned outputs drive assertions.
@@ -133,22 +130,11 @@ func newModule(f *fakeAPI) *Module {
 	}
 }
 
-// fakeStatusErr implements runtime.ClientResponseStatus for a chosen HTTP code,
-// standing in for the untyped 400 the query operations return for a bad filter.
-type fakeStatusErr struct{ code int }
-
-func (e fakeStatusErr) Error() string       { return "status error" }
-func (e fakeStatusErr) IsSuccess() bool     { return e.code >= 200 && e.code < 300 }
-func (e fakeStatusErr) IsRedirect() bool    { return e.code >= 300 && e.code < 400 }
-func (e fakeStatusErr) IsClientError() bool { return e.code >= 400 && e.code < 500 }
-func (e fakeStatusErr) IsServerError() bool { return e.code >= 500 }
-func (e fakeStatusErr) IsCode(c int) bool   { return e.code == c }
-
 func TestSearchAgentsEmptyReturnsList(t *testing.T) {
 	t.Parallel()
 	f := &fakeAPI{queryAgentsResp: &agents.QueryAgentsV2OK{Payload: &models.APIQueryResponse{
 		Resources: []string{},
-		Meta:      &models.MsaMetaInfo{QueryTime: f64ptr(0.1)},
+		Meta:      &models.MsaMetaInfo{QueryTime: new(0.1)},
 	}}}
 	m := newModule(f)
 	_, out, err := m.searchAgents(context.Background(), nil, SearchAgentsInput{})
@@ -177,7 +163,7 @@ func TestSearchAgentsFetchesDetailsRestoresOrder(t *testing.T) {
 		}},
 		getAgentsResp: &agents.GetAgentsV2OK{Payload: &models.APIAgentResponse{
 			Resources: []*models.APIAgent{
-				{ID: strptr("c")}, {ID: strptr("a")}, {ID: strptr("b")},
+				{ID: new("c")}, {ID: new("a")}, {ID: new("b")},
 			},
 		}},
 	}
@@ -203,7 +189,7 @@ func TestSearchAgentsOptionalFilter(t *testing.T) {
 		wantFilter *string
 	}{
 		{"omitted", "", nil},
-		{"set", "template_id:'general'", strptr("template_id:'general'")},
+		{"set", "template_id:'general'", new("template_id:'general'")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -260,7 +246,7 @@ func TestSearchAgentsNonFQLBadRequestSurfacesError(t *testing.T) {
 func TestSearchAgentsBadRequestNoFilterSurfacesError(t *testing.T) {
 	t.Parallel()
 	// A 400 with no filter is not a filter-syntax problem; surface it as a Go error.
-	f := &fakeAPI{queryAgentsErr: fakeStatusErr{code: 400}}
+	f := &fakeAPI{queryAgentsErr: testutil.StatusErr(400)}
 	m := newModule(f)
 	if _, _, err := m.searchAgents(context.Background(), nil, SearchAgentsInput{}); err == nil {
 		t.Fatal("expected Go error for a 400 with no filter, got nil")
@@ -278,7 +264,7 @@ func TestSearchAgentVersionsFetchesDetailsRestoresOrder(t *testing.T) {
 		}},
 		getVersionsResp: &agent_versions.GetAgentVersionsV1OK{Payload: &models.APIAgentVersionResponse{
 			Resources: []*models.APIAgentVersion{
-				{ID: strptr("v3")}, {ID: strptr("v1")}, {ID: strptr("v2")},
+				{ID: new("v3")}, {ID: new("v1")}, {ID: new("v2")},
 			},
 		}},
 	}
@@ -344,7 +330,7 @@ func TestSearchSpansFetchesDetails(t *testing.T) {
 			Resources: []string{"s1", "s2"},
 		}},
 		entitiesSpansResp: &spans.EntitiesSpansV1OK{Payload: &models.DomainEntitiesSpansResponse{
-			Resources: []*models.DomainSpan{{ID: strptr("s2")}, {ID: strptr("s1")}},
+			Resources: []*models.DomainSpan{{ID: new("s2")}, {ID: new("s1")}},
 		}},
 	}
 	m := newModule(f)
@@ -363,8 +349,8 @@ func TestGetInvocationEmptyIDErrors(t *testing.T) {
 	f := &fakeAPI{}
 	m := newModule(f)
 	_, _, err := m.getInvocation(context.Background(), nil, GetInvocationInput{ID: ""})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty id, got %v", err)
 	}
 	if f.getInvocationCalls != 0 {
 		t.Fatalf("expected no API call for empty id, got %d", f.getInvocationCalls)
@@ -396,8 +382,8 @@ func TestInvokeDeadlineBelowMinRejected(t *testing.T) {
 	_, _, err := m.invokeAgent(context.Background(), nil, InvokeInput{
 		Prompt: "hi", AgentID: "ag1", DeadlineSeconds: 30,
 	})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for deadline < %d, got %v", minDeadlineSeconds, err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for deadline < %d, got %v", minDeadlineSeconds, err)
 	}
 	if f.invokePublishedCalls != 0 || f.invokeVersionCalls != 0 {
 		t.Fatal("expected no invoke call when deadline is rejected")
@@ -418,8 +404,8 @@ func TestInvokeRequiredArgsRejected(t *testing.T) {
 			t.Parallel()
 			f := &fakeAPI{}
 			m := newModule(f)
-			if _, _, err := m.invokeAgent(context.Background(), nil, tc.in); !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if _, _, err := m.invokeAgent(context.Background(), nil, tc.in); !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if f.invokePublishedCalls != 0 || f.invokeVersionCalls != 0 {
 				t.Fatal("expected no invoke call on invalid input")
@@ -602,15 +588,8 @@ func TestInvokePollGenuineErrorReturnsErrorStatus(t *testing.T) {
 
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]base.ToolEntry{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e
-	}
+	byName := testutil.CollectTools(m)
 
 	readOnly := []string{
 		"falcon_search_agentworks_agents",
@@ -623,12 +602,12 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing tool %s", name)
 		}
-		testutil.AssertReadOnlyAnnotations(t, name, e.Tool.Annotations)
+		testutil.AssertReadOnlyAnnotations(t, name, e.Annotations)
 	}
 
 	inv, ok := byName["falcon_invoke_agentworks_agent"]
 	if !ok {
 		t.Fatal("missing falcon_invoke_agentworks_agent")
 	}
-	testutil.AssertMutatingAnnotations(t, "falcon_invoke_agentworks_agent", inv.Tool.Annotations, false)
+	testutil.AssertMutatingAnnotations(t, "falcon_invoke_agentworks_agent", inv.Annotations, false)
 }

@@ -3,12 +3,10 @@ package exclusions
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -106,9 +104,7 @@ func TestSearchExclusionsSuccess(t *testing.T) {
 		t.Fatalf("expected query-order [b,a], got %v / %v", out.Resources[0]["id"], out.Resources[1]["id"])
 	}
 	// Meta comes from the query step and is passed through verbatim.
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 }
 
 func TestSearchExclusionsEmpty(t *testing.T) {
@@ -136,8 +132,8 @@ func TestSearchExclusionsInvalidType(t *testing.T) {
 	t.Parallel()
 	m := moduleWith("ml", &fakeBackend{})
 	_, _, err := m.searchExclusions(context.Background(), nil, SearchInput{ExclusionType: "bogus"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -218,8 +214,8 @@ func TestCreateExclusionInvalidType(t *testing.T) {
 	t.Parallel()
 	m := moduleWith("ml", &fakeBackend{})
 	_, _, err := m.createExclusion(context.Background(), nil, MutateInput{ExclusionType: "bogus"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -239,9 +235,7 @@ func TestCreateExclusionSuccess(t *testing.T) {
 		t.Fatalf("expected created record, got %+v", out)
 	}
 	// The response meta object is passed through verbatim from the backend.
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	body, ok := fb.lastCreateBody.(*models.DomainExclusionsCreateReqV2)
 	if !ok {
 		t.Fatalf("expected ML create body, got %T", fb.lastCreateBody)
@@ -323,8 +317,8 @@ func TestUpdateExclusionRequiresID(t *testing.T) {
 	t.Parallel()
 	m := moduleWith("ml", &fakeBackend{})
 	_, _, err := m.updateExclusion(context.Background(), nil, MutateInput{ExclusionType: "ml", Value: "/x"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for missing id, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for missing id, got %v", err)
 	}
 }
 
@@ -344,9 +338,7 @@ func TestUpdateExclusionMLSingularBody(t *testing.T) {
 		t.Fatalf("updateExclusion: %v", err)
 	}
 	// The response meta object is passed through verbatim from the backend.
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	body, ok := fb.lastUpdateBody.(*models.DomainExclusionUpdateReqV2)
 	if !ok {
 		t.Fatalf("expected singular ML update body, got %T", fb.lastUpdateBody)
@@ -399,8 +391,8 @@ func TestCreateExclusionValidation(t *testing.T) {
 			fb := &fakeBackend{}
 			m := moduleWith(tc.in.ExclusionType, fb)
 			_, _, err := m.createExclusion(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -576,8 +568,8 @@ func TestCreateExclusionBodyShapes(t *testing.T) {
 			ExclusionType: "certificate", Name: "n", Status: "enabled",
 			Certificate: &Certificate{Issuer: "i", ValidFrom: "not-a-date"},
 		})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput for bad timestamp, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput for bad timestamp, got %v", err)
 		}
 	})
 }
@@ -591,8 +583,8 @@ func TestDeleteExclusions(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("ml", &fakeBackend{})
 		_, _, err := m.deleteExclusions(context.Background(), nil, DeleteInput{ExclusionType: "bogus", IDs: []string{"a"}})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -600,8 +592,8 @@ func TestDeleteExclusions(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("ml", &fakeBackend{})
 		_, _, err := m.deleteExclusions(context.Background(), nil, DeleteInput{ExclusionType: "ml"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -617,9 +609,7 @@ func TestDeleteExclusions(t *testing.T) {
 		if !out.Ok {
 			t.Fatalf("expected Ok, got %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, meta)
 		if len(fb.lastDeleteIDs) != 2 || fb.lastComment != "cleanup" {
 			t.Fatalf("unexpected delete args: ids=%v comment=%q", fb.lastDeleteIDs, fb.lastComment)
 		}
@@ -642,8 +632,8 @@ func TestGetCertificateDetailsRequiresHash(t *testing.T) {
 	t.Parallel()
 	m := &Module{backends: map[string]backend{}, Logger: testLogger}
 	_, _, err := m.getCertificateDetails(context.Background(), nil, CertDetailsInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -656,7 +646,7 @@ func TestModelsToMaps(t *testing.T) {
 
 	t.Run("empty slice yields non-nil empty", func(t *testing.T) {
 		t.Parallel()
-		got, err := modelsToMaps([]*models.DomainSsIoaExclusionsV2{})
+		got, err := base.ModelsToMaps([]*models.DomainSsIoaExclusionsV2{})
 		if err != nil {
 			t.Fatalf("modelsToMaps: %v", err)
 		}
@@ -669,7 +659,7 @@ func TestModelsToMaps(t *testing.T) {
 		t.Parallel()
 		id := "e1"
 		val := "/x"
-		got, err := modelsToMaps([]*models.SvExclusionsSVExclusionV1{{ID: &id, Value: &val}})
+		got, err := base.ModelsToMaps([]*models.SvExclusionsSVExclusionV1{{ID: &id, Value: &val}})
 		if err != nil {
 			t.Fatalf("modelsToMaps: %v", err)
 		}
@@ -702,7 +692,7 @@ func TestModelsToMapsPreservesNullableFalse(t *testing.T) {
 			Description:     &desc,
 			ParentIfnRegex:  &empty, // PR #688: present-as-"" must survive
 		}
-		got, err := modelsToMaps([]*models.DomainSsIoaExclusionsV2{rec})
+		got, err := base.ModelsToMaps([]*models.DomainSsIoaExclusionsV2{rec})
 		if err != nil {
 			t.Fatalf("modelsToMaps: %v", err)
 		}
@@ -723,7 +713,7 @@ func TestModelsToMapsPreservesNullableFalse(t *testing.T) {
 
 	t.Run("ioa nil fields (incl host_groups) are omitted", func(t *testing.T) {
 		t.Parallel()
-		got, err := modelsToMaps([]*models.DomainSsIoaExclusionsV2{{}})
+		got, err := base.ModelsToMaps([]*models.DomainSsIoaExclusionsV2{{}})
 		if err != nil {
 			t.Fatalf("modelsToMaps: %v", err)
 		}
@@ -744,7 +734,7 @@ func TestModelsToMapsPreservesNullableFalse(t *testing.T) {
 	t.Run("ml is_descendant_process:false survives", func(t *testing.T) {
 		t.Parallel()
 		rec := &models.ExclusionsExclusionV1{IsDescendantProcess: &falseVal}
-		got, err := modelsToMaps([]*models.ExclusionsExclusionV1{rec})
+		got, err := base.ModelsToMaps([]*models.ExclusionsExclusionV1{rec})
 		if err != nil {
 			t.Fatalf("modelsToMaps: %v", err)
 		}
@@ -759,7 +749,7 @@ func TestModelsToMapsPreservesNullableFalse(t *testing.T) {
 			AppliedGlobally: &falseVal,
 			Comment:         &empty,
 		}
-		got, err := modelsToMaps([]*models.APICertBasedExclusionV1{rec})
+		got, err := base.ModelsToMaps([]*models.APICertBasedExclusionV1{rec})
 		if err != nil {
 			t.Fatalf("modelsToMaps: %v", err)
 		}
@@ -776,14 +766,14 @@ func TestModelsToMapsPreservesNullableFalse(t *testing.T) {
 func TestReorderByID(t *testing.T) {
 	t.Parallel()
 	records := []map[string]any{{"id": "a"}, {"id": "b"}, {"id": "c"}}
-	got := reorderByID([]string{"c", "a", "b"}, records)
+	got := base.ReorderMapsByID([]string{"c", "a", "b"}, records)
 	if got[0]["id"] != "c" || got[1]["id"] != "a" || got[2]["id"] != "b" {
 		t.Fatalf("unexpected order: %v", got)
 	}
 
 	// A record with no id is preserved (appended), never dropped.
 	withUnkeyed := []map[string]any{{"id": "a"}, {"value": "no-id"}}
-	got = reorderByID([]string{"a"}, withUnkeyed)
+	got = base.ReorderMapsByID([]string{"a"}, withUnkeyed)
 	if len(got) != 2 {
 		t.Fatalf("expected unkeyed record preserved, got %v", got)
 	}
@@ -815,15 +805,8 @@ func TestNormalizeSort(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{backends: map[string]backend{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	for _, name := range []string{"falcon_create_exclusion", "falcon_update_exclusion"} {
 		tool := byName[name]

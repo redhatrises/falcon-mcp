@@ -6,7 +6,6 @@ package fusion
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"strconv"
@@ -202,22 +201,6 @@ Examples: 'started_timestamp.desc', 'completed_timestamp.desc'`
 		"which is usually the largest part; do not omit 'activities' if you want the per-activity results."
 )
 
-// searchSchema builds the input schema shared by the two combined-search tools,
-// applying the limit/offset bounds and the backtick-bearing filter/sort
-// descriptions that a struct tag cannot express. Callers pass the per-tool
-// filter and sort descriptions and the sort default.
-func searchSchema[In any](filterDesc, sortDesc, sortDefault string) *jsonschema.Schema {
-	return base.SchemaFor[In](func(s *jsonschema.Schema) {
-		s.Properties["filter"].Description = filterDesc
-		s.Properties["sort"].Description = sortDesc
-		s.Properties["sort"].Default = json.RawMessage(strconv.Quote(sortDefault))
-		s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
-		s.Properties["limit"].Maximum = jsonschema.Ptr(500.0)
-		s.Properties["limit"].Default = json.RawMessage(strconv.Itoa(defaultSearchLimit))
-		s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
-	})
-}
-
 // SearchInput is the input for both combined-search tools. The json tags drive
 // the SDK unmarshal; the served schema is inferred from these tags then
 // augmented by searchSchema.
@@ -233,13 +216,13 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_workflow_definitions",
 		Description: searchWorkflowDefinitionsDescription,
-		InputSchema: searchSchema[SearchInput](definitionsFilterDescription, definitionsSortDescription, definitionsDefaultSort),
+		InputSchema: base.SearchSchema[SearchInput](base.SearchSchemaOpts{MaxLimit: 500, DefaultLimit: defaultSearchLimit, FilterDesc: definitionsFilterDescription, SortDesc: definitionsSortDescription, SortDefault: definitionsDefaultSort}),
 	}, m.searchWorkflowDefinitions)
 
 	base.AddTool(r, &mcp.Tool{
 		Name:        "search_workflow_executions",
 		Description: searchWorkflowExecutionsDescription,
-		InputSchema: searchSchema[SearchInput](executionsFilterDescription, executionsSortDescription, executionsDefaultSort),
+		InputSchema: base.SearchSchema[SearchInput](base.SearchSchemaOpts{MaxLimit: 500, DefaultLimit: defaultSearchLimit, FilterDesc: executionsFilterDescription, SortDesc: executionsSortDescription, SortDefault: executionsDefaultSort}),
 	}, m.searchWorkflowExecutions)
 
 	base.AddTool(r, &mcp.Tool{

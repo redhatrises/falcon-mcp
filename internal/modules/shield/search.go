@@ -312,7 +312,7 @@ func parseDate(field, s string) (*strfmt.DateTime, error) {
 	}
 	dt, err := strfmt.ParseDateTime(s)
 	if err != nil {
-		return nil, wrapInvalid("shield search", field+": invalid date "+s+" (want YYYY-MM-DD or ISO 8601)")
+		return nil, base.InvalidInput("shield search", field+": invalid date "+s+" (want YYYY-MM-DD or ISO 8601)")
 	}
 	return &dt, nil
 }

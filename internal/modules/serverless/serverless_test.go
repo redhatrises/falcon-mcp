@@ -12,6 +12,7 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client/serverless_vulnerabilities"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 
+	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
@@ -143,8 +144,8 @@ func TestSearchServerlessVulnerabilitiesRequiresFilter(t *testing.T) {
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 	if f.calls != 0 {
 		t.Fatalf("expected no API call on empty filter, got %d", f.calls)

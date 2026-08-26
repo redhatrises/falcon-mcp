@@ -28,13 +28,13 @@ func (m *Module) createPolicy(ctx context.Context, _ *mcp.CallToolRequest, in Cr
 		return nil, zero, invalidType(in.PolicyType)
 	}
 	if in.Name == "" {
-		return nil, zero, wrapInvalid("create policy", "a name is required to create a policy")
+		return nil, zero, base.InvalidInput("create policy", "a name is required to create a policy")
 	}
 	if in.Settings != nil && !supportsSettings[in.PolicyType] {
-		return nil, zero, wrapInvalid("create policy", settingsUnsupportedMsg(in.PolicyType))
+		return nil, zero, base.InvalidInput("create policy", settingsUnsupportedMsg(in.PolicyType))
 	}
 	if createNeedsPlatform[in.PolicyType] && in.PlatformName == "" {
-		return nil, zero, wrapInvalid("create policy", "a platform_name (e.g. Windows, Mac, Linux) is required to create a "+in.PolicyType+" policy")
+		return nil, zero, base.InvalidInput("create policy", "a platform_name (e.g. Windows, Mac, Linux) is required to create a "+in.PolicyType+" policy")
 	}
 	m.Logger.Debug("create_policy", "type", in.PolicyType, "name", in.Name, "platform", in.PlatformName)
 
@@ -68,10 +68,10 @@ func (m *Module) updatePolicy(ctx context.Context, _ *mcp.CallToolRequest, in Up
 		return nil, zero, invalidType(in.PolicyType)
 	}
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("update policy", "a policy id is required to update a policy")
+		return nil, zero, base.InvalidInput("update policy", "a policy id is required to update a policy")
 	}
 	if in.Settings != nil && !supportsSettings[in.PolicyType] {
-		return nil, zero, wrapInvalid("update policy", settingsUnsupportedMsg(in.PolicyType))
+		return nil, zero, base.InvalidInput("update policy", settingsUnsupportedMsg(in.PolicyType))
 	}
 	m.Logger.Debug("update_policy", "type", in.PolicyType, "id", in.ID)
 
@@ -99,7 +99,7 @@ func (m *Module) deletePolicies(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, base.ActionResult{}, invalidType(in.PolicyType)
 	}
 	if len(in.IDs) == 0 {
-		return nil, base.ActionResult{}, wrapInvalid("delete policies", "a non-empty ids list is required")
+		return nil, base.ActionResult{}, base.InvalidInput("delete policies", "a non-empty ids list is required")
 	}
 	m.Logger.Debug("delete_policies", "type", in.PolicyType, "ids", len(in.IDs))
 
@@ -125,13 +125,13 @@ func (m *Module) performPolicyAction(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, zero, invalidType(in.PolicyType)
 	}
 	if !validActions[in.PolicyType][in.ActionName] {
-		return nil, zero, wrapInvalid("perform policy action", "invalid action_name "+quote(in.ActionName)+" for "+in.PolicyType+"; "+validActionsHint(in.PolicyType))
+		return nil, zero, base.InvalidInput("perform policy action", "invalid action_name "+quote(in.ActionName)+" for "+in.PolicyType+"; "+validActionsHint(in.PolicyType))
 	}
 	if len(in.IDs) == 0 {
-		return nil, zero, wrapInvalid("perform policy action", "a non-empty ids list is required")
+		return nil, zero, base.InvalidInput("perform policy action", "a non-empty ids list is required")
 	}
 	if _, isGroupAction := groupActionParam[in.ActionName]; isGroupAction && in.GroupID == "" {
-		return nil, zero, wrapInvalid("perform policy action", "action_name "+quote(in.ActionName)+" requires a group_id (the host group ID for host-group actions, or the rule group ID for rule-group actions)")
+		return nil, zero, base.InvalidInput("perform policy action", "action_name "+quote(in.ActionName)+" requires a group_id (the host group ID for host-group actions, or the rule group ID for rule-group actions)")
 	}
 	m.Logger.Debug("perform_policy_action", "type", in.PolicyType, "action", in.ActionName, "ids", len(in.IDs), "has_group", in.GroupID != "")
 
@@ -155,10 +155,10 @@ func (m *Module) setPolicyPrecedence(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, base.ActionResult{}, invalidType(in.PolicyType)
 	}
 	if len(in.IDs) == 0 {
-		return nil, base.ActionResult{}, wrapInvalid("set policy precedence", "a non-empty ids list is required")
+		return nil, base.ActionResult{}, base.InvalidInput("set policy precedence", "a non-empty ids list is required")
 	}
 	if precedenceNeedsPlatform[in.PolicyType] && in.PlatformName == "" {
-		return nil, base.ActionResult{}, wrapInvalid("set policy precedence", "a platform_name is required to set precedence for "+in.PolicyType+" policies")
+		return nil, base.ActionResult{}, base.InvalidInput("set policy precedence", "a platform_name is required to set precedence for "+in.PolicyType+" policies")
 	}
 	m.Logger.Debug("set_policy_precedence", "type", in.PolicyType, "ids", len(in.IDs), "platform", in.PlatformName)
 

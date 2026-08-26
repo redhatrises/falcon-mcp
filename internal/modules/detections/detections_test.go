@@ -9,7 +9,6 @@ import (
 
 	"github.com/crowdstrike/gofalcon/falcon/client/alerts"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -136,9 +135,7 @@ func TestSearchDetectionsFetchesDetails(t *testing.T) {
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 resources, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
-		t.Fatalf("expected query meta passed through verbatim, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryResp.Payload.Meta)
 	if got := *out.Resources[0].CompositeID; got != "id1" {
 		t.Fatalf("expected query order restored (id1 first), got %q", got)
 	}
@@ -306,8 +303,8 @@ func TestUpdateDetectionsValidation(t *testing.T) {
 			if tc.wantErr && err == nil {
 				t.Fatalf("expected error, got nil")
 			}
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -364,9 +361,7 @@ func TestUpdateDetectionsMetaPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updateDetections: %v", err)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("expected meta passthrough, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 }
 
 // makeIDs returns n distinct composite IDs for chunking tests.
@@ -464,15 +459,8 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeAlerts{}, Concurrency: 4, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	// Read-only tools get default annotations from base.AddTool.
 	for _, name := range []string{"falcon_search_detections", "falcon_get_detection_details"} {
