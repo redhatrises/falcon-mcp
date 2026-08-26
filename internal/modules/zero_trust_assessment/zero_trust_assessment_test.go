@@ -70,8 +70,6 @@ func score(aid string, s int32) *models.DomainZeroTrustSimpleAssessment {
 	return &models.DomainZeroTrustSimpleAssessment{Aid: &aid, Score: &s}
 }
 
-func ptr[T any](v T) *T { return &v }
-
 func TestBuildScoreFilter(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -80,10 +78,10 @@ func TestBuildScoreFilter(t *testing.T) {
 		want     string
 	}{
 		{"neither bound defaults to all assessed", nil, nil, "score:>=0"},
-		{"min only", ptr(50), nil, "score:>=50"},
-		{"max only", nil, ptr(40), "score:<=40"},
-		{"both bounds joined by AND", ptr(30), ptr(70), "score:>=30+score:<=70"},
-		{"equal bounds", ptr(50), ptr(50), "score:>=50+score:<=50"},
+		{"min only", new(50), nil, "score:>=50"},
+		{"max only", nil, new(40), "score:<=40"},
+		{"both bounds joined by AND", new(30), new(70), "score:>=30+score:<=70"},
+		{"equal bounds", new(50), new(50), "score:>=50+score:<=50"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,7 +100,7 @@ func TestSearchValidationRejectsBadArgs(t *testing.T) {
 		in   SearchInput
 	}{
 		{"invalid sort_order", SearchInput{SortOrder: "sideways"}},
-		{"min greater than max", SearchInput{MinScore: ptr(80), MaxScore: ptr(20)}},
+		{"min greater than max", SearchInput{MinScore: new(80), MaxScore: new(20)}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,8 +111,8 @@ func TestSearchValidationRejectsBadArgs(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected a validation error, got nil")
 			}
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("err = %v, want errInvalidInput", err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("err = %v, want base.ErrInvalidInput", err)
 			}
 			if f.scoreCalls != 0 {
 				t.Fatalf("expected no API call on validation failure, got %d", f.scoreCalls)
@@ -196,9 +194,7 @@ func TestSearchFetchesDetailsInScoreOrder(t *testing.T) {
 	if *out.Resources[0].Aid != "a1" || *out.Resources[1].Aid != "a2" {
 		t.Fatalf("expected score order a1,a2, got %q,%q", *out.Resources[0].Aid, *out.Resources[1].Aid)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the score-query meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	if out.NotFound != nil {
 		t.Fatalf("expected not_found omitted when every scored host resolved, got %+v", out.NotFound)
 	}
@@ -346,9 +342,7 @@ func TestGetAudit(t *testing.T) {
 	if out.Total != 1 || len(out.Resources) != 1 {
 		t.Fatalf("expected 1 audit record, got total=%d resources=%+v", out.Total, out.Resources)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("Meta = %+v, want passthrough of audit meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 }
 
 func TestMissingAIDsPreservesOrderAndNonNil(t *testing.T) {
@@ -406,20 +400,13 @@ func TestGetAuditSurfacesAPIError(t *testing.T) {
 
 func TestRegisterToolsReadOnly(t *testing.T) {
 	t.Parallel()
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]base.ToolEntry{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e
-	}
+	byName := testutil.CollectTools(m)
 	for _, name := range []string{"falcon_search_zta_assessments", "falcon_get_zta_assessments", "falcon_get_zta_audit"} {
 		e, ok := byName[name]
 		if !ok {
 			t.Fatalf("missing tool %s", name)
 		}
-		testutil.AssertReadOnlyAnnotations(t, name, e.Tool.Annotations)
+		testutil.AssertReadOnlyAnnotations(t, name, e.Annotations)
 	}
 }

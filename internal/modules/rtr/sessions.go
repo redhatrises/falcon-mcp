@@ -144,14 +144,14 @@ type AggregateInput struct {
 func (m *Module) aggregateSessions(ctx context.Context, _ *mcp.CallToolRequest, in AggregateInput) (*mcp.CallToolResult, base.EntitiesResult[*models.MsaAggregationResult], error) {
 	var zero base.EntitiesResult[*models.MsaAggregationResult]
 	if in.Field == "" {
-		return nil, zero, wrapInvalid("aggregate rtr sessions", "field must not be empty")
+		return nil, zero, base.InvalidInput("aggregate rtr sessions", "field must not be empty")
 	}
 	aggType := in.AggregateType
 	if aggType == "" {
 		aggType = defaultAggregateType
 	}
 	if !slices.Contains(validAggregateTypes, aggType) {
-		return nil, zero, wrapInvalid("aggregate rtr sessions", fmt.Sprintf("invalid aggregate_type %q (want %s)", aggType, strings.Join(validAggregateTypes, " or ")))
+		return nil, zero, base.InvalidInput("aggregate rtr sessions", fmt.Sprintf("invalid aggregate_type %q (want %s)", aggType, strings.Join(validAggregateTypes, " or ")))
 	}
 	name := in.Name
 	if name == "" {
@@ -221,7 +221,7 @@ type ListFilesInput struct {
 func (m *Module) listSessionFiles(ctx context.Context, _ *mcp.CallToolRequest, in ListFilesInput) (*mcp.CallToolResult, base.EntitiesResult[*models.DomainFileV2], error) {
 	var zero base.EntitiesResult[*models.DomainFileV2]
 	if in.SessionID == "" {
-		return nil, zero, wrapInvalid("list rtr session files", "session_id must not be empty")
+		return nil, zero, base.InvalidInput("list rtr session files", "session_id must not be empty")
 	}
 	m.Logger.Debug("list_rtr_session_files", "session_id", in.SessionID)
 
@@ -257,12 +257,7 @@ func (m *Module) fetchSessionDetails(ctx context.Context, req *mcp.CallToolReque
 		},
 		// RTRListSessions may reorder sessions; reorder to the query step's sort.
 		// Field verified against the live API: id.
-		KeyFn: func(s *models.DomainSession) string {
-			if s == nil || s.ID == nil {
-				return ""
-			}
-			return *s.ID
-		},
+		KeyFn: func(s *models.DomainSession) string { return base.Deref(s.ID) },
 	})
 }
 

@@ -26,7 +26,7 @@ func (m *Module) updateQuarantinedFiles(ctx context.Context, _ *mcp.CallToolRequ
 		return nil, base.ActionResult{}, err
 	}
 	if len(in.IDs) == 0 && in.Filter == "" {
-		return nil, base.ActionResult{}, wrapInvalid("update quarantined files", "provide either ids or filter")
+		return nil, base.ActionResult{}, base.InvalidInput("update quarantined files", "provide either ids or filter")
 	}
 	m.Logger.Debug("update_quarantined_files", "action", action, "ids", len(in.IDs), "filter", in.Filter)
 
@@ -46,7 +46,7 @@ type DeleteInput struct {
 
 func (m *Module) deleteQuarantinedFiles(ctx context.Context, _ *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	if len(in.IDs) == 0 && in.Filter == "" {
-		return nil, base.ActionResult{}, wrapInvalid("delete quarantined files", "provide either ids or filter")
+		return nil, base.ActionResult{}, base.InvalidInput("delete quarantined files", "provide either ids or filter")
 	}
 	m.Logger.Debug("delete_quarantined_files", "ids", len(in.IDs), "filter", in.Filter)
 

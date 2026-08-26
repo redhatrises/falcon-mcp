@@ -7,7 +7,6 @@ package zerotrustassessment
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -36,10 +35,6 @@ const defaultLimit = 100
 // endpoint sorts on score; asc lists the weakest hosts first, desc the
 // strongest.
 var sortOrders = []string{"asc", "desc"}
-
-// errInvalidInput classifies a caller-side argument error that never reaches the
-// Falcon API. It is wrapped with %w so callers and tests can match it.
-var errInvalidInput = errors.New("zero trust assessment: invalid input")
 
 // scopeZTARead is the CrowdStrike API scope required by this module's
 // operations. Surfaced on a 403 via base.APIError.
@@ -216,10 +211,10 @@ func (m *Module) searchAssessments(ctx context.Context, req *mcp.CallToolRequest
 		order = "asc"
 	}
 	if order != "asc" && order != "desc" {
-		return nil, zero, fmt.Errorf("%w: invalid sort_order %q: valid values are %s", errInvalidInput, order, strings.Join(sortOrders, ", "))
+		return nil, zero, fmt.Errorf("%w: invalid sort_order %q: valid values are %s", base.ErrInvalidInput, order, strings.Join(sortOrders, ", "))
 	}
 	if in.MinScore != nil && in.MaxScore != nil && *in.MinScore > *in.MaxScore {
-		return nil, zero, fmt.Errorf("%w: min_score (%d) is greater than max_score (%d), so no host can match", errInvalidInput, *in.MinScore, *in.MaxScore)
+		return nil, zero, fmt.Errorf("%w: min_score (%d) is greater than max_score (%d), so no host can match", base.ErrInvalidInput, *in.MinScore, *in.MaxScore)
 	}
 
 	limit := int64(in.Limit)
@@ -310,12 +305,7 @@ func (m *Module) fetchDetails(ctx context.Context, req *mcp.CallToolRequest, aid
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(a *models.DomainSignalProperties) string {
-			if a == nil || a.Aid == nil {
-				return ""
-			}
-			return *a.Aid
-		},
+		KeyFn: func(a *models.DomainSignalProperties) string { return base.Deref(a.Aid) },
 	})
 }
 

@@ -11,14 +11,12 @@ package firewall
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"strconv"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/firewall_management"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -38,10 +36,6 @@ const defaultLimit = 10
 // call. The firewall get endpoints take IDs as query parameters, so keep chunks
 // modest to stay within URL length limits.
 const detailBatchSize = 100
-
-// errInvalidInput classifies client-side validation failures in the mutating
-// tools.
-var errInvalidInput = errors.New("firewall: invalid input")
 
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
@@ -80,26 +74,10 @@ func (m *Module) Description() string {
 	return "Search and manage Falcon firewall rules and rule groups"
 }
 
-// searchSchema builds the input schema for a firewall search Input type,
-// applying the limit bounds/default and offset minimum the tag syntax cannot
-// express. The three search tools share these numeric constraints, but only
-// search_firewall_policy_rules still takes an offset: the other two paginate by
-// cursor, so the offset lookup is guarded rather than indexed.
-func searchSchema[In any]() *jsonschema.Schema {
-	return base.SchemaFor[In](func(s *jsonschema.Schema) {
-		s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
-		s.Properties["limit"].Maximum = jsonschema.Ptr(5000.0)
-		s.Properties["limit"].Default = json.RawMessage(`10`)
-		if p, ok := s.Properties["offset"]; ok {
-			p.Minimum = jsonschema.Ptr(0.0)
-		}
-	})
-}
-
 var (
-	searchRulesSchema       = searchSchema[SearchRulesInput]()
-	searchRuleGroupsSchema  = searchSchema[SearchRuleGroupsInput]()
-	searchPolicyRulesSchema = searchSchema[SearchPolicyRulesInput]()
+	searchRulesSchema       = base.SearchSchema[SearchRulesInput](base.SearchSchemaOpts{MaxLimit: 5000, DefaultLimit: defaultLimit})
+	searchRuleGroupsSchema  = base.SearchSchema[SearchRuleGroupsInput](base.SearchSchemaOpts{MaxLimit: 5000, DefaultLimit: defaultLimit})
+	searchPolicyRulesSchema = base.SearchSchema[SearchPolicyRulesInput](base.SearchSchemaOpts{MaxLimit: 5000, DefaultLimit: defaultLimit})
 )
 
 // RegisterTools registers the five firewall tools into r.
@@ -289,7 +267,7 @@ type SearchPolicyRulesInput struct {
 func (m *Module) searchFirewallPolicyRules(ctx context.Context, req *mcp.CallToolRequest, in SearchPolicyRulesInput) (*mcp.CallToolResult, base.SearchResult[*models.FwmgrFirewallRuleV1], error) {
 	var zero base.SearchResult[*models.FwmgrFirewallRuleV1]
 	if in.PolicyID == "" {
-		return nil, zero, wrapInvalid("search firewall policy rules", "policy_id must not be empty")
+		return nil, zero, base.InvalidInput("search firewall policy rules", "policy_id must not be empty")
 	}
 	limit := int64(in.Limit)
 	if limit == 0 {
@@ -352,12 +330,7 @@ func (m *Module) fetchRuleDetails(ctx context.Context, req *mcp.CallToolRequest,
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(r *models.FwmgrFirewallRuleV1) string {
-			if r == nil || r.ID == nil {
-				return ""
-			}
-			return *r.ID
-		},
+		KeyFn: func(r *models.FwmgrFirewallRuleV1) string { return base.Deref(r.ID) },
 	})
 }
 
@@ -378,36 +351,19 @@ func (m *Module) fetchRuleGroupDetails(ctx context.Context, req *mcp.CallToolReq
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(g *models.FwmgrAPIRuleGroupV1) string {
-			if g == nil || g.ID == nil {
-				return ""
-			}
-			return *g.ID
-		},
+		KeyFn: func(g *models.FwmgrAPIRuleGroupV1) string { return base.Deref(g.ID) },
 	})
 }
 
 // fwmgrFQLDetails flattens the firewall service's FwmgrMsaspecError values into
 // base.FQLErrorDetail. The firewall_management BadRequest payloads carry
 // []*models.FwmgrMsaspecError rather than the []*models.MsaAPIError that
-// base.FQLErrorDetails accepts, so this module converts them itself.
+// base.FQLErrorDetails accepts, so this module supplies field accessors for that
+// type.
 func fwmgrFQLDetails(errs []*models.FwmgrMsaspecError) []base.FQLErrorDetail {
-	details := make([]base.FQLErrorDetail, 0, len(errs))
-	for _, e := range errs {
-		if e == nil {
-			continue
-		}
-		var code int32
-		if e.Code != nil {
-			code = *e.Code
-		}
-		var msg string
-		if e.Message != nil {
-			msg = *e.Message
-		}
-		details = append(details, base.FQLErrorDetail{Code: code, Message: msg})
-	}
-	return details
+	return base.FQLErrorDetailsFrom(errs,
+		func(e *models.FwmgrMsaspecError) *int32 { return e.Code },
+		func(e *models.FwmgrMsaspecError) *string { return e.Message })
 }
 
 // rulesFQLBadRequest reports whether err is a 400-class QueryRules error and, if

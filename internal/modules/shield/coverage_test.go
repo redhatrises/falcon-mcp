@@ -8,6 +8,8 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client/saas_security"
 	"github.com/crowdstrike/gofalcon/falcon/models"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
 
 // metaQueryTime is a non-zero query_time for test fakes, so a handler's
@@ -116,8 +118,8 @@ func TestActivityMonitorInvalidDate(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
 	_, _, err := m.getShieldActivityMonitor(context.Background(), nil, GetActivityInput{FromDate: "nope"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -125,8 +127,8 @@ func TestSystemLogsInvalidDate(t *testing.T) {
 	t.Parallel()
 	m := newModule(&fakeShield{})
 	_, _, err := m.getShieldSystemLogs(context.Background(), nil, GetSystemLogsInput{ToDate: "nope"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 

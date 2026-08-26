@@ -3,14 +3,12 @@ package cases
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/case_files"
 	"github.com/crowdstrike/gofalcon/falcon/client/case_management"
 	"github.com/crowdstrike/gofalcon/falcon/client/cases"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -195,9 +193,7 @@ func TestSearchCasesSuccess(t *testing.T) {
 	if *out.Resources[0].ID != "c1" || *out.Resources[1].ID != "c2" {
 		t.Fatalf("expected reordered [c1 c2], got [%s %s]", *out.Resources[0].ID, *out.Resources[1].ID)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryResp.Payload.Meta)
 }
 
 func TestSearchCasesEmpty(t *testing.T) {
@@ -263,8 +259,8 @@ func TestGetCases(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeCases{}, &fakeTemplates{})
 		_, _, err := m.getCases(context.Background(), nil, GetInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -310,9 +306,7 @@ func TestListCaseTemplates(t *testing.T) {
 		if *out.Resources[0].ID != "t1" || *out.Resources[1].ID != "t2" {
 			t.Fatalf("expected reordered [t1 t2], got [%s %s]", *out.Resources[0].ID, *out.Resources[1].ID)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(ft.queryResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, ft.queryResp.Payload.Meta)
 	})
 
 	t.Run("empty", func(t *testing.T) {
@@ -329,9 +323,7 @@ func TestListCaseTemplates(t *testing.T) {
 		if out.Total != 0 || out.Resources == nil {
 			t.Fatalf("expected non-nil empty slice, got %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(ft.queryResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, ft.queryResp.Payload.Meta)
 		if ft.getCalls != 0 {
 			t.Fatalf("expected no detail fetch on empty result, got %d", ft.getCalls)
 		}
@@ -357,8 +349,8 @@ func TestCreateCaseValidation(t *testing.T) {
 			f := &fakeCases{createResp: &cases.EntitiesCasesPutV2Created{Payload: &models.OperationsCreateCaseResponseVM{}}}
 			m := newModule(f, &fakeTemplates{})
 			_, _, err := m.createCase(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -391,9 +383,7 @@ func TestCreateCaseBody(t *testing.T) {
 	if out.Total != 1 {
 		t.Fatalf("expected created record returned, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.createResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.createResp.Payload.Meta)
 	b := f.lastCreateBody
 	if b == nil || b.Name == nil || *b.Name != "Lateral movement" || b.Severity == nil || *b.Severity != 70 {
 		t.Fatalf("unexpected create body core fields: %+v", b)
@@ -430,8 +420,8 @@ func TestUpdateCase(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeCases{}, &fakeTemplates{})
 		_, _, err := m.updateCase(context.Background(), nil, UpdateInput{Name: "x"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -439,8 +429,8 @@ func TestUpdateCase(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeCases{}, &fakeTemplates{})
 		_, _, err := m.updateCase(context.Background(), nil, UpdateInput{ID: "c1"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -449,8 +439,8 @@ func TestUpdateCase(t *testing.T) {
 		m := newModule(&fakeCases{}, &fakeTemplates{})
 		sev := 200
 		_, _, err := m.updateCase(context.Background(), nil, UpdateInput{ID: "c1", Severity: &sev})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -477,9 +467,7 @@ func TestUpdateCase(t *testing.T) {
 		if out.Total != 1 {
 			t.Fatalf("expected updated record returned, got %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.patchResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.patchResp.Payload.Meta)
 		b := f.lastPatchBody
 		if b == nil || b.ID == nil || *b.ID != "c1" {
 			t.Fatalf("unexpected patch body id: %+v", b)
@@ -509,8 +497,8 @@ func TestCaseDescriptionFormat(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeCases{}, &fakeTemplates{})
 		_, _, err := m.createCase(context.Background(), nil, CreateInput{Name: "x", Severity: 50, DescriptionFormat: "html"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -544,8 +532,8 @@ func TestCaseDescriptionFormat(t *testing.T) {
 		t.Parallel()
 		m := newModule(&fakeCases{}, &fakeTemplates{})
 		_, _, err := m.updateCase(context.Background(), nil, UpdateInput{ID: "c1", DescriptionFormat: "rtf"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -577,8 +565,8 @@ func TestAddCaseAlertEvidence(t *testing.T) {
 		for _, in := range tests {
 			m := newModule(&fakeCases{}, &fakeTemplates{})
 			_, _, err := m.addCaseAlertEvidence(context.Background(), nil, in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput for %+v, got %v", in, err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput for %+v, got %v", in, err)
 			}
 		}
 	})
@@ -601,9 +589,7 @@ func TestAddCaseAlertEvidence(t *testing.T) {
 		if *b.ID != "c1" || len(b.Alerts) != 2 || *b.Alerts[0].ID != "a1" {
 			t.Fatalf("unexpected alert body: %+v", b)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.alertResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.alertResp.Payload.Meta)
 	})
 }
 
@@ -619,8 +605,8 @@ func TestAddCaseEventEvidence(t *testing.T) {
 		for _, in := range tests {
 			m := newModule(&fakeCases{}, &fakeTemplates{})
 			_, _, err := m.addCaseEventEvidence(context.Background(), nil, in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput for %+v, got %v", in, err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput for %+v, got %v", in, err)
 			}
 		}
 	})
@@ -643,9 +629,7 @@ func TestAddCaseEventEvidence(t *testing.T) {
 		if *b.ID != "c1" || len(b.Events) != 1 || *b.Events[0].ID != "e1" {
 			t.Fatalf("unexpected event body: %+v", b)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.eventResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.eventResp.Payload.Meta)
 	})
 }
 
@@ -662,8 +646,8 @@ func TestManageCaseTags(t *testing.T) {
 		for _, in := range tests {
 			m := newModule(&fakeCases{}, &fakeTemplates{})
 			_, _, err := m.manageCaseTags(context.Background(), nil, in)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput for %+v, got %v", in, err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput for %+v, got %v", in, err)
 			}
 		}
 	})
@@ -685,9 +669,7 @@ func TestManageCaseTags(t *testing.T) {
 		if *f.lastTagPostBody.ID != "c1" || len(f.lastTagPostBody.Tags) != 2 {
 			t.Fatalf("unexpected add-tags body: %+v", f.lastTagPostBody)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.tagPostResp.Payload.Meta)) {
-			t.Fatalf("expected normalized meta, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.tagPostResp.Payload.Meta)
 	})
 
 	t.Run("remove", func(t *testing.T) {
@@ -812,9 +794,7 @@ func TestAggregateCaseConfig(t *testing.T) {
 			if ft.lastAggBody[0].Type == nil || *ft.lastAggBody[0].Type != base.AggregateTypeDefault {
 				t.Fatalf("expected default type %q, got %+v", base.AggregateTypeDefault, ft.lastAggBody[0].Type)
 			}
-			if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(&models.MsaMetaInfo{QueryTime: &metaQueryTime})) {
-				t.Fatalf("expected normalized meta, got %+v", out.Meta)
-			}
+			testutil.AssertNormalizedMeta(t, out.Meta, &models.MsaMetaInfo{QueryTime: &metaQueryTime})
 		})
 	}
 }
@@ -899,9 +879,7 @@ func TestAggregateCaseFileDetails(t *testing.T) {
 	if got != want {
 		t.Fatalf("scoped filter mismatch:\n got %q\nwant %q", got, want)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(&models.MsaMetaInfo{QueryTime: &metaQueryTime})) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, &models.MsaMetaInfo{QueryTime: &metaQueryTime})
 }
 
 // TestAggregateCaseFileDetailsRejectsMalformedFilter proves a caller filter that
@@ -967,14 +945,7 @@ func TestAggregateCaseFileDetailsEscapesCaseIDQuotes(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
-	newModule(&fakeCases{}, &fakeTemplates{}).RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(newModule(&fakeCases{}, &fakeTemplates{}))
 
 	// All thirteen tools must register.
 	wantTools := []string{

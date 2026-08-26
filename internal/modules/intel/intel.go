@@ -11,14 +11,12 @@ package intel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/intel"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -71,22 +69,10 @@ func (m *Module) Description() string {
 	return "Search Falcon threat intelligence: adversaries, indicators, reports, and MITRE ATT&CK profiles"
 }
 
-// searchSchema builds a search input schema, applying the shared limit
-// bounds/default (min 1, max 5000, default 10) and offset minimum the tag
-// syntax cannot express.
-func searchSchema[In any]() *jsonschema.Schema {
-	return base.SchemaFor[In](func(s *jsonschema.Schema) {
-		s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
-		s.Properties["limit"].Maximum = jsonschema.Ptr(5000.0)
-		s.Properties["limit"].Default = json.RawMessage(`10`)
-		s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
-	})
-}
-
 var (
-	searchActorsSchema     = searchSchema[ActorsInput]()
-	searchIndicatorsSchema = searchSchema[IndicatorsInput]()
-	searchReportsSchema    = searchSchema[ReportsInput]()
+	searchActorsSchema     = base.SearchSchema[ActorsInput](base.SearchSchemaOpts{MaxLimit: 5000, DefaultLimit: defaultLimit})
+	searchIndicatorsSchema = base.SearchSchema[IndicatorsInput](base.SearchSchemaOpts{MaxLimit: 5000, DefaultLimit: defaultLimit})
+	searchReportsSchema    = base.SearchSchema[ReportsInput](base.SearchSchemaOpts{MaxLimit: 5000, DefaultLimit: defaultLimit})
 )
 
 // RegisterTools registers the four intel tools into r. All are read-only.

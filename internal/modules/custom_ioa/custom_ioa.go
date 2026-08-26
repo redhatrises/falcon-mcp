@@ -48,10 +48,6 @@ const defaultRuleGroupLimit = 10
 // limit.
 const defaultRuleTypeLimit = 100
 
-// errInvalidInput classifies client-side validation failures in the mutating
-// tools.
-var errInvalidInput = errors.New("custom_ioa: invalid input")
-
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
 var (
@@ -325,40 +321,9 @@ func (m *Module) getRuleTypes(ctx context.Context, _ *mcp.CallToolRequest, in Ru
 	}
 
 	// Preserve the query-step order in case the details endpoint reorders results.
-	types := reorderRuleTypes(ids, gresp.Payload.Resources)
+	types := base.ReorderByIDs(ids, gresp.Payload.Resources, func(t *models.APIRuleTypeV1) string { return base.Deref(t.ID) })
 	m.Logger.Debug("get_ioa_rule_types complete", "count", len(types))
 	return nil, base.Entities(types).WithMeta(qresp.Payload.Meta), nil
-}
-
-// reorderRuleTypes reorders rule types to match the query-step ID order. Rule
-// types carry a string ID; entities not referenced by ids are appended.
-func reorderRuleTypes(ids []string, types []*models.APIRuleTypeV1) []*models.APIRuleTypeV1 {
-	byID := make(map[string]*models.APIRuleTypeV1, len(types))
-	for _, t := range types {
-		if t != nil && t.ID != nil {
-			byID[*t.ID] = t
-		}
-	}
-	out := make([]*models.APIRuleTypeV1, 0, len(types))
-	placed := make(map[string]struct{}, len(types))
-	for _, id := range ids {
-		if t, ok := byID[id]; ok {
-			if _, done := placed[id]; !done {
-				out = append(out, t)
-				placed[id] = struct{}{}
-			}
-		}
-	}
-	for _, t := range types {
-		if t == nil || t.ID == nil {
-			out = append(out, t)
-			continue
-		}
-		if _, done := placed[*t.ID]; !done {
-			out = append(out, t)
-		}
-	}
-	return out
 }
 
 // ruleGroupsFQLBadRequest reports whether err is a 400-class rule-group query

@@ -2,8 +2,6 @@ package rtr
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/real_time_response"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -15,10 +13,6 @@ import (
 // defaultOrigin is the origin label sent on init/pulse when the caller omits
 // one, matching the Python module's "falcon-mcp" default.
 const defaultOrigin = "falcon-mcp"
-
-// errInvalidInput classifies client-side validation failures in this module's
-// tools (empty required fields, unknown enum values).
-var errInvalidInput = errors.New("rtr: invalid input")
 
 // InitInput is the input for falcon_init_rtr_session.
 type InitInput struct {
@@ -32,7 +26,7 @@ type InitInput struct {
 func (m *Module) initSession(ctx context.Context, _ *mcp.CallToolRequest, in InitInput) (*mcp.CallToolResult, base.EntitiesResult[*models.DomainInitResponse], error) {
 	var zero base.EntitiesResult[*models.DomainInitResponse]
 	if in.DeviceID == "" {
-		return nil, zero, wrapInvalid("init rtr session", "device_id must not be empty")
+		return nil, zero, base.InvalidInput("init rtr session", "device_id must not be empty")
 	}
 	origin := in.Origin
 	if origin == "" {
@@ -70,7 +64,7 @@ type PulseInput struct {
 func (m *Module) pulseSession(ctx context.Context, _ *mcp.CallToolRequest, in PulseInput) (*mcp.CallToolResult, base.EntitiesResult[*models.DomainInitResponse], error) {
 	var zero base.EntitiesResult[*models.DomainInitResponse]
 	if in.DeviceID == "" {
-		return nil, zero, wrapInvalid("pulse rtr session", "device_id must not be empty")
+		return nil, zero, base.InvalidInput("pulse rtr session", "device_id must not be empty")
 	}
 	origin := in.Origin
 	if origin == "" {
@@ -99,7 +93,7 @@ type DeleteInput struct {
 
 func (m *Module) deleteSession(ctx context.Context, _ *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, base.ActionResult, error) {
 	if in.SessionID == "" {
-		return nil, base.ActionResult{}, wrapInvalid("delete rtr session", "session_id must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("delete rtr session", "session_id must not be empty")
 	}
 	m.Logger.Debug("delete_rtr_session", "session_id", in.SessionID)
 
@@ -111,9 +105,4 @@ func (m *Module) deleteSession(ctx context.Context, _ *mcp.CallToolRequest, in D
 		return nil, base.ActionResult{}, e
 	}
 	return nil, base.ActionResult{Ok: true}.WithMeta(resp.Payload.Meta), nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

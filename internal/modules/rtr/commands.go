@@ -43,10 +43,10 @@ func (m *Module) executeReadOnlyCommand(ctx context.Context, _ *mcp.CallToolRequ
 // validate enforces the client-side constraints shared by execute and wait.
 func (in ExecuteInput) validate() error {
 	if in.SessionID == "" {
-		return wrapInvalid("execute rtr read-only command", "session_id must not be empty")
+		return base.InvalidInput("execute rtr read-only command", "session_id must not be empty")
 	}
 	if in.BaseCommand == "" {
-		return wrapInvalid("execute rtr read-only command", "base_command must not be empty")
+		return base.InvalidInput("execute rtr read-only command", "base_command must not be empty")
 	}
 	return nil
 }
@@ -77,7 +77,7 @@ type CheckStatusInput struct {
 func (m *Module) checkCommandStatus(ctx context.Context, _ *mcp.CallToolRequest, in CheckStatusInput) (*mcp.CallToolResult, base.EntitiesResult[*models.DomainStatusResponse], error) {
 	var zero base.EntitiesResult[*models.DomainStatusResponse]
 	if in.CloudRequestID == "" {
-		return nil, zero, wrapInvalid("check rtr command status", "cloud_request_id must not be empty")
+		return nil, zero, base.InvalidInput("check rtr command status", "cloud_request_id must not be empty")
 	}
 	m.Logger.Debug("check_rtr_command_status", "cloud_request_id", in.CloudRequestID, "sequence_id", in.SequenceID)
 
@@ -152,11 +152,11 @@ func (m *Module) runReadOnlyCommandAndWait(ctx context.Context, req *mcp.CallToo
 		return nil, zero, e
 	}
 	if len(execResp.Payload.Resources) == 0 {
-		return nil, zero, wrapInvalid("run rtr read-only command and wait", "command execution did not return a command request")
+		return nil, zero, base.InvalidInput("run rtr read-only command and wait", "command execution did not return a command request")
 	}
 	execution := execResp.Payload.Resources[0]
 	if execution == nil || execution.CloudRequestID == nil || *execution.CloudRequestID == "" {
-		return nil, zero, wrapInvalid("run rtr read-only command and wait", "command execution did not return a cloud_request_id")
+		return nil, zero, base.InvalidInput("run rtr read-only command and wait", "command execution did not return a cloud_request_id")
 	}
 	cloudRequestID := *execution.CloudRequestID
 

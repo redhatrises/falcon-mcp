@@ -83,10 +83,10 @@ func convertSettings[T any](settings any) (T, error) {
 	}
 	b, err := json.Marshal(settings)
 	if err != nil {
-		return out, wrapInvalid("build policy", fmt.Sprintf("settings could not be encoded: %v", err))
+		return out, base.InvalidInput("build policy", fmt.Sprintf("settings could not be encoded: %v", err))
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
-		return out, wrapInvalid("build policy", fmt.Sprintf("settings do not match the expected shape for this policy type: %v", err))
+		return out, base.InvalidInput("build policy", fmt.Sprintf("settings do not match the expected shape for this policy type: %v", err))
 	}
 	return out, nil
 }
@@ -127,7 +127,7 @@ func (b preventionBackend) search(ctx context.Context, a queryArgs) ([]map[strin
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -162,7 +162,7 @@ func (b preventionBackend) create(ctx context.Context, s createSpec) ([]map[stri
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -182,7 +182,7 @@ func (b preventionBackend) update(ctx context.Context, s updateSpec) ([]map[stri
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -201,7 +201,7 @@ func (b preventionBackend) action(ctx context.Context, actionName string, ids []
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -241,7 +241,7 @@ func (b sensorUpdateBackend) search(ctx context.Context, a queryArgs) ([]map[str
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -275,7 +275,7 @@ func (b sensorUpdateBackend) create(ctx context.Context, s createSpec) ([]map[st
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -292,7 +292,7 @@ func (b sensorUpdateBackend) update(ctx context.Context, s updateSpec) ([]map[st
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -311,7 +311,7 @@ func (b sensorUpdateBackend) action(ctx context.Context, actionName string, ids 
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -351,7 +351,7 @@ func (b firewallBackend) search(ctx context.Context, a queryArgs) ([]map[string]
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -383,7 +383,7 @@ func (b firewallBackend) create(ctx context.Context, s createSpec) ([]map[string
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -396,7 +396,7 @@ func (b firewallBackend) update(ctx context.Context, s updateSpec) ([]map[string
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -415,7 +415,7 @@ func (b firewallBackend) action(ctx context.Context, actionName string, ids []st
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -470,13 +470,13 @@ func (b deviceControlBackend) search(ctx context.Context, a queryArgs) ([]map[st
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(gresp.Payload.Resources)
+	records, err := base.ModelsToMaps(gresp.Payload.Resources)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Restore the query-step order in case the get endpoint reorders results.
 	// Meta comes from the query step (it carries pagination for the search).
-	return reorderByID(ids, records), qresp.Payload.Meta, nil
+	return base.ReorderMapsByID(ids, records), qresp.Payload.Meta, nil
 }
 
 func (b deviceControlBackend) members(ctx context.Context, id string, a queryArgs) ([]*models.DeviceDevice, any, error) {
@@ -510,7 +510,7 @@ func (b deviceControlBackend) create(ctx context.Context, s createSpec) ([]map[s
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -527,7 +527,7 @@ func (b deviceControlBackend) update(ctx context.Context, s updateSpec) ([]map[s
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -546,7 +546,7 @@ func (b deviceControlBackend) action(ctx context.Context, actionName string, ids
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -589,7 +589,7 @@ func (b responseBackend) search(ctx context.Context, a queryArgs) ([]map[string]
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -624,7 +624,7 @@ func (b responseBackend) create(ctx context.Context, s createSpec) ([]map[string
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -644,7 +644,7 @@ func (b responseBackend) update(ctx context.Context, s updateSpec) ([]map[string
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -663,7 +663,7 @@ func (b responseBackend) action(ctx context.Context, actionName string, ids []st
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -707,7 +707,7 @@ func (b contentUpdateBackend) search(ctx context.Context, a queryArgs) ([]map[st
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -739,7 +739,7 @@ func (b contentUpdateBackend) create(ctx context.Context, s createSpec) ([]map[s
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -756,7 +756,7 @@ func (b contentUpdateBackend) update(ctx context.Context, s updateSpec) ([]map[s
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 
@@ -775,7 +775,7 @@ func (b contentUpdateBackend) action(ctx context.Context, actionName string, ids
 	if err != nil {
 		return nil, nil, err
 	}
-	records, err := toMaps(resp.Payload.Resources)
+	records, err := base.ModelsToMaps(resp.Payload.Resources)
 	return records, resp.Payload.Meta, err
 }
 

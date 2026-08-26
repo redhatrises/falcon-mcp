@@ -66,10 +66,6 @@ const (
 // launch and download endpoints too). Surfaced on a 403 via base.APIError.
 var scopeScheduledReports = base.Scope{Name: "Scheduled Reports", Read: true}
 
-// errInvalidInput classifies client-side validation failures (e.g. a missing
-// required id) so the handler can distinguish them from API errors.
-var errInvalidInput = errors.New("scheduledreports: invalid input")
-
 // errUnsupportedFormat classifies a download whose content type cannot be
 // returned to an LLM (currently PDF), matching the Python module's graceful
 // "configure CSV or JSON instead" message.
@@ -301,7 +297,7 @@ func (m *Module) launchScheduledReport(ctx context.Context, _ *mcp.CallToolReque
 	var zero base.EntitiesResult[*models.DomainReportExecutionV1]
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
-		return nil, zero, fmt.Errorf("%w: id is required", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: id is required", base.ErrInvalidInput)
 	}
 	m.Logger.Debug("launch_scheduled_report", "id", id)
 
@@ -384,7 +380,7 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 	var zero DownloadResult
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
-		return nil, zero, fmt.Errorf("%w: id is required", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: id is required", base.ErrInvalidInput)
 	}
 	m.Logger.Debug("download_report_execution", "id", id)
 
@@ -396,7 +392,7 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 		return nil, zero, e
 	}
 	if payload == nil {
-		return nil, zero, fmt.Errorf("%w: empty download response", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: empty download response", base.ErrInvalidInput)
 	}
 
 	// PDF is a binary format that cannot be handed to an LLM; surface the same
@@ -419,7 +415,7 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 		case trimmed[0] == '[':
 			var rows json.RawMessage
 			if err := json.Unmarshal(trimmed, &rows); err != nil {
-				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", errInvalidInput)
+				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", base.ErrInvalidInput)
 			}
 			return nil, DownloadResult{Format: "json", Resources: rows}, nil
 		default:
@@ -427,7 +423,7 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 				Resources json.RawMessage `json:"resources"`
 			}
 			if err := json.Unmarshal(trimmed, &envelope); err != nil {
-				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", errInvalidInput)
+				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", base.ErrInvalidInput)
 			}
 			result := DownloadResult{Format: "json", Resources: envelope.Resources}
 			if len(result.Resources) == 0 {
@@ -464,12 +460,7 @@ func (m *Module) fetchReports(ctx context.Context, req *mcp.CallToolRequest, ids
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(r *models.DomainScheduledReportV1) string {
-			if r == nil || r.ID == nil {
-				return ""
-			}
-			return *r.ID
-		},
+		KeyFn: func(r *models.DomainScheduledReportV1) string { return base.Deref(r.ID) },
 	})
 }
 
@@ -492,12 +483,7 @@ func (m *Module) fetchExecutions(ctx context.Context, req *mcp.CallToolRequest, 
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(r *models.DomainReportExecutionV1) string {
-			if r == nil || r.ID == nil {
-				return ""
-			}
-			return *r.ID
-		},
+		KeyFn: func(r *models.DomainReportExecutionV1) string { return base.Deref(r.ID) },
 	})
 }
 

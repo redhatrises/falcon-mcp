@@ -13,13 +13,11 @@ package recon
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/recon"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -159,28 +157,10 @@ Examples: 'created_date.desc', 'exposure_date.desc'`
 	offsetDescription = "Starting index for pagination. offset + limit must not exceed 10,000."
 )
 
-// searchSchema builds a search input schema, applying the shared limit bounds
-// (min 1, max 500, default 10) and offset minimum the tag syntax cannot
-// express, then the multi-line sort/q and backtick-bearing filter descriptions
-// that cannot live in a struct tag.
-func searchSchema[In any](filterDesc, sortDesc, qDesc string) *jsonschema.Schema {
-	return base.SchemaFor[In](func(s *jsonschema.Schema) {
-		s.Properties["filter"].Description = filterDesc
-		s.Properties["sort"].Description = sortDesc
-		s.Properties["q"].Description = qDesc
-		s.Properties["limit"].Description = limitDescription
-		s.Properties["offset"].Description = offsetDescription
-		s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
-		s.Properties["limit"].Maximum = jsonschema.Ptr(500.0)
-		s.Properties["limit"].Default = json.RawMessage(`10`)
-		s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
-	})
-}
-
 var (
-	searchNotificationsSchema      = searchSchema[NotificationsInput](notificationsFilterDescription, notificationsSortDescription, notificationsQDescription)
-	searchRulesSchema              = searchSchema[RulesInput](rulesFilterDescription, rulesSortDescription, rulesQDescription)
-	searchExposedDataRecordsSchema = searchSchema[ExposedDataRecordsInput](exposedDataRecordsFilterDescription, exposedDataRecordsSortDescription, exposedDataRecordsQDescription)
+	searchNotificationsSchema      = base.SearchSchema[NotificationsInput](base.SearchSchemaOpts{MaxLimit: 500, DefaultLimit: 10, FilterDesc: notificationsFilterDescription, SortDesc: notificationsSortDescription, QDesc: notificationsQDescription, LimitDesc: limitDescription, OffsetDesc: offsetDescription})
+	searchRulesSchema              = base.SearchSchema[RulesInput](base.SearchSchemaOpts{MaxLimit: 500, DefaultLimit: 10, FilterDesc: rulesFilterDescription, SortDesc: rulesSortDescription, QDesc: rulesQDescription, LimitDesc: limitDescription, OffsetDesc: offsetDescription})
+	searchExposedDataRecordsSchema = base.SearchSchema[ExposedDataRecordsInput](base.SearchSchemaOpts{MaxLimit: 500, DefaultLimit: 10, FilterDesc: exposedDataRecordsFilterDescription, SortDesc: exposedDataRecordsSortDescription, QDesc: exposedDataRecordsQDescription, LimitDesc: limitDescription, OffsetDesc: offsetDescription})
 )
 
 // RegisterTools registers the recon tools into r.
@@ -436,12 +416,7 @@ func (m *Module) fetchNotifications(ctx context.Context, req *mcp.CallToolReques
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(n *models.DomainDetailedNotificationV1) string {
-			if n == nil || n.ID == nil {
-				return ""
-			}
-			return *n.ID
-		},
+		KeyFn: func(n *models.DomainDetailedNotificationV1) string { return base.Deref(n.ID) },
 	})
 }
 
@@ -463,12 +438,7 @@ func (m *Module) fetchRules(ctx context.Context, req *mcp.CallToolRequest, ids [
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(r *models.SadomainRule) string {
-			if r == nil || r.ID == nil {
-				return ""
-			}
-			return *r.ID
-		},
+		KeyFn: func(r *models.SadomainRule) string { return base.Deref(r.ID) },
 	})
 }
 
@@ -490,12 +460,7 @@ func (m *Module) fetchExposedDataRecords(ctx context.Context, req *mcp.CallToolR
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(r *models.APINotificationExposedDataRecordV1) string {
-			if r == nil || r.ID == nil {
-				return ""
-			}
-			return *r.ID
-		},
+		KeyFn: func(r *models.APINotificationExposedDataRecordV1) string { return base.Deref(r.ID) },
 	})
 }
 
@@ -533,25 +498,12 @@ func exposedDataRecordsFQLBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 }
 
 // reconErrorDetails flattens gofalcon DomainReconAPIError values into
-// base.FQLErrorDetail, skipping nil entries and dereferencing the optional
-// Code/Message pointers. The recon query endpoints carry their 400 errors as
+// base.FQLErrorDetail. The recon query endpoints carry their 400 errors as
 // []*models.DomainReconAPIError rather than the []*models.MsaAPIError that
-// base.FQLErrorDetails consumes, so this module converts them locally.
+// base.FQLErrorDetails consumes, so this module supplies field accessors for
+// that type.
 func reconErrorDetails(errs []*models.DomainReconAPIError) []base.FQLErrorDetail {
-	details := make([]base.FQLErrorDetail, 0, len(errs))
-	for _, e := range errs {
-		if e == nil {
-			continue
-		}
-		var code int32
-		if e.Code != nil {
-			code = *e.Code
-		}
-		var msg string
-		if e.Message != nil {
-			msg = *e.Message
-		}
-		details = append(details, base.FQLErrorDetail{Code: code, Message: msg})
-	}
-	return details
+	return base.FQLErrorDetailsFrom(errs,
+		func(e *models.DomainReconAPIError) *int32 { return e.Code },
+		func(e *models.DomainReconAPIError) *string { return e.Message })
 }

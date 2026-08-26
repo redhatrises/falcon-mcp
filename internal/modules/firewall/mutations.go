@@ -2,7 +2,6 @@ package firewall
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/firewall_management"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -73,10 +72,10 @@ func (m *Module) createFirewallRuleGroup(ctx context.Context, _ *mcp.CallToolReq
 // clone_id must be provided.
 func (in CreateInput) validate() error {
 	if in.Name == "" || in.Platform == "" {
-		return wrapInvalid("create firewall rule group", "name and platform are required")
+		return base.InvalidInput("create firewall rule group", "name and platform are required")
 	}
 	if len(in.Rules) == 0 && in.CloneID == "" {
-		return wrapInvalid("create firewall rule group", "provide rules or clone_id")
+		return base.InvalidInput("create firewall rule group", "provide rules or clone_id")
 	}
 	return nil
 }
@@ -90,7 +89,7 @@ type DeleteInput struct {
 func (m *Module) deleteFirewallRuleGroups(ctx context.Context, _ *mcp.CallToolRequest, in DeleteInput) (*mcp.CallToolResult, base.EntitiesResult[string], error) {
 	var zero base.EntitiesResult[string]
 	if len(in.IDs) == 0 {
-		return nil, zero, wrapInvalid("delete firewall rule groups", "ids must not be empty")
+		return nil, zero, base.InvalidInput("delete firewall rule groups", "ids must not be empty")
 	}
 	m.Logger.Debug("delete_firewall_rule_groups", "ids", len(in.IDs))
 
@@ -105,9 +104,4 @@ func (m *Module) deleteFirewallRuleGroups(ctx context.Context, _ *mcp.CallToolRe
 		return nil, zero, e
 	}
 	return nil, base.Entities(resp.Payload.Resources).WithMeta(resp.Payload.Meta), nil
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

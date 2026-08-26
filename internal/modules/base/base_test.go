@@ -497,7 +497,7 @@ func TestReorderByIDs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := reorderByIDs(tt.ids, tt.entities, key)
+			got := ReorderByIDs(tt.ids, tt.entities, key)
 			if len(got) != len(tt.want) {
 				t.Fatalf("length mismatch: got %d, want %d (%+v)", len(got), len(tt.want), got)
 			}
@@ -514,11 +514,38 @@ func TestReorderByIDsNilKeyIsNoop(t *testing.T) {
 	t.Parallel()
 
 	entities := []string{"c", "b", "a"}
-	got := reorderByIDs([]string{"a", "b", "c"}, entities, nil)
+	got := ReorderByIDs([]string{"a", "b", "c"}, entities, nil)
 	for i, v := range got {
 		if v != entities[i] {
 			t.Fatalf("nil key must not reorder: got %v", got)
 		}
+	}
+}
+
+func TestReorderByIDsNilPointerEntity(t *testing.T) {
+	t.Parallel()
+
+	// A get-by-IDs response can contain a nil element (a null in the JSON array).
+	// The key func dereferences a field, so ReorderByIDs must treat a nil pointer
+	// entity as keyless rather than call key on it and panic.
+	type entity struct{ id string }
+	key := func(e *entity) string { return e.id }
+
+	ids := []string{"a", "b"}
+	entities := []*entity{{id: "b"}, nil, {id: "a"}}
+
+	got := ReorderByIDs(ids, entities, key)
+
+	// The two keyed entities are reordered to ids order; the nil is keyless and
+	// appended, preserving the old per-site guard's behavior.
+	if len(got) != 3 {
+		t.Fatalf("length mismatch: got %d, want 3 (%+v)", len(got), got)
+	}
+	if got[0] == nil || got[0].id != "a" || got[1] == nil || got[1].id != "b" {
+		t.Fatalf("keyed entities not reordered: %+v", got)
+	}
+	if got[2] != nil {
+		t.Fatalf("nil entity should be appended last, got %+v", got[2])
 	}
 }
 
@@ -793,6 +820,121 @@ func TestEnumOmitsEmptyDefault(t *testing.T) {
 type enumIn struct {
 	Mode  string `json:"mode,omitempty" jsonschema:"the mode"`
 	Count int    `json:"count,omitempty" jsonschema:"the count"`
+}
+
+// searchIn is a search input with the full property set SearchSchema touches.
+type searchIn struct {
+	Filter string `json:"filter,omitempty" jsonschema:"tag filter desc"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"tag limit desc"`
+	Offset int    `json:"offset,omitempty" jsonschema:"tag offset desc"`
+	Sort   string `json:"sort,omitempty" jsonschema:"tag sort desc"`
+	Q      string `json:"q,omitempty" jsonschema:"tag q desc"`
+}
+
+// searchNoOffsetIn is a search input without an offset property, exercising the
+// guarded offset-minimum branch.
+type searchNoOffsetIn struct {
+	Filter string `json:"filter,omitempty" jsonschema:"tag filter desc"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"tag limit desc"`
+}
+
+func TestSearchSchemaLimitOffsetBounds(t *testing.T) {
+	t.Parallel()
+
+	s := SearchSchema[searchIn](SearchSchemaOpts{MaxLimit: 500, DefaultLimit: 10})
+
+	limit := s.Properties["limit"]
+	if limit.Minimum == nil || *limit.Minimum != 1.0 {
+		t.Errorf("limit.Minimum = %v, want 1", limit.Minimum)
+	}
+	if limit.Maximum == nil || *limit.Maximum != 500.0 {
+		t.Errorf("limit.Maximum = %v, want 500", limit.Maximum)
+	}
+	if got, want := string(limit.Default), "10"; got != want {
+		t.Errorf("limit.Default = %s, want %s", got, want)
+	}
+	offset := s.Properties["offset"]
+	if offset.Minimum == nil || *offset.Minimum != 0.0 {
+		t.Errorf("offset.Minimum = %v, want 0", offset.Minimum)
+	}
+}
+
+func TestSearchSchemaZeroBoundsLeaveConstraintsUnset(t *testing.T) {
+	t.Parallel()
+
+	s := SearchSchema[searchIn](SearchSchemaOpts{})
+
+	limit := s.Properties["limit"]
+	if limit.Minimum == nil || *limit.Minimum != 1.0 {
+		t.Errorf("limit.Minimum = %v, want 1 (always set)", limit.Minimum)
+	}
+	if limit.Maximum != nil {
+		t.Errorf("limit.Maximum = %v, want unset for MaxLimit=0", limit.Maximum)
+	}
+	if limit.Default != nil {
+		t.Errorf("limit.Default = %s, want unset for DefaultLimit=0", limit.Default)
+	}
+}
+
+func TestSearchSchemaDescriptionsOverrideTags(t *testing.T) {
+	t.Parallel()
+
+	s := SearchSchema[searchIn](SearchSchemaOpts{
+		FilterDesc: "custom filter",
+		SortDesc:   "custom sort",
+		QDesc:      "custom q",
+		LimitDesc:  "custom limit",
+		OffsetDesc: "custom offset",
+	})
+
+	cases := map[string]string{
+		"filter": "custom filter",
+		"sort":   "custom sort",
+		"q":      "custom q",
+		"limit":  "custom limit",
+		"offset": "custom offset",
+	}
+	for prop, want := range cases {
+		if got := s.Properties[prop].Description; got != want {
+			t.Errorf("%s.Description = %q, want %q", prop, got, want)
+		}
+	}
+}
+
+func TestSearchSchemaKeepsTagDescriptionsWhenUnset(t *testing.T) {
+	t.Parallel()
+
+	s := SearchSchema[searchIn](SearchSchemaOpts{MaxLimit: 500})
+
+	if got, want := s.Properties["limit"].Description, "tag limit desc"; got != want {
+		t.Errorf("limit.Description = %q, want tag value %q", got, want)
+	}
+	if got, want := s.Properties["filter"].Description, "tag filter desc"; got != want {
+		t.Errorf("filter.Description = %q, want tag value %q", got, want)
+	}
+}
+
+func TestSearchSchemaSortDefaultIsJSONQuoted(t *testing.T) {
+	t.Parallel()
+
+	s := SearchSchema[searchIn](SearchSchemaOpts{SortDefault: "created_date.desc"})
+
+	if got, want := string(s.Properties["sort"].Default), `"created_date.desc"`; got != want {
+		t.Errorf("sort.Default = %s, want %s", got, want)
+	}
+}
+
+func TestSearchSchemaGuardsMissingOffset(t *testing.T) {
+	t.Parallel()
+
+	s := SearchSchema[searchNoOffsetIn](SearchSchemaOpts{MaxLimit: 500, DefaultLimit: 10})
+
+	if _, ok := s.Properties["offset"]; ok {
+		t.Fatal("offset property present, want absent for searchNoOffsetIn")
+	}
+	if s.Properties["limit"].Minimum == nil {
+		t.Error("limit.Minimum unset; limit bounds should still apply without an offset")
+	}
 }
 
 func TestEnumPanics(t *testing.T) {

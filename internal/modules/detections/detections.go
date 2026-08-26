@@ -26,9 +26,6 @@ var Factory registry.Factory = func(d registry.Deps) base.Module {
 	return &Module{API: d.API.Alerts, Concurrency: d.Concurrency, Logger: d.Logger}
 }
 
-// errInvalidInput classifies client-side validation failures in update_detections.
-var errInvalidInput = errors.New("detections: invalid input")
-
 // alertBatchSize is the maximum number of composite IDs fetched per GetV2 call.
 const alertBatchSize = 1000
 
@@ -216,12 +213,7 @@ func (m *Module) fetchDetails(ctx context.Context, req *mcp.CallToolRequest, ids
 		},
 		// GetV2 returns alerts in arbitrary order; reorder to the query step's
 		// sort. Field verified against the live API: composite_id.
-		KeyFn: func(a *models.DetectsAlert) string {
-			if a == nil || a.CompositeID == nil {
-				return ""
-			}
-			return *a.CompositeID
-		},
+		KeyFn: func(a *models.DetectsAlert) string { return base.Deref(a.CompositeID) },
 	})
 }
 

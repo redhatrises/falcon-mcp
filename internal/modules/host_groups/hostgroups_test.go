@@ -3,12 +3,10 @@ package hostgroups
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/host_group"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -86,9 +84,7 @@ func TestSearchHostGroupsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "group_type:'static'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.searchResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.searchResp.Payload.Meta)
 }
 
 func TestSearchHostGroupsEmpty(t *testing.T) {
@@ -148,8 +144,8 @@ func TestSearchHostGroupMembers(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeHostGroups{}, Logger: testLogger}
 		_, _, err := m.searchHostGroupMembers(context.Background(), nil, MembersInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -167,9 +163,7 @@ func TestSearchHostGroupMembers(t *testing.T) {
 		if out.FilterUsed != "platform_name:'Windows'" {
 			t.Fatalf("unexpected result: %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.membersResp.Payload.Meta)) {
-			t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, f.membersResp.Payload.Meta)
 	})
 }
 
@@ -193,8 +187,8 @@ func TestCreateHostGroupValidation(t *testing.T) {
 			f := &fakeHostGroups{createResp: &host_group.CreateHostGroupsCreated{Payload: &models.HostGroupsRespV1{}}}
 			m := &Module{API: f, Logger: testLogger}
 			_, _, err := m.createHostGroup(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -234,8 +228,8 @@ func TestUpdateHostGroup(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeHostGroups{}, Logger: testLogger}
 		_, _, err := m.updateHostGroup(context.Background(), nil, UpdateInput{Name: "x"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -280,8 +274,8 @@ func TestDeleteHostGroups(t *testing.T) {
 		t.Parallel()
 		m := &Module{API: &fakeHostGroups{}, Logger: testLogger}
 		_, _, err := m.deleteHostGroups(context.Background(), nil, DeleteInput{})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -300,9 +294,7 @@ func TestDeleteHostGroups(t *testing.T) {
 		if len(f.lastDeleteIDs) != 2 {
 			t.Fatalf("expected 2 ids passed, got %v", f.lastDeleteIDs)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-			t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	})
 }
 
@@ -324,8 +316,8 @@ func TestPerformHostGroupAction(t *testing.T) {
 				t.Parallel()
 				m := &Module{API: &fakeHostGroups{}, Logger: testLogger}
 				_, _, err := m.performHostGroupAction(context.Background(), nil, tc.in)
-				if !errors.Is(err, errInvalidInput) {
-					t.Fatalf("expected errInvalidInput, got %v", err)
+				if !errors.Is(err, base.ErrInvalidInput) {
+					t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 				}
 			})
 		}
@@ -374,15 +366,8 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeHostGroups{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	for _, name := range []string{
 		"falcon_create_host_group",

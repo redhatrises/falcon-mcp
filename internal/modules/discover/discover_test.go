@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -98,9 +97,7 @@ func TestSearchApplicationsSuccess(t *testing.T) {
 	if out.Resources[0].Name != "Chrome" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.appsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.appsResp.Payload.Meta)
 }
 
 // TestSearchApplicationsForwardsParams verifies the handler defaults the limit
@@ -223,9 +220,7 @@ func TestSearchUnmanagedAssetsSuccess(t *testing.T) {
 	if out.Resources[0].Hostname != "PC-001" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.hostsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.hostsResp.Payload.Meta)
 }
 
 // TestSearchUnmanagedAssetsAlwaysConstrainsUnmanaged verifies the tool prepends
@@ -338,8 +333,8 @@ func TestSearchApplicationsRejectsEmptyFilter(t *testing.T) {
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.searchApplications(context.Background(), nil, ApplicationsInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 	if f.appCalls != 0 {
 		t.Errorf("API called %d times, want 0", f.appCalls)
@@ -581,9 +576,7 @@ func TestSearchManagedAssetsSuccess(t *testing.T) {
 	if out.Resources[0].Hostname != "PC-001" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.hostsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.hostsResp.Payload.Meta)
 }
 
 // TestSearchManagedAssetsAlwaysConstrainsManaged verifies the tool prepends

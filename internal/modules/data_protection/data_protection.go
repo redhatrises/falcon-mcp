@@ -12,7 +12,6 @@ package data_protection
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -45,11 +44,6 @@ const (
 // scopeDataProtectionRead is the CrowdStrike API scope required by this module's
 // operations. Surfaced on a 403 via base.APIError.
 var scopeDataProtectionRead = base.Scope{Name: "Data Protection", Read: true}
-
-// errInvalidInput classifies client-side validation failures (e.g. an
-// unsupported platform_name) so the handler can distinguish them from API
-// errors.
-var errInvalidInput = errors.New("data_protection: invalid input")
 
 // validPlatformNames are the platform values the policies query endpoint
 // accepts, in schema order. It is the single source for both the advertised
@@ -265,12 +259,7 @@ func (m *Module) searchClassifications(ctx context.Context, req *mcp.CallToolReq
 		},
 		// The get endpoint may reorder results; restore the query step's sort.
 		// Field verified against the live API: id.
-		KeyFn: func(c *models.PolicymanagerExternalClassification) string {
-			if c == nil || c.ID == nil {
-				return ""
-			}
-			return *c.ID
-		},
+		KeyFn: func(c *models.PolicymanagerExternalClassification) string { return base.Deref(c.ID) },
 	})
 	if err != nil {
 		return nil, zero, err
@@ -281,7 +270,7 @@ func (m *Module) searchClassifications(ctx context.Context, req *mcp.CallToolReq
 func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, in SearchPoliciesInput) (*mcp.CallToolResult, base.SearchResult[*models.PolicymanagerExternalPolicy], error) {
 	var zero base.SearchResult[*models.PolicymanagerExternalPolicy]
 	if !slices.Contains(validPlatformNames, in.PlatformName) {
-		return nil, zero, fmt.Errorf("%w: platform_name %q (want %s)", errInvalidInput, in.PlatformName, strings.Join(validPlatformNames, " or "))
+		return nil, zero, fmt.Errorf("%w: platform_name %q (want %s)", base.ErrInvalidInput, in.PlatformName, strings.Join(validPlatformNames, " or "))
 	}
 	m.Logger.Debug("search_data_protection_policies", "platform_name", in.PlatformName, "filter", in.Filter, "limit", in.Limit, "offset", in.Offset, "sort", in.Sort)
 
@@ -326,12 +315,7 @@ func (m *Module) searchPolicies(ctx context.Context, req *mcp.CallToolRequest, i
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(p *models.PolicymanagerExternalPolicy) string {
-			if p == nil || p.ID == nil {
-				return ""
-			}
-			return *p.ID
-		},
+		KeyFn: func(p *models.PolicymanagerExternalPolicy) string { return base.Deref(p.ID) },
 	})
 	if err != nil {
 		return nil, zero, err
@@ -383,12 +367,7 @@ func (m *Module) searchContentPatterns(ctx context.Context, req *mcp.CallToolReq
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(p *models.APIContentPatternV1) string {
-			if p == nil || p.ID == nil {
-				return ""
-			}
-			return *p.ID
-		},
+		KeyFn: func(p *models.APIContentPatternV1) string { return base.Deref(p.ID) },
 	})
 	if err != nil {
 		return nil, zero, err

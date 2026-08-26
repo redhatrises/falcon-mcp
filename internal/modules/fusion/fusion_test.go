@@ -8,9 +8,7 @@ import (
 
 	"github.com/crowdstrike/gofalcon/falcon/client/workflows"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
@@ -89,9 +87,7 @@ func TestSearchWorkflowDefinitionsSuccess(t *testing.T) {
 	if *out.Resources[0].ID != "def-1" {
 		t.Fatalf("unexpected resource: %+v", out.Resources[0])
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.defsResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.defsResp.Payload.Meta)
 }
 
 // TestSearchWorkflowDefinitionsDefaults verifies the handler defaults the limit
@@ -282,9 +278,7 @@ func TestSearchWorkflowExecutionsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || *out.Resources[0].ExecutionID != "exec-1" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.execsResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.execsResp.Payload.Meta)
 }
 
 // TestSearchWorkflowExecutionsDefaults verifies the executions handler defaults
@@ -379,9 +373,7 @@ func TestGetWorkflowExecutionResultsSuccess(t *testing.T) {
 	if !reflect.DeepEqual(p.SkipFields, []string{"trigger"}) {
 		t.Errorf("skip_fields = %v", p.SkipFields)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.resultsResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.resultsResp.Payload.Meta)
 }
 
 // TestExecuteWorkflowValidation verifies the exactly-one-of guard rejects both
@@ -459,9 +451,7 @@ func TestExecuteWorkflowSuccess(t *testing.T) {
 	if !ok || !reflect.DeepEqual(body, map[string]any{"host_id": "abc"}) {
 		t.Errorf("body = %v, want the parameters verbatim", p.Body)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.executeResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.executeResp.Payload.Meta)
 }
 
 // TestExecuteWorkflowEmptyBody verifies a workflow with no parameters still sends
@@ -502,15 +492,8 @@ func TestExecuteWorkflowEmptyBody(t *testing.T) {
 // idempotent mutator annotations (base.DestructiveAnnotations(false)).
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	readOnly := []string{
 		"falcon_search_workflow_definitions",

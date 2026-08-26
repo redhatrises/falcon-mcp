@@ -135,11 +135,6 @@ func actionSet(values ...string) map[string]bool {
 	return m
 }
 
-// errInvalidInput classifies client-side validation failures (invalid type,
-// missing required fields, bad sort/action) so the handler returns a guiding data
-// result rather than an opaque API error.
-var errInvalidInput = errors.New("policies: invalid input")
-
 // CrowdStrike API scopes required by this module's operations, surfaced on a 403
 // via base.APIError. Each policy type has its own read/write console permission.
 var (
@@ -363,7 +358,7 @@ func (m *Module) searchPolicyMembers(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, zero, invalidType(in.PolicyType)
 	}
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("search policy members", "a policy id is required")
+		return nil, zero, base.InvalidInput("search policy members", "a policy id is required")
 	}
 	m.Logger.Debug("search_policy_members", "type", in.PolicyType, "id", in.ID, "filter", in.Filter, "limit", in.Limit, "offset", in.Offset, "sort", in.Sort)
 
@@ -386,12 +381,12 @@ func validateSort(sort string) error {
 	if sort == "" {
 		return nil
 	}
-	base := strings.TrimSpace(strings.SplitN(strings.SplitN(sort, ".", 2)[0], "|", 2)[0])
-	if base == "platform_name" {
-		return wrapInvalid("search policies", "sorting by 'platform_name' is not supported (the API returns HTTP 500); use name, created_timestamp, modified_timestamp, enabled, created_by, modified_by, or precedence")
+	field := strings.TrimSpace(strings.SplitN(strings.SplitN(sort, ".", 2)[0], "|", 2)[0])
+	if field == "platform_name" {
+		return base.InvalidInput("search policies", "sorting by 'platform_name' is not supported (the API returns HTTP 500); use name, created_timestamp, modified_timestamp, enabled, created_by, modified_by, or precedence")
 	}
-	if !safeSortFields[base] {
-		return wrapInvalid("search policies", fmt.Sprintf("invalid sort field %q; valid sort fields are name, created_timestamp, modified_timestamp, enabled, created_by, modified_by, precedence", base))
+	if !safeSortFields[field] {
+		return base.InvalidInput("search policies", fmt.Sprintf("invalid sort field %q; valid sort fields are name, created_timestamp, modified_timestamp, enabled, created_by, modified_by, precedence", field))
 	}
 	return nil
 }
@@ -409,71 +404,7 @@ func clampLimit(limit int, maxLimit int64) int64 {
 
 // invalidType builds the guiding error returned for an unknown policy_type.
 func invalidType(t string) error {
-	return fmt.Errorf("policies: %w: invalid policy_type %q (want one of %v)", errInvalidInput, t, policyTypes)
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
-}
-
-// toMaps marshals typed gofalcon records and unmarshals them back into uniform
-// map records, so the six heterogeneous policy models are returned as one shape.
-// A nil slice yields a non-nil empty slice for stable JSON array output.
-func toMaps[T any](in []T) ([]map[string]any, error) {
-	out := make([]map[string]any, 0, len(in))
-	for _, rec := range in {
-		b, err := json.Marshal(rec)
-		if err != nil {
-			return nil, fmt.Errorf("encode policy record: %w", err)
-		}
-		var mp map[string]any
-		if err := json.Unmarshal(b, &mp); err != nil {
-			return nil, fmt.Errorf("decode policy record: %w", err)
-		}
-		out = append(out, mp)
-	}
-	return out, nil
-}
-
-// reorderByID reorders records to match the query-step id order, keyed by each
-// record's "id" field. Records without a string id, or whose id is not in ids,
-// are appended in their original order and never dropped. It restores the
-// query-step sort for the device_control two-step search, whose get endpoint may
-// reorder results.
-func reorderByID(ids []string, records []map[string]any) []map[string]any {
-	if len(records) == 0 {
-		return records
-	}
-	byID := make(map[string]map[string]any, len(records))
-	for _, rec := range records {
-		if id, ok := rec["id"].(string); ok && id != "" {
-			if _, dup := byID[id]; !dup {
-				byID[id] = rec
-			}
-		}
-	}
-	out := make([]map[string]any, 0, len(records))
-	placed := make(map[string]struct{}, len(records))
-	for _, id := range ids {
-		if rec, ok := byID[id]; ok {
-			if _, done := placed[id]; !done {
-				out = append(out, rec)
-				placed[id] = struct{}{}
-			}
-		}
-	}
-	for _, rec := range records {
-		id, _ := rec["id"].(string)
-		if id == "" {
-			out = append(out, rec)
-			continue
-		}
-		if _, done := placed[id]; !done {
-			out = append(out, rec)
-		}
-	}
-	return out
+	return fmt.Errorf("policies: %w: invalid policy_type %q (want one of %v)", base.ErrInvalidInput, t, policyTypes)
 }
 
 // applyQuery copies the shared query args onto an operation's parameter pointers.

@@ -2,7 +2,6 @@ package hosts
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -13,10 +12,6 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
-
-// errInvalidInput classifies client-side validation failures in the hosts
-// mutating tools.
-var errInvalidInput = errors.New("hosts: invalid input")
 
 // scopeHostsWrite is the CrowdStrike API scope required to change device tags.
 var scopeHostsWrite = base.Scope{Name: "Hosts", Write: true}
@@ -55,19 +50,19 @@ func (m *Module) manageGroupingTags(ctx context.Context, _ *mcp.CallToolRequest,
 	var zero base.EntitiesResult[*models.DeviceapiUpdateDeviceDetailsResponseV1]
 
 	if !slices.Contains(tagActions, in.Action) {
-		return nil, zero, wrapInvalid(fmt.Sprintf("action must be one of %s", strings.Join(tagActions, ", ")))
+		return nil, zero, base.InvalidInput("manage host grouping tags", fmt.Sprintf("action must be one of %s", strings.Join(tagActions, ", ")))
 	}
 	if len(in.IDs) == 0 {
-		return nil, zero, wrapInvalid("at least one device id is required")
+		return nil, zero, base.InvalidInput("manage host grouping tags", "at least one device id is required")
 	}
 	if len(in.IDs) > maxTagDeviceIDs {
-		return nil, zero, wrapInvalid(fmt.Sprintf("too many device ids: %d (max %d)", len(in.IDs), maxTagDeviceIDs))
+		return nil, zero, base.InvalidInput("manage host grouping tags", fmt.Sprintf("too many device ids: %d (max %d)", len(in.IDs), maxTagDeviceIDs))
 	}
 	if len(in.Tags) == 0 {
-		return nil, zero, wrapInvalid("at least one tag is required")
+		return nil, zero, base.InvalidInput("manage host grouping tags", "at least one tag is required")
 	}
 	if len(in.Tags) > maxTagsPerRequest {
-		return nil, zero, wrapInvalid(fmt.Sprintf("too many tags: %d (max %d)", len(in.Tags), maxTagsPerRequest))
+		return nil, zero, base.InvalidInput("manage host grouping tags", fmt.Sprintf("too many tags: %d (max %d)", len(in.Tags), maxTagsPerRequest))
 	}
 
 	tags, err := normalizeGroupingTags(in.Tags)
@@ -106,11 +101,11 @@ func normalizeGroupingTags(tags []string) ([]string, error) {
 	for _, raw := range tags {
 		tag := strings.TrimSpace(raw)
 		if tag == "" {
-			return nil, wrapInvalid("tag values must not be empty")
+			return nil, base.InvalidInput("manage host grouping tags", "tag values must not be empty")
 		}
 		switch {
 		case hasFoldPrefix(tag, sensorPrefix):
-			return nil, wrapInvalid(fmt.Sprintf("%q is a sensor grouping tag, which cannot be changed through this API", tag))
+			return nil, base.InvalidInput("manage host grouping tags", fmt.Sprintf("%q is a sensor grouping tag, which cannot be changed through this API", tag))
 		case hasFoldPrefix(tag, groupingPrefix):
 			tag = groupingPrefix + tag[len(groupingPrefix):]
 		default:
@@ -151,10 +146,4 @@ func resultForError(ok *hosts.UpdateDeviceTagsOK, accepted *hosts.UpdateDeviceTa
 	default:
 		return ok
 	}
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for the tag update with
-// the given detail.
-func wrapInvalid(detail string) error {
-	return fmt.Errorf("manage host grouping tags: %w: %s", errInvalidInput, detail)
 }

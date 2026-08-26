@@ -77,13 +77,13 @@ type InvokeResult struct {
 func (m *Module) invokeAgent(ctx context.Context, req *mcp.CallToolRequest, in InvokeInput) (*mcp.CallToolResult, InvokeResult, error) {
 	var zero InvokeResult
 	if in.Prompt == "" {
-		return nil, zero, fmt.Errorf("%w: prompt must not be empty", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: prompt must not be empty", base.ErrInvalidInput)
 	}
 	if in.AgentID == "" {
-		return nil, zero, fmt.Errorf("%w: agent_id must not be empty", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: agent_id must not be empty", base.ErrInvalidInput)
 	}
 	if in.DeadlineSeconds != 0 && in.DeadlineSeconds < minDeadlineSeconds {
-		return nil, zero, fmt.Errorf("%w: deadline_seconds must be at least %d", errInvalidInput, minDeadlineSeconds)
+		return nil, zero, fmt.Errorf("%w: deadline_seconds must be at least %d", base.ErrInvalidInput, minDeadlineSeconds)
 	}
 	m.Logger.Debug("invoke_agentworks_agent",
 		"agent_id", in.AgentID,

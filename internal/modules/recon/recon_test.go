@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/recon"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/go-openapi/runtime"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -146,9 +143,7 @@ func TestSearchNotificationsSuccess(t *testing.T) {
 	if out.FilterUsed != "status:'new'" {
 		t.Errorf("FilterUsed = %q", out.FilterUsed)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.notifQueryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.notifQueryResp.Payload.Meta)
 }
 
 func TestSearchNotificationsEmpty(t *testing.T) {
@@ -201,7 +196,7 @@ func TestSearchNotificationsFQLError(t *testing.T) {
 func TestSearchNotificationsPropagatesForbidden(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeRecon{notifQueryErr: forbiddenErr{}}
+	f := &fakeRecon{notifQueryErr: testutil.StatusErr(403)}
 	m := newModule(f)
 
 	_, _, err := m.searchReconNotifications(context.Background(), nil, NotificationsInput{})
@@ -247,9 +242,7 @@ func TestSearchRulesSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || *out.Resources[0].ID != "r1" {
 		t.Fatalf("unexpected result %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.rulesQueryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.rulesQueryResp.Payload.Meta)
 }
 
 func TestSearchRulesFQLError(t *testing.T) {
@@ -302,9 +295,7 @@ func TestSearchExposedDataRecordsSuccess(t *testing.T) {
 	if len(out.Resources) != 2 {
 		t.Fatalf("expected 2 resources, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.edrQueryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.edrQueryResp.Payload.Meta)
 }
 
 func TestSearchExposedDataRecordsFQLError(t *testing.T) {
@@ -529,9 +520,7 @@ func TestPreviewRuleFQLError(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
-	newModule(&fakeRecon{}).RegisterTools(reg)
+	byName := testutil.CollectTools(newModule(&fakeRecon{}))
 
 	names := []string{
 		"falcon_search_recon_notifications",
@@ -541,12 +530,8 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		"falcon_aggregate_recon_exposed_data_records",
 		"falcon_preview_recon_rule",
 	}
-	if len(entries) != len(names) {
-		t.Fatalf("expected %d tools, got %d", len(names), len(entries))
-	}
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
+	if len(byName) != len(names) {
+		t.Fatalf("expected %d tools, got %d", len(names), len(byName))
 	}
 	for _, n := range names {
 		tool := byName[n]
@@ -568,17 +553,3 @@ func TestRegisterResourcesServesFQLGuides(t *testing.T) {
 		testutil.FQLGuideExpectation{Name: "falcon_preview_recon_rule_guide", URI: previewRuleFQLGuideURI, Body: previewRuleFQLGuide},
 	)
 }
-
-// forbiddenErr is a gofalcon-style error reporting HTTP 403 via the go-openapi
-// runtime.ClientResponseStatus interface that base.statusOf inspects.
-type forbiddenErr struct{}
-
-func (forbiddenErr) Error() string       { return "forbidden" }
-func (forbiddenErr) Code() int           { return http.StatusForbidden }
-func (forbiddenErr) IsCode(c int) bool   { return c == http.StatusForbidden }
-func (forbiddenErr) IsSuccess() bool     { return false }
-func (forbiddenErr) IsRedirect() bool    { return false }
-func (forbiddenErr) IsClientError() bool { return true }
-func (forbiddenErr) IsServerError() bool { return false }
-
-var _ runtime.ClientResponseStatus = forbiddenErr{}

@@ -3,11 +3,9 @@ package policies
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -126,9 +124,7 @@ func TestSearchPoliciesSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "enabled:true" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	if fb.lastQuery.limit != 50 {
 		t.Fatalf("limit = %d, want 50", fb.lastQuery.limit)
 	}
@@ -159,8 +155,8 @@ func TestSearchPoliciesInvalidType(t *testing.T) {
 	t.Parallel()
 	m := moduleWith("prevention", &fakeBackend{})
 	_, _, err := m.searchPolicies(context.Background(), nil, SearchInput{PolicyType: "bogus"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -184,8 +180,8 @@ func TestSearchPoliciesInvalidSort(t *testing.T) {
 			t.Parallel()
 			m := moduleWith("prevention", &fakeBackend{})
 			_, _, err := m.searchPolicies(context.Background(), nil, SearchInput{PolicyType: "prevention", Sort: tc.sort})
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("sort %q: expected errInvalidInput, got %v", tc.sort, err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("sort %q: expected base.ErrInvalidInput, got %v", tc.sort, err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("sort %q: unexpected error %v", tc.sort, err)
@@ -247,8 +243,8 @@ func TestSearchPolicyMembers(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.searchPolicyMembers(context.Background(), nil, MembersInput{PolicyType: "bogus", ID: "p1"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -256,8 +252,8 @@ func TestSearchPolicyMembers(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.searchPolicyMembers(context.Background(), nil, MembersInput{PolicyType: "prevention"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput for missing id, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput for missing id, got %v", err)
 		}
 	})
 
@@ -277,9 +273,7 @@ func TestSearchPolicyMembers(t *testing.T) {
 		if fb.lastMembersID != "p1" {
 			t.Fatalf("expected id p1 passed, got %q", fb.lastMembersID)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-			t.Fatalf("expected meta passthrough, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	})
 
 	t.Run("api error surfaced", func(t *testing.T) {
@@ -320,8 +314,8 @@ func TestCreatePolicyValidation(t *testing.T) {
 			// unknown policy_type ("bogus") misses; a valid type always resolves.
 			m := allTypesModule(fb)
 			_, _, err := m.createPolicy(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -342,9 +336,7 @@ func TestCreatePolicySuccess(t *testing.T) {
 	if out.Total != 1 || out.Resources[0]["id"] != "new" {
 		t.Fatalf("expected created record, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-		t.Fatalf("expected meta passthrough, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, meta)
 	if fb.lastCreate.name != "n" || fb.lastCreate.platformName != "Windows" || fb.lastCreate.cloneID != "c1" {
 		t.Fatalf("unexpected create spec: %+v", fb.lastCreate)
 	}
@@ -359,8 +351,8 @@ func TestUpdatePolicy(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.updatePolicy(context.Background(), nil, UpdateInput{PolicyType: "bogus", ID: "p1"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -368,8 +360,8 @@ func TestUpdatePolicy(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.updatePolicy(context.Background(), nil, UpdateInput{PolicyType: "prevention", Name: "n"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput for missing id, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput for missing id, got %v", err)
 		}
 	})
 
@@ -377,8 +369,8 @@ func TestUpdatePolicy(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("firewall", &fakeBackend{})
 		_, _, err := m.updatePolicy(context.Background(), nil, UpdateInput{PolicyType: "firewall", ID: "p1", Settings: map[string]any{"x": 1}})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput for firewall settings, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput for firewall settings, got %v", err)
 		}
 	})
 
@@ -408,8 +400,8 @@ func TestDeletePolicies(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.deletePolicies(context.Background(), nil, DeleteInput{PolicyType: "bogus", IDs: []string{"a"}})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -417,8 +409,8 @@ func TestDeletePolicies(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.deletePolicies(context.Background(), nil, DeleteInput{PolicyType: "prevention"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -434,9 +426,7 @@ func TestDeletePolicies(t *testing.T) {
 		if !out.Ok {
 			t.Fatalf("expected Ok, got %+v", out)
 		}
-		if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(meta)) {
-			t.Fatalf("expected meta passthrough, got %+v", out.Meta)
-		}
+		testutil.AssertNormalizedMeta(t, out.Meta, meta)
 		if len(fb.lastDeleteIDs) != 2 {
 			t.Fatalf("expected 2 ids passed, got %v", fb.lastDeleteIDs)
 		}
@@ -481,8 +471,8 @@ func TestPerformPolicyActionValidation(t *testing.T) {
 			fb := &fakeBackend{actionRecords: []map[string]any{{"id": "a"}}}
 			m := allTypesModule(fb)
 			_, _, err := m.performPolicyAction(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -518,8 +508,8 @@ func TestSetPolicyPrecedence(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.setPolicyPrecedence(context.Background(), nil, PrecedenceInput{PolicyType: "bogus", IDs: []string{"a"}, PlatformName: "Windows"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -527,8 +517,8 @@ func TestSetPolicyPrecedence(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.setPolicyPrecedence(context.Background(), nil, PrecedenceInput{PolicyType: "prevention", PlatformName: "Windows"})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 
@@ -536,8 +526,8 @@ func TestSetPolicyPrecedence(t *testing.T) {
 		t.Parallel()
 		m := moduleWith("prevention", &fakeBackend{})
 		_, _, err := m.setPolicyPrecedence(context.Background(), nil, PrecedenceInput{PolicyType: "prevention", IDs: []string{"a"}})
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput for missing platform, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput for missing platform, got %v", err)
 		}
 	})
 
@@ -609,13 +599,13 @@ func TestClampLimit(t *testing.T) {
 func TestReorderByID(t *testing.T) {
 	t.Parallel()
 	records := []map[string]any{{"id": "a"}, {"id": "b"}, {"id": "c"}}
-	got := reorderByID([]string{"c", "a", "b"}, records)
+	got := base.ReorderMapsByID([]string{"c", "a", "b"}, records)
 	if got[0]["id"] != "c" || got[1]["id"] != "a" || got[2]["id"] != "b" {
 		t.Fatalf("unexpected order: %v", got)
 	}
 	// A record with no id is preserved (appended), never dropped.
 	withUnkeyed := []map[string]any{{"id": "a"}, {"name": "no-id"}}
-	got = reorderByID([]string{"a"}, withUnkeyed)
+	got = base.ReorderMapsByID([]string{"a"}, withUnkeyed)
 	if len(got) != 2 {
 		t.Fatalf("expected unkeyed record preserved, got %v", got)
 	}
@@ -639,8 +629,8 @@ func TestConvertSettings(t *testing.T) {
 		t.Parallel()
 		// A string cannot decode into a []*PreventionSettingReqV1.
 		_, err := convertSettings[[]*models.PreventionSettingReqV1]("not-a-list")
-		if !errors.Is(err, errInvalidInput) {
-			t.Fatalf("expected errInvalidInput, got %v", err)
+		if !errors.Is(err, base.ErrInvalidInput) {
+			t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 		}
 	})
 }
@@ -681,7 +671,7 @@ func TestToMaps(t *testing.T) {
 	name := "n"
 	id := "p1"
 	in := []*models.PreventionPolicyV1{{ID: &id, Name: &name}}
-	out, err := toMaps(in)
+	out, err := base.ModelsToMaps(in)
 	if err != nil {
 		t.Fatalf("toMaps: %v", err)
 	}
@@ -689,7 +679,7 @@ func TestToMaps(t *testing.T) {
 		t.Fatalf("unexpected maps: %v", out)
 	}
 	// nil input yields a non-nil empty slice.
-	empty, err := toMaps[*models.PreventionPolicyV1](nil)
+	empty, err := base.ModelsToMaps[*models.PreventionPolicyV1](nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,15 +696,8 @@ func TestToMaps(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{backends: map[string]backend{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	// All seven tools must be present with the falcon_ prefix.
 	for _, name := range []string{

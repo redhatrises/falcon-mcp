@@ -85,10 +85,6 @@ const aggregatesFQLGuideURI = "falcon://cases/aggregates/fql-guide"
 // FQL guide, matching falcon-mcp's falcon://cases/file-aggregates/fql-guide.
 const fileAggregatesFQLGuideURI = "falcon://cases/file-aggregates/fql-guide"
 
-// errInvalidInput classifies client-side validation failures in the mutating
-// tools so handlers can distinguish them from API errors.
-var errInvalidInput = errors.New("cases: invalid input")
-
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
 var (
@@ -399,7 +395,7 @@ type GetInput struct {
 func (m *Module) getCases(ctx context.Context, req *mcp.CallToolRequest, in GetInput) (*mcp.CallToolResult, base.EntitiesResult[*models.SdkCaseVM], error) {
 	var zero base.EntitiesResult[*models.SdkCaseVM]
 	if len(in.IDs) == 0 {
-		return nil, zero, wrapInvalid("get cases", "ids must not be empty")
+		return nil, zero, base.InvalidInput("get cases", "ids must not be empty")
 	}
 	m.Logger.Debug("get_cases", "ids", len(in.IDs))
 
@@ -465,12 +461,7 @@ func (m *Module) fetchCases(ctx context.Context, req *mcp.CallToolRequest, ids [
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(c *models.SdkCaseVM) string {
-			if c == nil || c.ID == nil {
-				return ""
-			}
-			return *c.ID
-		},
+		KeyFn: func(c *models.SdkCaseVM) string { return base.Deref(c.ID) },
 	})
 }
 
@@ -492,12 +483,7 @@ func (m *Module) fetchTemplates(ctx context.Context, req *mcp.CallToolRequest, i
 			}
 			return resp.Payload.Resources, nil
 		},
-		KeyFn: func(t *models.APITemplateV1) string {
-			if t == nil || t.ID == nil {
-				return ""
-			}
-			return *t.ID
-		},
+		KeyFn: func(t *models.APITemplateV1) string { return base.Deref(t.ID) },
 	})
 }
 

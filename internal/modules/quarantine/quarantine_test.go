@@ -8,7 +8,6 @@ import (
 
 	"github.com/crowdstrike/gofalcon/falcon/client/quarantine"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -94,9 +93,7 @@ func TestSearchQuarantinedFilesSuccess(t *testing.T) {
 	if len(out.Resources) != 2 || out.FilterUsed != "hostname:'DC01'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.queryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.queryResp.Payload.Meta)
 }
 
 // TestSearchQuarantinedFilesOffset covers the offset conversion. The tool takes a
@@ -225,9 +222,7 @@ func TestPreviewQuarantineActionsSuccess(t *testing.T) {
 	if out.Total != 2 || len(out.Resources) != 2 {
 		t.Fatalf("expected 2 action counts, got %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.countResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.countResp.Payload.Meta)
 }
 
 func TestPreviewQuarantineActionsRequiresFilter(t *testing.T) {
@@ -235,8 +230,8 @@ func TestPreviewQuarantineActionsRequiresFilter(t *testing.T) {
 
 	m := &Module{API: &fakeQuarantine{}, Logger: testLogger}
 	_, _, err := m.previewQuarantineActions(context.Background(), nil, PreviewInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty filter, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty filter, got %v", err)
 	}
 }
 
@@ -270,8 +265,8 @@ func TestNormalizeRestoreAction(t *testing.T) {
 	for _, tc := range tests {
 		got, err := normalizeRestoreAction(tc.in)
 		if tc.wantErr {
-			if !errors.Is(err, errInvalidInput) {
-				t.Errorf("normalizeRestoreAction(%q): expected errInvalidInput, got %v", tc.in, err)
+			if !errors.Is(err, base.ErrInvalidInput) {
+				t.Errorf("normalizeRestoreAction(%q): expected base.ErrInvalidInput, got %v", tc.in, err)
 			}
 			continue
 		}
@@ -307,9 +302,7 @@ func TestUpdateQuarantinedFilesByIDs(t *testing.T) {
 	if f.lastByQryBody != nil {
 		t.Fatalf("expected by-query path not taken when ids provided")
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.byIDsResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.byIDsResp.Payload.Meta)
 }
 
 func TestUpdateQuarantinedFilesByQueryNormalizesAction(t *testing.T) {
@@ -345,8 +338,8 @@ func TestUpdateQuarantinedFilesRejectsBadAction(t *testing.T) {
 	// "delete" is not a reversible action for update; must be rejected before
 	// any API call.
 	_, _, err := m.updateQuarantinedFiles(context.Background(), nil, UpdateInput{Action: "delete", IDs: []string{"q1"}})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for delete action, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for delete action, got %v", err)
 	}
 	if f.lastByIDsBody != nil || f.lastByQryBody != nil {
 		t.Fatalf("expected no API call on invalid action")
@@ -360,8 +353,8 @@ func TestUpdateQuarantinedFilesRequiresSelector(t *testing.T) {
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.updateQuarantinedFiles(context.Background(), nil, UpdateInput{Action: "release"})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput when neither ids nor filter provided, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput when neither ids nor filter provided, got %v", err)
 	}
 	if f.lastByIDsBody != nil || f.lastByQryBody != nil {
 		t.Fatalf("expected no API call when selector missing")
@@ -442,9 +435,7 @@ func TestDeleteQuarantinedFilesByQuery(t *testing.T) {
 	if f.lastByQryBody.Filter != "hostname:'DC01'" {
 		t.Fatalf("expected filter passed through, got %+v", f.lastByQryBody)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.byQryResp.Payload.Meta)) {
-		t.Fatalf("expected normalized meta, got %+v", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.byQryResp.Payload.Meta)
 }
 
 func TestDeleteQuarantinedFilesRequiresSelector(t *testing.T) {
@@ -454,8 +445,8 @@ func TestDeleteQuarantinedFilesRequiresSelector(t *testing.T) {
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.deleteQuarantinedFiles(context.Background(), nil, DeleteInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput when neither ids nor filter provided, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput when neither ids nor filter provided, got %v", err)
 	}
 	if f.lastByIDsBody != nil || f.lastByQryBody != nil {
 		t.Fatalf("expected no API call when selector missing")
@@ -493,15 +484,8 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeQuarantine{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	search := byName["falcon_search_quarantined_files"]
 	if search == nil {

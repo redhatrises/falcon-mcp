@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -131,6 +132,63 @@ func Enum(s *jsonschema.Schema, property string, allowed []string, def string) {
 		panic(fmt.Sprintf("base.Enum: marshaling property %q default %q: %v", property, def, err))
 	}
 	prop.Default = encoded
+}
+
+// SearchSchemaOpts configures SearchSchema. MaxLimit and DefaultLimit are the
+// numeric limit bounds every search tool applies; a zero value leaves that
+// constraint unset (MaxLimit=0 for an uncapped limit, DefaultLimit=0 for none).
+// The *Desc fields set the description of the named property when non-empty, and
+// SortDefault sets the sort property's advertised default (JSON-quoted).
+type SearchSchemaOpts struct {
+	MaxLimit     float64
+	DefaultLimit int
+	FilterDesc   string
+	SortDesc     string
+	SortDefault  string
+	QDesc        string
+	LimitDesc    string
+	OffsetDesc   string
+}
+
+// SearchSchema builds the input schema for a search tool from In's struct tags,
+// then applies the limit minimum (1), the MaxLimit/DefaultLimit bounds, the
+// offset minimum (0, when the type has an offset property), and any property
+// descriptions supplied in o. It centralizes the limit/offset boilerplate the
+// tag syntax cannot express while leaving the emitted schema identical to a
+// hand-written mutate func. Panics when o names a description for a property In
+// does not declare (a programming error caught at startup).
+func SearchSchema[In any](o SearchSchemaOpts) *jsonschema.Schema {
+	return SchemaFor[In](func(s *jsonschema.Schema) {
+		if o.FilterDesc != "" {
+			s.Properties["filter"].Description = o.FilterDesc
+		}
+		if o.SortDesc != "" {
+			s.Properties["sort"].Description = o.SortDesc
+		}
+		if o.SortDefault != "" {
+			s.Properties["sort"].Default = json.RawMessage(strconv.Quote(o.SortDefault))
+		}
+		if o.QDesc != "" {
+			s.Properties["q"].Description = o.QDesc
+		}
+		if o.LimitDesc != "" {
+			s.Properties["limit"].Description = o.LimitDesc
+		}
+		if o.OffsetDesc != "" {
+			s.Properties["offset"].Description = o.OffsetDesc
+		}
+		limit := s.Properties["limit"]
+		limit.Minimum = jsonschema.Ptr(1.0)
+		if o.MaxLimit != 0 {
+			limit.Maximum = jsonschema.Ptr(o.MaxLimit)
+		}
+		if o.DefaultLimit != 0 {
+			limit.Default = json.RawMessage(strconv.Itoa(o.DefaultLimit))
+		}
+		if offset, ok := s.Properties["offset"]; ok {
+			offset.Minimum = jsonschema.Ptr(0.0)
+		}
+	})
 }
 
 // readOnlyAnnotations returns the default annotations applied to query tools:
@@ -491,20 +549,31 @@ type FQLErrorDetail struct {
 // FQLErrorDetails flattens gofalcon MsaAPIError values into FQLErrorDetail,
 // skipping nil entries and dereferencing the optional Code/Message pointers.
 func FQLErrorDetails(errs []*models.MsaAPIError) []FQLErrorDetail {
+	return FQLErrorDetailsFrom(errs,
+		func(e *models.MsaAPIError) *int32 { return e.Code },
+		func(e *models.MsaAPIError) *string { return e.Message })
+}
+
+// FQLErrorDetailsFrom flattens any slice of API error values into FQLErrorDetail,
+// skipping nil entries and dereferencing the optional code/message pointers each
+// accessor returns. Services whose 400 payloads carry an error type other than
+// *models.MsaAPIError (e.g. FwmgrMsaspecError, DomainReconAPIError) call this
+// with field accessors for that type.
+func FQLErrorDetailsFrom[E any](errs []E, code func(E) *int32, msg func(E) *string) []FQLErrorDetail {
 	details := make([]FQLErrorDetail, 0, len(errs))
 	for _, e := range errs {
-		if e == nil {
+		if rv := reflect.ValueOf(e); rv.Kind() == reflect.Pointer && rv.IsNil() {
 			continue
 		}
-		var code int32
-		if e.Code != nil {
-			code = *e.Code
+		var c int32
+		if p := code(e); p != nil {
+			c = *p
 		}
-		var msg string
-		if e.Message != nil {
-			msg = *e.Message
+		var m string
+		if p := msg(e); p != nil {
+			m = *p
 		}
-		details = append(details, FQLErrorDetail{Code: code, Message: msg})
+		details = append(details, FQLErrorDetail{Code: c, Message: m})
 	}
 	return details
 }
@@ -587,7 +656,7 @@ func FetchDetails[T any](ctx context.Context, p FetchDetailsParams[T]) ([]T, err
 		if p.Progress != nil {
 			p.Progress(1, 1)
 		}
-		return reorderByIDs(chunks[0], res, p.KeyFn), nil
+		return ReorderByIDs(chunks[0], res, p.KeyFn), nil
 	}
 
 	total := len(chunks)
@@ -603,7 +672,7 @@ func FetchDetails[T any](ctx context.Context, p FetchDetailsParams[T]) ([]T, err
 			if err != nil {
 				return fmt.Errorf("fetch details chunk %d: %w", i, err)
 			}
-			perChunk[i] = reorderByIDs(chunk, res, p.KeyFn)
+			perChunk[i] = ReorderByIDs(chunk, res, p.KeyFn)
 			if p.Progress != nil {
 				p.Progress(int(done.Add(1)), total)
 			}
@@ -636,7 +705,7 @@ func chunkIDs(ids []string, size int) [][]string {
 	return chunks
 }
 
-// reorderByIDs reorders entities to match the order of ids, keyed by key(entity).
+// ReorderByIDs reorders entities to match the order of ids, keyed by key(entity).
 // It restores the sort applied by a query step when a get-by-IDs endpoint returns
 // entities in arbitrary order, and is a no-op when the endpoint already preserves
 // order.
@@ -645,14 +714,23 @@ func chunkIDs(ids []string, size int) [][]string {
 // dropped; ids with no matching entity are skipped. A keyless entity (key == "")
 // is treated as not-in-ids and appended. When key is nil the entities are returned
 // unchanged.
-func reorderByIDs[T any](ids []string, entities []T, key func(T) string) []T {
+func ReorderByIDs[T any](ids []string, entities []T, key func(T) string) []T {
 	if key == nil || len(entities) == 0 {
 		return entities
 	}
 
+	// A nil pointer entity (e.g. a null element in a get-by-IDs response) is
+	// treated as keyless rather than passed to key, which would dereference it.
+	safeKey := func(e T) string {
+		if rv := reflect.ValueOf(e); rv.Kind() == reflect.Pointer && rv.IsNil() {
+			return ""
+		}
+		return key(e)
+	}
+
 	byID := make(map[string]T, len(entities))
 	for _, e := range entities {
-		if k := key(e); k != "" {
+		if k := safeKey(e); k != "" {
 			if _, dup := byID[k]; !dup {
 				byID[k] = e
 			}
@@ -671,7 +749,7 @@ func reorderByIDs[T any](ids []string, entities []T, key func(T) string) []T {
 	}
 	// Preserve entities not referenced by ids rather than dropping them.
 	for _, e := range entities {
-		k := key(e)
+		k := safeKey(e)
 		if k == "" {
 			out = append(out, e)
 			continue
@@ -681,4 +759,48 @@ func reorderByIDs[T any](ids []string, entities []T, key func(T) string) []T {
 		}
 	}
 	return out
+}
+
+// ReorderMapsByID reorders raw record maps to match the order of ids, keyed by
+// each record's "id" string field. It is the map[string]any specialization of
+// ReorderByIDs for modules that surface raw API bodies rather than typed models.
+// Records without a string "id", or whose id is not in ids, are appended in their
+// original order and never dropped.
+func ReorderMapsByID(ids []string, records []map[string]any) []map[string]any {
+	return ReorderByIDs(ids, records, func(rec map[string]any) string {
+		id, _ := rec["id"].(string)
+		return id
+	})
+}
+
+// Deref flattens an optional string field into a plain string, returning "" when
+// the pointer is nil. It builds the func(T) string keys FetchDetailsParams.KeyFn
+// and ReorderByIDs expect: KeyFn: func(a *models.Foo) string { return base.Deref(a.ID) }.
+func Deref(p *string) string {
+	if p != nil {
+		return *p
+	}
+	return ""
+}
+
+// ModelsToMaps marshals typed gofalcon records and unmarshals them back into
+// uniform map[string]any records, so heterogeneous response models from a single
+// endpoint family are returned as one shape. A nil slice yields a non-nil empty
+// slice for stable JSON array output. The round-trip preserves a field the API
+// sent and keeps an omitted field absent, provided the models tag optional value
+// fields as nullable pointers.
+func ModelsToMaps[T any](in []T) ([]map[string]any, error) {
+	out := make([]map[string]any, 0, len(in))
+	for _, rec := range in {
+		b, err := json.Marshal(rec)
+		if err != nil {
+			return nil, fmt.Errorf("encode record: %w", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, fmt.Errorf("decode record: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }

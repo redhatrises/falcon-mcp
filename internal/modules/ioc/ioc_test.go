@@ -3,12 +3,10 @@ package ioc
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/ioc"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -63,9 +61,7 @@ func TestSearchIocsSuccess(t *testing.T) {
 	if len(out.Resources) != 1 || out.FilterUsed != "type:'domain'" {
 		t.Fatalf("unexpected result: %+v", out)
 	}
-	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.searchResp.Payload.Meta)) {
-		t.Fatalf("Meta = %+v, want verbatim passthrough of the response meta", out.Meta)
-	}
+	testutil.AssertNormalizedMeta(t, out.Meta, f.searchResp.Payload.Meta)
 }
 
 func TestSearchIocsEmpty(t *testing.T) {
@@ -143,8 +139,8 @@ func TestAddIOCValidation(t *testing.T) {
 			f := &fakeIoc{createResp: &ioc.IndicatorCreateV1Created{Payload: &models.APIIndicatorRespV1{}}}
 			m := &Module{API: f, Logger: testLogger}
 			_, _, err := m.addIOC(context.Background(), nil, tc.in)
-			if tc.wantErr && !errors.Is(err, errInvalidInput) {
-				t.Fatalf("expected errInvalidInput, got %v", err)
+			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
+				t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -216,8 +212,8 @@ func TestRemoveIOCsValidation(t *testing.T) {
 
 	m := &Module{API: &fakeIoc{}, Logger: testLogger}
 	_, _, err := m.removeIOCs(context.Background(), nil, RemoveInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput, got %v", err)
 	}
 }
 
@@ -281,15 +277,8 @@ func TestRegisterResourcesServesFQLGuide(t *testing.T) {
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
 
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{API: &fakeIoc{}, Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	search := byName["falcon_search_iocs"]
 	if search == nil {

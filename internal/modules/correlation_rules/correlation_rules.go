@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/correlation_rules"
@@ -35,10 +34,6 @@ var Factory registry.Factory = func(d registry.Deps) base.Module {
 // defaultLimit is the search page size applied when the caller omits limit,
 // matching falcon-mcp's default of 20.
 const defaultLimit = 20
-
-// errInvalidInput classifies client-side validation failures in the mutating
-// tools.
-var errInvalidInput = errors.New("correlation_rules: invalid input")
 
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
@@ -196,10 +191,4 @@ func fqlBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 		return nil, false
 	}
 	return base.FQLErrorDetails(badReq.Payload.Errors), true
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail,
-// classifying client-side validation failures in the mutating tools.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

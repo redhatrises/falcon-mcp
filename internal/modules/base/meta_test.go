@@ -46,7 +46,6 @@ func TestNormalizeMetaRealTypes(t *testing.T) {
 		quotaActive  = int32(371)
 		quotaPending = int32(0)
 	)
-	strptr := func(s string) *string { return &s }
 
 	tests := []struct {
 		name string
@@ -95,7 +94,7 @@ func TestNormalizeMetaRealTypes(t *testing.T) {
 	}, {
 		name: "DomainSPAPIQueryMeta keeps quota",
 		meta: &models.DomainSPAPIQueryMeta{
-			Pagination: &models.DomainSPAPIQueryPaging{Total: &total, Limit: &limit32, After: strptr("cursor-S")},
+			Pagination: &models.DomainSPAPIQueryPaging{Total: &total, Limit: &limit32, After: new("cursor-S")},
 			QueryTime:  &qt,
 			TraceID:    &trace,
 			Quota:      &models.DomainQuota{Total: &quota, Used: &quota},
@@ -105,7 +104,7 @@ func TestNormalizeMetaRealTypes(t *testing.T) {
 		name: "MetaGetSecurityChecks next wins and previous is dropped",
 		meta: &models.MetaGetSecurityChecks{
 			Pagination: &models.PaginationMetaGetSecurityChecks{
-				Limit: &limit64, Offset: &total, Next: strptr("cursor-N"), Previous: strptr("cursor-P"),
+				Limit: &limit64, Offset: &total, Next: new("cursor-N"), Previous: new("cursor-P"),
 			},
 		},
 		want: `{"pagination":{"total":null,"limit":50,"offset":120,"next":"cursor-N"}}`,
@@ -131,7 +130,7 @@ func TestNormalizeMetaRealTypes(t *testing.T) {
 	}, {
 		name: "DomainDiscoverAPIMetaInfo after becomes next",
 		meta: &models.DomainDiscoverAPIMetaInfo{
-			Pagination: &models.DomainDiscoverAPIPaging{Total: &total, Limit: &limit32, After: strptr("cursor-G")},
+			Pagination: &models.DomainDiscoverAPIPaging{Total: &total, Limit: &limit32, After: new("cursor-G")},
 			QueryTime:  &qt,
 			TraceID:    &trace,
 		},

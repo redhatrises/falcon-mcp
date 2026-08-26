@@ -31,10 +31,6 @@ var Factory registry.Factory = func(d registry.Deps) base.Module {
 	return &Module{API: d.API.HostGroup, Logger: d.Logger}
 }
 
-// errInvalidInput classifies client-side validation failures in the mutating
-// and member-search tools.
-var errInvalidInput = errors.New("hostgroups: invalid input")
-
 // defaultLimit is the search page size applied when the caller omits limit.
 const defaultLimit = 100
 
@@ -211,7 +207,7 @@ type MembersInput struct {
 func (m *Module) searchHostGroupMembers(ctx context.Context, _ *mcp.CallToolRequest, in MembersInput) (*mcp.CallToolResult, base.SearchResult[*models.DeviceDevice], error) {
 	var zero base.SearchResult[*models.DeviceDevice]
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("search host group members", "id must not be empty")
+		return nil, zero, base.InvalidInput("search host group members", "id must not be empty")
 	}
 	limit := int64(in.Limit)
 	if limit == 0 {

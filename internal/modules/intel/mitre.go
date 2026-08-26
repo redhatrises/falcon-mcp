@@ -18,9 +18,6 @@ import (
 // errActorNotFound classifies a name-resolution lookup that matched no actor.
 var errActorNotFound = errors.New("intel: actor not found")
 
-// errInvalidInput classifies client-side validation failures in get_mitre_report.
-var errInvalidInput = errors.New("intel: invalid input")
-
 // MitreInput is the input for falcon_get_mitre_report.
 type MitreInput struct {
 	Actor  string `json:"actor" jsonschema:"threat actor name (e.g. 'WARP PANDA') or numeric ID"`
@@ -42,14 +39,14 @@ func (m *Module) getMitreReport(ctx context.Context, _ *mcp.CallToolRequest, in 
 	var zero MitreResult
 	actor := strings.TrimSpace(in.Actor)
 	if actor == "" {
-		return nil, zero, fmt.Errorf("%w: actor is required", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: actor is required", base.ErrInvalidInput)
 	}
 	format := strings.ToLower(strings.TrimSpace(in.Format))
 	if format == "" {
 		format = "json"
 	}
 	if format != "json" && format != "csv" {
-		return nil, zero, fmt.Errorf("%w: format must be 'json' or 'csv', got %q", errInvalidInput, in.Format)
+		return nil, zero, fmt.Errorf("%w: format must be 'json' or 'csv', got %q", base.ErrInvalidInput, in.Format)
 	}
 
 	actorID, err := m.resolveActorID(ctx, actor)
@@ -82,7 +79,7 @@ func (m *Module) getMitreReport(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return nil, result, nil
 	}
 	if !json.Valid([]byte(trimmed)) {
-		return nil, zero, fmt.Errorf("%w: MITRE report was not valid JSON", errInvalidInput)
+		return nil, zero, fmt.Errorf("%w: MITRE report was not valid JSON", base.ErrInvalidInput)
 	}
 	result.Report = json.RawMessage(trimmed)
 	return nil, result, nil
@@ -91,7 +88,7 @@ func (m *Module) getMitreReport(ctx context.Context, _ *mcp.CallToolRequest, in 
 // resolveActorID returns the numeric actor ID for actor. A numeric input is
 // returned verbatim; a name is resolved via a single-result
 // QueryIntelActorEntities lookup on name:'<actor>'. It wraps errActorNotFound
-// when the name matches no actor and errInvalidInput when the matched actor has
+// when the name matches no actor and base.ErrInvalidInput when the matched actor has
 // no ID.
 func (m *Module) resolveActorID(ctx context.Context, actor string) (string, error) {
 	if _, err := strconv.ParseInt(actor, 10, 64); err == nil {
@@ -113,7 +110,7 @@ func (m *Module) resolveActorID(ctx context.Context, actor string) (string, erro
 		return "", fmt.Errorf("%w: no actor found with name %q", errActorNotFound, actor)
 	}
 	if actors[0].ID == nil {
-		return "", fmt.Errorf("%w: actor %q has no ID", errInvalidInput, actor)
+		return "", fmt.Errorf("%w: actor %q has no ID", base.ErrInvalidInput, actor)
 	}
 	id := strconv.FormatInt(*actors[0].ID, 10)
 	m.Logger.Debug("get_mitre_report resolved actor", "actor", actor, "actor_id", id)

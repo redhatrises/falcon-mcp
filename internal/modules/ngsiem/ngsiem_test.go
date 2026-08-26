@@ -19,10 +19,6 @@ import (
 
 var testLogger = testutil.DiscardLogger()
 
-func boolp(b bool) *bool { return &b }
-
-func int64p(n int64) *int64 { return &n }
-
 // call records the arguments of one API call so tests can assert on what the
 // handler submitted (operation, repository, job id, body).
 type call struct {
@@ -94,17 +90,17 @@ func pollDone(events ...any) *ngsiem.GetSearchStatusV1OK {
 	for _, e := range events {
 		evs = append(evs, e)
 	}
-	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: boolp(true), Events: evs}}
+	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: new(true), Events: evs}}
 }
 
 func pollNotDone() *ngsiem.GetSearchStatusV1OK {
-	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: boolp(false)}}
+	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: new(false)}}
 }
 
 // pollCancelled returns a job that finished because it was cancelled server-side
 // (Done=true, Cancelled=true) with no events.
 func pollCancelled() *ngsiem.GetSearchStatusV1OK {
-	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: boolp(true), Cancelled: boolp(true)}}
+	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: new(true), Cancelled: new(true)}}
 }
 
 // pollDoneMeta returns a completed job carrying the given metadata alongside its
@@ -564,13 +560,13 @@ func TestSearchNGSIEMJobEnvelope(t *testing.T) {
 	t.Parallel()
 
 	meta := &models.APIQueryMetadataJSON{
-		EventCount:      int64p(2),
-		ProcessedEvents: int64p(1500),
-		ProcessedBytes:  int64p(4096),
-		TimeMillis:      int64p(37),
-		IsAggregate:     boolp(false),
-		QueryStart:      int64p(1735689600000), // 2025-01-01T00:00:00Z
-		QueryEnd:        int64p(1738800000000), // 2025-02-06T00:00:00Z
+		EventCount:      new(int64(2)),
+		ProcessedEvents: new(int64(1500)),
+		ProcessedBytes:  new(int64(4096)),
+		TimeMillis:      new(int64(37)),
+		IsAggregate:     new(false),
+		QueryStart:      new(int64(1735689600000)), // 2025-01-01T00:00:00Z
+		QueryEnd:        new(int64(1738800000000)), // 2025-02-06T00:00:00Z
 		FilterQuery:     map[string]any{"queryString": "#event_simpleName=ProcessRollup2"},
 		Warnings:        []string{"meta warning"},
 	}
@@ -634,7 +630,7 @@ func TestSearchNGSIEMJobEnvelope(t *testing.T) {
 func TestSearchNGSIEMConfirmedZeroHint(t *testing.T) {
 	t.Parallel()
 
-	meta := &models.APIQueryMetadataJSON{ProcessedEvents: int64p(1234567)}
+	meta := &models.APIQueryMetadataJSON{ProcessedEvents: new(int64(1234567))}
 	f := &fakeNGSIEM{startResp: startOK("job-confirmed"), pollResps: []*ngsiem.GetSearchStatusV1OK{pollDoneMeta(meta)}}
 	m := newModule(f)
 

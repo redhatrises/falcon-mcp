@@ -733,8 +733,8 @@ func TestCreateCSPMSuppressionRuleInvalidReason(t *testing.T) {
 		SuppressionReason: "not-a-reason",
 		RuleIDs:           []string{"CS-001"},
 	})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for bad reason, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for bad reason, got %v", err)
 	}
 	if f.createBody != nil {
 		t.Fatal("expected no API call on validation failure")
@@ -750,8 +750,8 @@ func TestCreateCSPMSuppressionRuleNoRuleSelection(t *testing.T) {
 		Name:              "x",
 		SuppressionReason: "accept-risk",
 	})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput without rule selection, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput without rule selection, got %v", err)
 	}
 	if f.createBody != nil {
 		t.Fatal("expected no API call on validation failure")
@@ -783,8 +783,8 @@ func TestDeleteCSPMSuppressionRulesEmptyIDs(t *testing.T) {
 	m := &Module{Policies: f, Logger: testLogger}
 
 	_, _, err := m.deleteCSPMSuppressionRules(context.Background(), nil, DeleteSuppressionRulesInput{})
-	if !errors.Is(err, errInvalidInput) {
-		t.Fatalf("expected errInvalidInput for empty ids, got %v", err)
+	if !errors.Is(err, base.ErrInvalidInput) {
+		t.Fatalf("expected base.ErrInvalidInput for empty ids, got %v", err)
 	}
 	if f.deleteIDs != nil {
 		t.Fatal("expected no API call for empty ids")
@@ -795,15 +795,8 @@ func TestDeleteCSPMSuppressionRulesEmptyIDs(t *testing.T) {
 
 func TestRegisterToolsAnnotations(t *testing.T) {
 	t.Parallel()
-	var entries []base.ToolEntry
-	reg := testutil.CaptureRegistrar(func(e base.ToolEntry) { entries = append(entries, e) })
 	m := &Module{Logger: testLogger}
-	m.RegisterTools(reg)
-
-	byName := map[string]*mcp.Tool{}
-	for _, e := range entries {
-		byName[e.Tool.Name] = e.Tool
-	}
+	byName := testutil.CollectTools(m)
 
 	// Read-only tools default to read-only annotations.
 	readOnly := []string{

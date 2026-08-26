@@ -2,7 +2,6 @@ package cloud
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,10 +12,6 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 )
-
-// errInvalidInput classifies client-side validation failures in the mutating
-// suppression-rule tools.
-var errInvalidInput = errors.New("cloud: invalid input")
 
 // validSuppressionReasons is the set of accepted suppression_reason values.
 var validSuppressionReasons = map[string]struct{}{
@@ -83,37 +78,7 @@ func (m *Module) getSuppressionRules(ctx context.Context, ids []string) ([]*mode
 	if e := base.APIError(err, resp, scopePoliciesRead); e != nil {
 		return nil, e
 	}
-	return reorderRulesByID(ids, resp.Payload.Resources), nil
-}
-
-// reorderRulesByID reorders rules to match ids, restoring the query step's order.
-func reorderRulesByID(ids []string, rules []*models.ApimodelsSuppressionRule) []*models.ApimodelsSuppressionRule {
-	byID := make(map[string]*models.ApimodelsSuppressionRule, len(rules))
-	for _, r := range rules {
-		if r != nil && r.ID != nil {
-			byID[*r.ID] = r
-		}
-	}
-	out := make([]*models.ApimodelsSuppressionRule, 0, len(rules))
-	placed := make(map[string]struct{}, len(rules))
-	for _, id := range ids {
-		if r, ok := byID[id]; ok {
-			if _, done := placed[id]; !done {
-				out = append(out, r)
-				placed[id] = struct{}{}
-			}
-		}
-	}
-	for _, r := range rules {
-		if r == nil || r.ID == nil {
-			out = append(out, r)
-			continue
-		}
-		if _, done := placed[*r.ID]; !done {
-			out = append(out, r)
-		}
-	}
-	return out
+	return base.ReorderByIDs(ids, resp.Payload.Resources, func(r *models.ApimodelsSuppressionRule) string { return base.Deref(r.ID) }), nil
 }
 
 // --- Create suppression rule ---
@@ -141,7 +106,7 @@ func (m *Module) createCSPMSuppressionRule(ctx context.Context, _ *mcp.CallToolR
 	var zero base.EntitiesResult[*models.ApimodelsSuppressionRule]
 
 	if _, ok := validSuppressionReasons[in.SuppressionReason]; !ok {
-		return nil, zero, wrapInvalid("create suppression rule",
+		return nil, zero, base.InvalidInput("create suppression rule",
 			fmt.Sprintf("invalid suppression_reason %q (must be one of: %s)", in.SuppressionReason, validReasonsList()))
 	}
 
@@ -160,7 +125,7 @@ func (m *Module) createCSPMSuppressionRule(ctx context.Context, _ *mcp.CallToolR
 		hasRuleSelection = true
 	}
 	if !hasRuleSelection {
-		return nil, zero, wrapInvalid("create suppression rule",
+		return nil, zero, base.InvalidInput("create suppression rule",
 			"at least one rule selection parameter is required (rule_ids, rule_names, or rule_severities)")
 	}
 
@@ -242,7 +207,7 @@ type DeleteSuppressionRulesInput struct {
 func (m *Module) deleteCSPMSuppressionRules(ctx context.Context, _ *mcp.CallToolRequest, in DeleteSuppressionRulesInput) (*mcp.CallToolResult, base.EntitiesResult[*models.ApimodelsSuppressionRule], error) {
 	var zero base.EntitiesResult[*models.ApimodelsSuppressionRule]
 	if len(in.IDs) == 0 {
-		return nil, zero, wrapInvalid("delete suppression rules", "ids must not be empty")
+		return nil, zero, base.InvalidInput("delete suppression rules", "ids must not be empty")
 	}
 	m.Logger.Debug("delete_cspm_suppression_rules", "ids", len(in.IDs))
 
@@ -264,9 +229,4 @@ func validReasonsList() string {
 	}
 	sort.Strings(reasons)
 	return strings.Join(reasons, ", ")
-}
-
-// wrapInvalid builds an errInvalidInput-wrapped error for op with detail.
-func wrapInvalid(op, detail string) error {
-	return fmt.Errorf("%s: %w: %s", op, errInvalidInput, detail)
 }

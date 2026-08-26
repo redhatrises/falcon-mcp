@@ -81,7 +81,7 @@ func (m *Module) updateExclusion(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, zero, invalidType(in.ExclusionType)
 	}
 	if in.ID == "" {
-		return nil, zero, wrapInvalid("update exclusion", "id is required to update an exclusion")
+		return nil, zero, base.InvalidInput("update exclusion", "id is required to update an exclusion")
 	}
 	body, err := buildBody(in.ExclusionType, in, in.ID)
 	if err != nil {
@@ -109,7 +109,7 @@ func (m *Module) deleteExclusions(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, base.ActionResult{}, invalidType(in.ExclusionType)
 	}
 	if len(in.IDs) == 0 {
-		return nil, base.ActionResult{}, wrapInvalid("delete exclusions", "ids must not be empty")
+		return nil, base.ActionResult{}, base.InvalidInput("delete exclusions", "ids must not be empty")
 	}
 	m.Logger.Debug("delete_exclusions", "type", in.ExclusionType, "ids", len(in.IDs))
 
@@ -154,7 +154,7 @@ func rejectAppliedGlobally(in MutateInput, op string) error {
 	if in.AppliedGlobally == nil || !*in.AppliedGlobally {
 		return nil
 	}
-	return wrapInvalid(op,
+	return base.InvalidInput(op,
 		"this exclusion type cannot be applied globally; scope it with host_groups instead")
 }
 
@@ -163,12 +163,12 @@ func rejectAppliedGlobally(in MutateInput, op string) error {
 // silently dropped.
 func buildIOABody(in MutateInput, id string) (any, error) {
 	if in.Name == "" || in.PatternID == "" || in.IfnRegex == "" || in.ClRegex == "" {
-		return nil, wrapInvalid("create ioa exclusion",
+		return nil, base.InvalidInput("create ioa exclusion",
 			"ioa exclusions require name, pattern_id (a real existing IOA rule pattern), "+
 				"ifn_regex (non-empty), and cl_regex (non-empty)")
 	}
 	if in.IfnRegex == ".*" && in.ClRegex == ".*" {
-		return nil, wrapInvalid("create ioa exclusion",
+		return nil, base.InvalidInput("create ioa exclusion",
 			"ifn_regex and cl_regex cannot both be '.*' (this would exclude everything); "+
 				"provide more specific regexes")
 	}
@@ -184,7 +184,7 @@ func buildIOABody(in MutateInput, id string) (any, error) {
 			continue
 		}
 		if tok := findZeroWidthAssertion(f.re); tok != "" {
-			return nil, wrapInvalid(mutateOp("ioa", id), fmt.Sprintf(
+			return nil, base.InvalidInput(mutateOp("ioa", id), fmt.Sprintf(
 				"%q contains the zero-width assertion %q, which the IOA regex engine does not "+
 					"support; remove ^, $, \\b, \\A, and \\Z (escape as \\\\^ / \\\\$ or use a "+
 					"character class for a literal)", f.name, tok))
@@ -303,7 +303,7 @@ func peek(runes []rune, i int) (rune, bool) {
 // set (matching the Python module); a nil pointer leaves the omitempty field out.
 func buildMLBody(in MutateInput, id string) (any, error) {
 	if in.Value == "" {
-		return nil, wrapInvalid("create ml exclusion", "ml exclusions require a value (the path or pattern to exclude)")
+		return nil, base.InvalidInput("create ml exclusion", "ml exclusions require a value (the path or pattern to exclude)")
 	}
 	applied := in.AppliedGlobally != nil && *in.AppliedGlobally
 	descendant := in.IsDescendantProcess != nil && *in.IsDescendantProcess
@@ -335,11 +335,11 @@ func buildMLBody(in MutateInput, id string) (any, error) {
 // dropped.
 func buildSVBody(in MutateInput, id string) (any, error) {
 	if in.Value == "" {
-		return nil, wrapInvalid("create sensor_visibility exclusion",
+		return nil, base.InvalidInput("create sensor_visibility exclusion",
 			"sensor visibility exclusions require a value (the path or pattern to exclude)")
 	}
 	if len(in.HostGroups) == 0 {
-		return nil, wrapInvalid("create sensor_visibility exclusion",
+		return nil, base.InvalidInput("create sensor_visibility exclusion",
 			"sensor visibility exclusions require a non-empty host_groups list")
 	}
 	if err := rejectAppliedGlobally(in, mutateOp("sensor_visibility", id)); err != nil {
@@ -367,12 +367,12 @@ func buildSVBody(in MutateInput, id string) (any, error) {
 // items carry applied_globally, unlike the other three types.
 func buildCertBody(in MutateInput, id string) (any, error) {
 	if in.Name == "" || in.Certificate == nil {
-		return nil, wrapInvalid("create certificate exclusion",
+		return nil, base.InvalidInput("create certificate exclusion",
 			"certificate-based exclusions require a name and a certificate (issuer, subject, serial, "+
 				"thumbprint, valid_from, valid_to); use falcon_get_certificate_details to look up a certificate first")
 	}
 	if in.Status != "enabled" && in.Status != "disabled" {
-		return nil, wrapInvalid("create certificate exclusion",
+		return nil, base.InvalidInput("create certificate exclusion",
 			"certificate-based exclusions require status to be either 'enabled' or 'disabled'")
 	}
 	cert, err := in.Certificate.toModel()
@@ -436,7 +436,7 @@ func parseTime(field, value string) (*strfmt.DateTime, error) {
 	}
 	t, err := strfmt.ParseDateTime(value)
 	if err != nil {
-		return nil, wrapInvalid("create certificate exclusion",
+		return nil, base.InvalidInput("create certificate exclusion",
 			fmt.Sprintf("certificate %s must be an RFC3339 timestamp (e.g. 2024-01-02T15:04:05Z): %v", field, err))
 	}
 	return &t, nil
