@@ -218,7 +218,7 @@ func TestSearchSessionsFQLError(t *testing.T) {
 	t.Parallel()
 	// RTRListAllSessions returns a typed 400 with a DomainAPIError payload.
 	badReq := &real_time_response.RTRListAllSessionsBadRequest{Payload: &models.DomainAPIError{
-		Code: new(int32(400)), Message: new("invalid filter"),
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
 	}}
 	f := &fakeRTR{listAllErr: badReq}
 	m := newModule(f, nil)
@@ -273,7 +273,7 @@ func TestSearchAuditSessions(t *testing.T) {
 func TestSearchAuditSessionsFQLError(t *testing.T) {
 	t.Parallel()
 	badReq := &real_time_response_audit.RTRAuditSessionsBadRequest{Payload: &models.DomainAPIError{
-		Code: new(int32(400)), Message: new("bad audit filter"),
+		Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("bad audit filter")}},
 	}}
 	m := newModule(&fakeRTR{}, &fakeAudit{err: badReq})
 

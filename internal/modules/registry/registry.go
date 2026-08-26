@@ -7,6 +7,7 @@ package registry
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
 
@@ -16,10 +17,17 @@ import (
 // Deps carries the shared inputs a module factory may need. Each factory pulls
 // only the fields its module requires: every module needs API and Logger, while
 // Concurrency bounds detail-fetch fan-out for the modules that do bulk lookups.
+// The Ngsiem*/Agentworks* durations bound those two modules' poll loops and are
+// ignored by every other factory.
 type Deps struct {
 	API         *client.CrowdStrikeAPISpecification
 	Concurrency int
 	Logger      *slog.Logger
+
+	NgsiemPollInterval     time.Duration
+	NgsiemTimeout          time.Duration
+	AgentworksPollInterval time.Duration
+	AgentworksTimeout      time.Duration
 }
 
 // Factory constructs one module from the shared Deps. Each module exports its

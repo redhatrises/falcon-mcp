@@ -1,10 +1,10 @@
-// Package discover implements the falcon_search_applications and
-// falcon_search_unmanaged_assets tools over the gofalcon discover client, and
-// registers their FQL guide resources.
+// Package discover implements the falcon_search_applications,
+// falcon_search_unmanaged_assets, and falcon_search_managed_assets tools over
+// the gofalcon discover client, and registers their FQL guide resources.
 //
-// Both tools are single-step typed gofalcon calls (CombinedApplications and
+// All tools are single-step typed gofalcon calls (CombinedApplications and
 // CombinedHosts) that return full entities directly, so this module does no
-// bulk detail fetch and ignores Deps.Concurrency. Both tools are read-only.
+// bulk detail fetch and ignores Deps.Concurrency. All tools are read-only.
 package discover
 
 import (
@@ -35,6 +35,10 @@ const maxLimit = 1000
 // unmanagedFilter is prepended to every unmanaged-asset query so the tool only
 // ever returns hosts without a Falcon sensor, mirroring the Python module.
 const unmanagedFilter = "entity_type:'unmanaged'"
+
+// managedFilter is prepended to every managed-asset query so the tool only ever
+// returns sensor-managed hosts, mirroring the Python module.
+const managedFilter = "entity_type:'managed'"
 
 // scopeAssetsRead is the CrowdStrike API scope required by this module's
 // discover operations (console permission "Assets"). Surfaced on a 403 via
@@ -73,7 +77,7 @@ func (m *Module) Name() string { return "discover" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Search Falcon Discover applications and unmanaged assets"
+	return "Search Falcon Discover applications, managed assets, and unmanaged assets"
 }
 
 // Tool and parameter descriptions, kept 1:1 with the Python falcon-mcp discover
@@ -130,6 +134,36 @@ sort endpoint. The pipe form ('hostname|desc') is accepted here
 but rejected by some endpoints, so prefer the dot form.
 
 Examples: 'hostname.asc', 'last_seen_timestamp.desc', 'criticality.desc'`
+
+	searchManagedAssetsDescription = "Search hosts by asset and configuration posture: drive encryption status, " +
+		"encrypted/unencrypted drives, OS security settings (Secure Boot, Credential Guard, IOMMU), " +
+		"disk/memory/CPU usage, asset criticality, and internet exposure.\n" +
+		"\n" +
+		"Use this when the question is about a device's storage, hardware, or security configuration " +
+		"rather than its sensor state. For containment status, sensor version, or policy assignment, use " +
+		"`falcon_search_hosts`. See `falcon://discover/managed-assets/fql-guide` for filters; returns full " +
+		"asset details. Responses include `pagination.total` (the total number of records matching the filter, " +
+		"or null when the API does not report a count) — use it to answer \"how many\" questions."
+
+	managedFilterDescription = "FQL filter expression. See `falcon://discover/managed-assets/fql-guide` for syntax. Note: entity_type:'managed' is automatically applied."
+
+	managedSortDescription = `Sort managed assets using these options:
+
+hostname: Host name/computer name
+last_seen_timestamp: Timestamp when the asset was last seen
+first_seen_timestamp: Timestamp when the asset was first seen
+platform_name: Operating system platform
+os_version: Operating system version
+external_ip: External IP address
+country: Country location
+criticality: Criticality level
+
+Sort either asc (ascending) or desc (descending). Use the dot
+separator ('hostname.desc'), which is supported on every Falcon
+sort endpoint. The pipe form ('hostname|desc') is accepted here
+but rejected by some endpoints, so prefer the dot form.
+
+Examples: 'hostname.asc', 'last_seen_timestamp.desc', 'criticality.desc'`
 )
 
 // searchApplicationsSchema is the input schema for falcon_search_applications.
@@ -158,6 +192,18 @@ var searchUnmanagedAssetsSchema = base.SchemaFor[UnmanagedAssetsInput](func(s *j
 	s.Properties["limit"].Default = json.RawMessage(`100`)
 })
 
+// searchManagedAssetsSchema is the input schema for
+// falcon_search_managed_assets. It is inferred from ManagedAssetsInput's struct
+// tags, then a mutate func adds the limit bounds/default the tag syntax cannot
+// express, plus the backtick-bearing filter and multi-line sort descriptions.
+var searchManagedAssetsSchema = base.SchemaFor[ManagedAssetsInput](func(s *jsonschema.Schema) {
+	s.Properties["filter"].Description = managedFilterDescription
+	s.Properties["sort"].Description = managedSortDescription
+	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
+	s.Properties["limit"].Maximum = jsonschema.Ptr(float64(maxLimit))
+	s.Properties["limit"].Default = json.RawMessage(`100`)
+})
+
 // RegisterTools registers the discover tools into r.
 func (m *Module) RegisterTools(r base.Registrar) {
 	base.AddTool(r, &mcp.Tool{
@@ -171,6 +217,12 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: searchUnmanagedAssetsDescription,
 		InputSchema: searchUnmanagedAssetsSchema,
 	}, m.searchUnmanagedAssets)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "search_managed_assets",
+		Description: searchManagedAssetsDescription,
+		InputSchema: searchManagedAssetsSchema,
+	}, m.searchManagedAssets)
 }
 
 // RegisterResources publishes the discover FQL guides as MCP resources,
@@ -190,6 +242,13 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 		"Contains the guide for the `filter` param of the `falcon_search_unmanaged_assets` tool.",
 		"text/markdown",
 		unmanagedAssetsFQLGuide,
+	)
+	base.TextResource(s,
+		managedAssetsFQLGuideURI,
+		"search_managed_assets_fql_guide",
+		"Contains the guide for the `filter` param of the `falcon_search_managed_assets` tool.",
+		"text/markdown",
+		managedAssetsFQLGuide,
 	)
 }
 
@@ -310,6 +369,72 @@ func (m *Module) searchUnmanagedAssets(ctx context.Context, _ *mcp.CallToolReque
 // FQL scope-escape reasoning behind the validate-and-wrap contract.
 func scopedFilter(userFilter string) (string, error) {
 	return base.ScopeFilter(unmanagedFilter, userFilter)
+}
+
+// ManagedAssetsInput is the input for falcon_search_managed_assets. The json
+// tags drive the SDK's unmarshal into this struct; the served schema
+// (searchManagedAssetsSchema) is inferred from these jsonschema tags, then
+// augmented with the limit bounds and the backtick/multi-line descriptions.
+//
+// The combined hosts endpoint paginates by token (after), not offset, so this
+// tool exposes after rather than an offset parameter.
+type ManagedAssetsInput struct {
+	Filter string `json:"filter,omitempty" jsonschema:"FQL filter (e.g. platform_name:'Windows', encryption_status:'Encrypted')"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"maximum records to return"`
+	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. hostname.asc, last_seen_timestamp.desc)"`
+	After  string `json:"after,omitempty" jsonschema:"pagination token from a previous response"`
+}
+
+func (m *Module) searchManagedAssets(ctx context.Context, _ *mcp.CallToolRequest, in ManagedAssetsInput) (*mcp.CallToolResult, base.SearchResult[*models.DomainDiscoverAPIHost], error) {
+	var zero base.SearchResult[*models.DomainDiscoverAPIHost]
+	limit := int64(in.Limit)
+	if limit == 0 {
+		limit = defaultLimit
+	}
+
+	// A filter that cannot be safely scoped is reported as a soft FQL result
+	// rather than a Go error, so the caller receives the guide and can
+	// self-correct exactly as it would from an API-rejected filter. The echoed
+	// filter is the raw input because no combined filter was built.
+	filter, err := scopedManagedFilter(in.Filter)
+	if err != nil {
+		m.Logger.Warn("search_managed_assets rejected malformed filter", "filter", in.Filter, "err", err)
+		details := []base.FQLErrorDetail{{Code: 400, Message: err.Error()}}
+		return nil, base.FQLError[*models.DomainDiscoverAPIHost](details, in.Filter, managedAssetsFQLGuide), nil
+	}
+	m.Logger.Debug("search_managed_assets", "filter", filter, "limit", limit, "sort", in.Sort, "after", in.After)
+
+	params := discover.NewCombinedHostsParamsWithContext(ctx)
+	params.Limit = &limit
+	params.Filter = filter
+	if in.Sort != "" {
+		params.Sort = &in.Sort
+	}
+	if in.After != "" {
+		params.After = &in.After
+	}
+
+	resp, err := m.API.CombinedHosts(params)
+	if err != nil {
+		if details, ok := hostsFQLBadRequest(err); ok {
+			return nil, base.FQLError[*models.DomainDiscoverAPIHost](details, filter, managedAssetsFQLGuide), nil
+		}
+	}
+	if e := base.APIError(err, resp, scopeAssetsRead); e != nil {
+		return nil, zero, e
+	}
+
+	assets := resp.Payload.Resources
+	m.Logger.Debug("search_managed_assets query complete", "matched", len(assets))
+	return nil, base.Found(assets, filter).WithMeta(resp.Payload.Meta), nil
+}
+
+// scopedManagedFilter combines the mandatory managed-asset scope with the
+// caller's filter, rejecting a filter it cannot safely wrap. See
+// base.ScopeFilter for the FQL scope-escape reasoning behind the
+// validate-and-wrap contract.
+func scopedManagedFilter(userFilter string) (string, error) {
+	return base.ScopeFilter(managedFilter, userFilter)
 }
 
 // applicationsFQLBadRequest reports whether err is a 400-class combined

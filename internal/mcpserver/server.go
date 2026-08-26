@@ -100,9 +100,13 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 	// are called; injecting it here keeps handlers free of the slog global.
 	logger := slog.Default()
 	allModules := registry.Build(registry.Deps{
-		API:         api,
-		Concurrency: cfg.DetailFetchConcurrency,
-		Logger:      logger,
+		API:                    api,
+		Concurrency:            cfg.DetailFetchConcurrency,
+		Logger:                 logger,
+		NgsiemPollInterval:     cfg.NgsiemPollInterval,
+		NgsiemTimeout:          cfg.NgsiemTimeout,
+		AgentworksPollInterval: cfg.AgentworksPollInterval,
+		AgentworksTimeout:      cfg.AgentworksTimeout,
 	}, moduleFactories())
 
 	reported, err := selectModules(allModules, cfg.Modules)

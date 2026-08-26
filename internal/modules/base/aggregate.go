@@ -30,6 +30,19 @@ var AggregateTypes = []string{
 // bucket (date_range) and reject the histogram/metric types.
 var CaseAggregateTypes = []string{"terms", "date_range"}
 
+// ReconAggregateTypes is the set the /recon/aggregates/* endpoints accept. They
+// support the bucketing and single-value metric types but reject the
+// distribution metrics sum, avg, and percentiles.
+var ReconAggregateTypes = []string{
+	"terms",
+	"date_histogram",
+	"date_range",
+	"range",
+	"cardinality",
+	"max",
+	"min",
+}
+
 // aggregateRequiredCompanions maps an aggregation type to the field it cannot be
 // evaluated without. The Falcon aggregate endpoints answer a spec missing its
 // companion with an opaque 500 rather than a validation error, so tools reject
