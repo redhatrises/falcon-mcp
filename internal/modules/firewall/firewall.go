@@ -179,7 +179,6 @@ type SearchRulesInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter expression. See falcon://firewall/rules/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of rule IDs to return (max 5000)"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. modified_on.desc, name.asc)"`
-	Q      string `json:"q,omitempty" jsonschema:"free-text query string across rule fields"`
 	After  string `json:"after,omitempty" jsonschema:"Pagination token from a previous query response."`
 }
 
@@ -198,9 +197,6 @@ func (m *Module) searchFirewallRules(ctx context.Context, req *mcp.CallToolReque
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
-	}
-	if in.Q != "" {
-		params.Q = &in.Q
 	}
 	if in.After != "" {
 		params.After = &in.After
@@ -236,7 +232,6 @@ type SearchRuleGroupsInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"FQL filter expression. See falcon://firewall/rules/fql-guide for syntax."`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of rule group IDs to return (max 5000)"`
 	Sort   string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. modified_on.desc, name.asc)"`
-	Q      string `json:"q,omitempty" jsonschema:"free-text query string across rule group fields"`
 	After  string `json:"after,omitempty" jsonschema:"Pagination token from a previous query response."`
 }
 
@@ -255,9 +250,6 @@ func (m *Module) searchFirewallRuleGroups(ctx context.Context, req *mcp.CallTool
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
-	}
-	if in.Q != "" {
-		params.Q = &in.Q
 	}
 	if in.After != "" {
 		params.After = &in.After
@@ -292,7 +284,6 @@ type SearchPolicyRulesInput struct {
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of policy rule IDs to return (max 5000)"`
 	Offset   int    `json:"offset,omitempty" jsonschema:"starting index of the overall result set from which to return IDs"`
 	Sort     string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. modified_on.desc, name.asc)"`
-	Q        string `json:"q,omitempty" jsonschema:"free-text query string across policy rule fields"`
 }
 
 func (m *Module) searchFirewallPolicyRules(ctx context.Context, req *mcp.CallToolRequest, in SearchPolicyRulesInput) (*mcp.CallToolResult, base.SearchResult[*models.FwmgrFirewallRuleV1], error) {
@@ -317,9 +308,6 @@ func (m *Module) searchFirewallPolicyRules(ctx context.Context, req *mcp.CallToo
 	}
 	if in.Sort != "" {
 		params.Sort = &in.Sort
-	}
-	if in.Q != "" {
-		params.Q = &in.Q
 	}
 
 	resp, err := m.API.QueryPolicyRules(params)

@@ -3,6 +3,7 @@ package cases
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/cases"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -14,12 +15,21 @@ import (
 // validTagActions are the accepted action values for manage_case_tags.
 var validTagActions = map[string]bool{"add": true, "remove": true}
 
+// descriptionFormats are the accepted values for a case description_format.
+var descriptionFormats = []string{"markdown", "plaintext"}
+
+// validDescriptionFormat reports whether format is an accepted description_format.
+func validDescriptionFormat(format string) bool {
+	return slices.Contains(descriptionFormats, format)
+}
+
 // CreateInput is the input for falcon_create_case. Name and severity are
 // required; the remaining fields are optional.
 type CreateInput struct {
 	Name               string   `json:"name" jsonschema:"case name (max 256 characters) (required)"`
 	Severity           int      `json:"severity" jsonschema:"severity level (1-100). 1=Informational, ~25=Low, ~50=Medium, ~75=High, 100=Critical (required)"`
 	Description        string   `json:"description,omitempty" jsonschema:"case description (max 2048 characters)"`
+	DescriptionFormat  string   `json:"description_format,omitempty" jsonschema:"rendering format for the description. Values: markdown, plaintext"`
 	Status             string   `json:"status,omitempty" jsonschema:"initial status. Values: new, in_progress. Defaults to 'new' if omitted"`
 	AssignedToUserUUID string   `json:"assigned_to_user_uuid,omitempty" jsonschema:"UUID of the user to assign the case to"`
 	Tags               []string `json:"tags,omitempty" jsonschema:"tags to apply (128 combined character limit across all tags)"`
@@ -36,6 +46,9 @@ func (m *Module) createCase(ctx context.Context, _ *mcp.CallToolRequest, in Crea
 	if in.Severity < 1 || in.Severity > 100 {
 		return nil, zero, wrapInvalid("create case", "severity must be between 1 and 100")
 	}
+	if in.DescriptionFormat != "" && !validDescriptionFormat(in.DescriptionFormat) {
+		return nil, zero, wrapInvalid("create case", fmt.Sprintf("invalid description_format %q (want 'markdown' or 'plaintext')", in.DescriptionFormat))
+	}
 	m.Logger.Debug("create_case", "name", in.Name, "severity", in.Severity, "alerts", len(in.AlertIDs), "events", len(in.EventIDs))
 
 	severity := int64(in.Severity)
@@ -45,6 +58,9 @@ func (m *Module) createCase(ctx context.Context, _ *mcp.CallToolRequest, in Crea
 	}
 	if in.Description != "" {
 		body.Description = &in.Description
+	}
+	if in.DescriptionFormat != "" {
+		body.DescriptionFormat = in.DescriptionFormat
 	}
 	if in.Status != "" {
 		body.Status = &in.Status
@@ -96,6 +112,7 @@ type UpdateInput struct {
 	ID                   string `json:"id" jsonschema:"case ID to update (the opaque system ID, not reference_id) (required)"`
 	Name                 string `json:"name,omitempty" jsonschema:"new case name"`
 	Description          string `json:"description,omitempty" jsonschema:"new case description"`
+	DescriptionFormat    string `json:"description_format,omitempty" jsonschema:"rendering format for the description. Values: markdown, plaintext"`
 	Status               string `json:"status,omitempty" jsonschema:"new status. Values: new, in_progress, closed, reopened"`
 	Severity             *int   `json:"severity,omitempty" jsonschema:"new severity (1-100)"`
 	AssignedToUserUUID   string `json:"assigned_to_user_uuid,omitempty" jsonschema:"UUID of user to assign. Use remove_user_assignment=true to unassign instead"`
@@ -112,6 +129,9 @@ func (m *Module) updateCase(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 	if in.Severity != nil && (*in.Severity < 1 || *in.Severity > 100) {
 		return nil, zero, wrapInvalid("update case", "severity must be between 1 and 100")
 	}
+	if in.DescriptionFormat != "" && !validDescriptionFormat(in.DescriptionFormat) {
+		return nil, zero, wrapInvalid("update case", fmt.Sprintf("invalid description_format %q (want 'markdown' or 'plaintext')", in.DescriptionFormat))
+	}
 
 	fields := &models.OperationsCaseFieldChanges{}
 	hasField := false
@@ -121,6 +141,10 @@ func (m *Module) updateCase(ctx context.Context, _ *mcp.CallToolRequest, in Upda
 	}
 	if in.Description != "" {
 		fields.Description = &in.Description
+		hasField = true
+	}
+	if in.DescriptionFormat != "" {
+		fields.DescriptionFormat = in.DescriptionFormat
 		hasField = true
 	}
 	if in.Status != "" {
