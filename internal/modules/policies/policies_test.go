@@ -309,6 +309,8 @@ func TestCreatePolicyValidation(t *testing.T) {
 		{"prevention valid", CreateInput{PolicyType: "prevention", Name: "n", PlatformName: "Windows"}, false},
 		{"content_update no platform needed", CreateInput{PolicyType: "content_update", Name: "n"}, false},
 		{"content_update valid with platform ignored", CreateInput{PolicyType: "content_update", Name: "n", PlatformName: "all"}, false},
+		{"firewall rejects settings", CreateInput{PolicyType: "firewall", Name: "n", PlatformName: "Windows", Settings: map[string]any{"x": 1}}, true},
+		{"prevention accepts settings", CreateInput{PolicyType: "prevention", Name: "n", PlatformName: "Windows", Settings: map[string]any{"x": 1}}, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -368,6 +370,15 @@ func TestUpdatePolicy(t *testing.T) {
 		_, _, err := m.updatePolicy(context.Background(), nil, UpdateInput{PolicyType: "prevention", Name: "n"})
 		if !errors.Is(err, errInvalidInput) {
 			t.Fatalf("expected errInvalidInput for missing id, got %v", err)
+		}
+	})
+
+	t.Run("firewall rejects settings", func(t *testing.T) {
+		t.Parallel()
+		m := moduleWith("firewall", &fakeBackend{})
+		_, _, err := m.updatePolicy(context.Background(), nil, UpdateInput{PolicyType: "firewall", ID: "p1", Settings: map[string]any{"x": 1}})
+		if !errors.Is(err, errInvalidInput) {
+			t.Fatalf("expected errInvalidInput for firewall settings, got %v", err)
 		}
 	})
 
@@ -454,6 +465,8 @@ func TestPerformPolicyActionValidation(t *testing.T) {
 	}{
 		{"invalid type", ActionInput{PolicyType: "bogus", ActionName: "enable", IDs: []string{"a"}}, true},
 		{"invalid action for firewall (rule-group)", ActionInput{PolicyType: "firewall", ActionName: "add-rule-group", IDs: []string{"a"}, GroupID: "g"}, true},
+		{"rule-group rejected for sensor_update", ActionInput{PolicyType: "sensor_update", ActionName: "add-rule-group", IDs: []string{"a"}, GroupID: "g"}, true},
+		{"rule-group rejected for response", ActionInput{PolicyType: "response", ActionName: "remove-rule-group", IDs: []string{"a"}, GroupID: "g"}, true},
 		{"valid rule-group for prevention", ActionInput{PolicyType: "prevention", ActionName: "add-rule-group", IDs: []string{"a"}, GroupID: "g"}, false},
 		{"content_update override valid", ActionInput{PolicyType: "content_update", ActionName: "override-allow", IDs: []string{"a"}}, false},
 		{"content_update override invalid on prevention", ActionInput{PolicyType: "prevention", ActionName: "override-allow", IDs: []string{"a"}}, true},
@@ -635,18 +648,31 @@ func TestConvertSettings(t *testing.T) {
 func TestActionBody(t *testing.T) {
 	t.Parallel()
 	// No group_id -> no action parameters.
-	b := actionBody([]string{"a"}, "")
+	b := actionBody("add-host-group", []string{"a"}, "")
 	if len(b.Ids) != 1 || len(b.ActionParameters) != 0 {
 		t.Fatalf("unexpected body without group: %+v", b)
 	}
-	// group_id -> one group_id action parameter.
-	b = actionBody([]string{"a"}, "g1")
-	if len(b.ActionParameters) != 1 {
-		t.Fatalf("expected 1 action parameter, got %d", len(b.ActionParameters))
+	// A group_id on a non-group action carries no parameter (nothing to bind it to).
+	b = actionBody("enable", []string{"a"}, "g1")
+	if len(b.ActionParameters) != 0 {
+		t.Fatalf("expected no action parameter for non-group action, got %d", len(b.ActionParameters))
 	}
-	p := b.ActionParameters[0]
-	if p.Name == nil || *p.Name != "group_id" || p.Value == nil || *p.Value != "g1" {
-		t.Fatalf("unexpected action parameter: %+v", p)
+	// Host-group actions bind the value under group_id; rule-group under rule_group_id.
+	cases := map[string]string{
+		"add-host-group":    "group_id",
+		"remove-host-group": "group_id",
+		"add-rule-group":    "rule_group_id",
+		"remove-rule-group": "rule_group_id",
+	}
+	for action, wantName := range cases {
+		b = actionBody(action, []string{"a"}, "g1")
+		if len(b.ActionParameters) != 1 {
+			t.Fatalf("%s: expected 1 action parameter, got %d", action, len(b.ActionParameters))
+		}
+		p := b.ActionParameters[0]
+		if p.Name == nil || *p.Name != wantName || p.Value == nil || *p.Value != "g1" {
+			t.Fatalf("%s: unexpected action parameter: %+v", action, p)
+		}
 	}
 }
 

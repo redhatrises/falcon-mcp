@@ -83,23 +83,43 @@ var precedenceNeedsPlatform = map[string]bool{
 }
 
 // validActions is the set of accepted action_name values per policy type for
-// perform_policy_action. The API rejects rule-group actions for
-// firewall/device_control; content_update has unique content-override actions.
-// set-pinned-content-version / remove-pinned-content-version are intentionally
-// omitted: they require a content-version value this tool has no parameter to
-// carry, so exposing them would advertise a capability that cannot execute.
+// perform_policy_action. Only prevention supports rule-group actions; the API
+// rejects them for every other type. content_update has unique content-override
+// actions. set-pinned-content-version / remove-pinned-content-version are
+// intentionally omitted: they require a content-version value this tool has no
+// parameter to carry, so exposing them would advertise a capability that cannot execute.
 var validActions = map[string]map[string]bool{
 	"prevention":     actionSet("enable", "disable", "add-host-group", "remove-host-group", "add-rule-group", "remove-rule-group"),
-	"sensor_update":  actionSet("enable", "disable", "add-host-group", "remove-host-group", "add-rule-group", "remove-rule-group"),
-	"response":       actionSet("enable", "disable", "add-host-group", "remove-host-group", "add-rule-group", "remove-rule-group"),
+	"sensor_update":  actionSet("enable", "disable", "add-host-group", "remove-host-group"),
+	"response":       actionSet("enable", "disable", "add-host-group", "remove-host-group"),
 	"firewall":       actionSet("enable", "disable", "add-host-group", "remove-host-group"),
 	"device_control": actionSet("enable", "disable", "add-host-group", "remove-host-group"),
 	"content_update": actionSet("enable", "disable", "add-host-group", "remove-host-group", "override-allow", "override-pause", "override-revert"),
 }
 
-// groupActions are the action_name values that require a group_id argument (a
-// host group ID for host-group actions, a rule group ID for rule-group actions).
-var groupActions = actionSet("add-host-group", "remove-host-group", "add-rule-group", "remove-rule-group")
+// groupActionParam maps a group action_name to the action_parameters body key
+// the API expects: host-group actions carry the value under "group_id",
+// rule-group actions under "rule_group_id". Membership also marks which actions
+// require a group_id argument.
+var groupActionParam = map[string]string{
+	"add-host-group":    "group_id",
+	"remove-host-group": "group_id",
+	"add-rule-group":    "rule_group_id",
+	"remove-rule-group": "rule_group_id",
+}
+
+// supportsSettings reports whether a policy type accepts a settings object.
+// Firewall policies have no settings field on their create/update model — their
+// behavior is managed through the firewall module's rule/rule-group tools — so
+// passing settings to one is rejected rather than silently ignored.
+var supportsSettings = map[string]bool{
+	"prevention":     true,
+	"sensor_update":  true,
+	"firewall":       false,
+	"device_control": true,
+	"response":       true,
+	"content_update": true,
+}
 
 // safeSortFields are the sort field bases the API accepts (each with a
 // .asc/.desc direction). platform_name is deliberately excluded — sorting by it

@@ -152,7 +152,7 @@ func (b ioaBackend) classifyFQL(error) ([]base.FQLErrorDetail, bool) { return ni
 type mlClient interface {
 	ExclusionsSearchV2(*ml_exclusions.ExclusionsSearchV2Params, ...ml_exclusions.ClientOption) (*ml_exclusions.ExclusionsSearchV2OK, error)
 	ExclusionsGetV2(*ml_exclusions.ExclusionsGetV2Params, ...ml_exclusions.ClientOption) (*ml_exclusions.ExclusionsGetV2OK, error)
-	ExclusionsCreateV2(*ml_exclusions.ExclusionsCreateV2Params, ...ml_exclusions.ClientOption) (*ml_exclusions.ExclusionsCreateV2OK, error)
+	ExclusionsCreateV2(*ml_exclusions.ExclusionsCreateV2Params, ...ml_exclusions.ClientOption) (*ml_exclusions.ExclusionsCreateV2Created, error)
 	ExclusionsUpdateV2(*ml_exclusions.ExclusionsUpdateV2Params, ...ml_exclusions.ClientOption) (*ml_exclusions.ExclusionsUpdateV2OK, error)
 	ExclusionsDeleteV2(*ml_exclusions.ExclusionsDeleteV2Params, ...ml_exclusions.ClientOption) (*ml_exclusions.ExclusionsDeleteV2OK, error)
 }

@@ -215,7 +215,7 @@ func TestSearchFirewallRulesPassesParams(t *testing.T) {
 	m := newModule(f)
 
 	_, _, err := m.searchFirewallRules(context.Background(), nil, SearchRulesInput{
-		Filter: "enabled:true", Limit: 25, Sort: "name.asc", Q: "block", After: "tok",
+		Filter: "enabled:true", Limit: 25, Sort: "name.asc", After: "tok",
 	})
 	if err != nil {
 		t.Fatalf("searchFirewallRules: %v", err)
@@ -230,9 +230,6 @@ func TestSearchFirewallRulesPassesParams(t *testing.T) {
 	}
 	if p.Sort == nil || *p.Sort != "name.asc" {
 		t.Errorf("sort = %v, want name.asc", p.Sort)
-	}
-	if p.Q == nil || *p.Q != "block" {
-		t.Errorf("q = %v, want block", p.Q)
 	}
 	if p.After == nil || *p.After != "tok" {
 		t.Errorf("after = %v, want tok", p.After)

@@ -2,6 +2,7 @@ package policies
 
 import (
 	"context"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -28,6 +29,9 @@ func (m *Module) createPolicy(ctx context.Context, _ *mcp.CallToolRequest, in Cr
 	}
 	if in.Name == "" {
 		return nil, zero, wrapInvalid("create policy", "a name is required to create a policy")
+	}
+	if in.Settings != nil && !supportsSettings[in.PolicyType] {
+		return nil, zero, wrapInvalid("create policy", settingsUnsupportedMsg(in.PolicyType))
 	}
 	if createNeedsPlatform[in.PolicyType] && in.PlatformName == "" {
 		return nil, zero, wrapInvalid("create policy", "a platform_name (e.g. Windows, Mac, Linux) is required to create a "+in.PolicyType+" policy")
@@ -65,6 +69,9 @@ func (m *Module) updatePolicy(ctx context.Context, _ *mcp.CallToolRequest, in Up
 	}
 	if in.ID == "" {
 		return nil, zero, wrapInvalid("update policy", "a policy id is required to update a policy")
+	}
+	if in.Settings != nil && !supportsSettings[in.PolicyType] {
+		return nil, zero, wrapInvalid("update policy", settingsUnsupportedMsg(in.PolicyType))
 	}
 	m.Logger.Debug("update_policy", "type", in.PolicyType, "id", in.ID)
 
@@ -106,7 +113,7 @@ func (m *Module) deletePolicies(ctx context.Context, _ *mcp.CallToolRequest, in 
 // ActionInput is the input for falcon_perform_policy_action.
 type ActionInput struct {
 	PolicyType string   `json:"policy_type" jsonschema:"policy type: prevention, sensor_update, firewall, device_control, response, or content_update"`
-	ActionName string   `json:"action_name" jsonschema:"action: enable, disable, add-host-group, remove-host-group (all types); add-rule-group, remove-rule-group (prevention/sensor_update/response); override-allow, override-pause, override-revert (content_update). Validated per type."`
+	ActionName string   `json:"action_name" jsonschema:"action: enable, disable, add-host-group, remove-host-group (all types); add-rule-group, remove-rule-group (prevention only); override-allow, override-pause, override-revert (content_update). Validated per type."`
 	IDs        []string `json:"ids" jsonschema:"IDs of the policies to act on (required, non-empty)"`
 	GroupID    string   `json:"group_id,omitempty" jsonschema:"group ID for group actions: a host group ID for add/remove-host-group, a rule group ID for add/remove-rule-group; omit for other actions"`
 }
@@ -123,7 +130,7 @@ func (m *Module) performPolicyAction(ctx context.Context, _ *mcp.CallToolRequest
 	if len(in.IDs) == 0 {
 		return nil, zero, wrapInvalid("perform policy action", "a non-empty ids list is required")
 	}
-	if groupActions[in.ActionName] && in.GroupID == "" {
+	if _, isGroupAction := groupActionParam[in.ActionName]; isGroupAction && in.GroupID == "" {
 		return nil, zero, wrapInvalid("perform policy action", "action_name "+quote(in.ActionName)+" requires a group_id (the host group ID for host-group actions, or the rule group ID for rule-group actions)")
 	}
 	m.Logger.Debug("perform_policy_action", "type", in.PolicyType, "action", in.ActionName, "ids", len(in.IDs), "has_group", in.GroupID != "")
@@ -165,6 +172,12 @@ func (m *Module) setPolicyPrecedence(ctx context.Context, _ *mcp.CallToolRequest
 // quote wraps s in single quotes for readable error messages.
 func quote(s string) string { return "'" + s + "'" }
 
+// settingsUnsupportedMsg explains why a settings object was rejected for a
+// policy type whose create/update model has no settings field.
+func settingsUnsupportedMsg(policyType string) string {
+	return quote(policyType) + " policies do not accept a 'settings' object — the endpoint has no such field and would silently ignore it"
+}
+
 // validActionsHint renders the sorted valid actions for a type, for error text.
 func validActionsHint(policyType string) string {
 	set := validActions[policyType]
@@ -176,12 +189,5 @@ func validActionsHint(policyType string) string {
 			valid = append(valid, a)
 		}
 	}
-	hint := "valid actions are: "
-	for i, a := range valid {
-		if i > 0 {
-			hint += ", "
-		}
-		hint += a
-	}
-	return hint
+	return "valid actions are: " + strings.Join(valid, ", ")
 }

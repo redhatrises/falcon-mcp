@@ -144,7 +144,7 @@ func (f *fakePolicies) DeleteSuppressionRules(p *cloud_policies.DeleteSuppressio
 func TestSearchKubernetesContainersReturnsRecords(t *testing.T) {
 	t.Parallel()
 	f := &fakeKubernetes{combinedResp: &kubernetes_protection.ContainerCombinedOK{Payload: &models.ModelsContainerEntityResponse{
-		Resources: []*models.ModelsContainer{{ContainerID: new("c1")}, {ContainerID: new("c2")}},
+		Resources: []*models.ModelsContainer{{ID: new("c1")}, {ID: new("c2")}},
 		Meta:      &models.MsaMetaInfo{QueryTime: &metaQueryTime},
 	}}}
 	m := &Module{Kubernetes: f, Logger: testLogger}

@@ -32,8 +32,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/ngsiem"
@@ -54,18 +54,6 @@ const defaultRepository = "search-all"
 // a short detached context rather than blocking indefinitely.
 const stopCleanupTimeout = 5 * time.Second
 
-// Polling defaults and their environment overrides, mirroring the Python
-// falcon-mcp ngsiem module. FALCON_MCP_NGSIEM_POLL_INTERVAL sets the delay
-// between job-status polls; FALCON_MCP_NGSIEM_TIMEOUT bounds the total time the
-// handler waits for a job to finish before stopping it.
-const (
-	defaultPollInterval = 5 * time.Second
-	defaultTimeout      = 300 * time.Second
-
-	envPollInterval = "FALCON_MCP_NGSIEM_POLL_INTERVAL"
-	envTimeout      = "FALCON_MCP_NGSIEM_TIMEOUT"
-)
-
 // scopeNGSIEM is the CrowdStrike API scope required by this module's operations.
 // Both read and write are required: StartSearchV1 and StopSearchV1 are mutating
 // verbs even though the tool only reads events. Surfaced on a 403 via
@@ -79,33 +67,16 @@ var errSearch = errors.New("ngsiem: search failed")
 
 // Factory builds the ngsiem module from shared deps. The generated aggregator
 // (internal/mcpserver) collects it, so the module needs no init side effect. The
-// polling interval and timeout are read from the environment here (the module's
-// only operational knobs, matching the Python module) rather than threaded
-// through the central config, since no other module needs them. This is a
-// single job-based query, so the module ignores Deps.Concurrency.
+// poll interval and timeout come from the resolved config (env-configurable via
+// FALCON_MCP_NGSIEM_POLL_INTERVAL / FALCON_MCP_NGSIEM_TIMEOUT). This is a single
+// job-based query, so the module ignores Deps.Concurrency.
 var Factory registry.Factory = func(d registry.Deps) base.Module {
 	return &Module{
 		API:          d.API.Ngsiem,
 		Logger:       d.Logger,
-		PollInterval: durationFromEnv(envPollInterval, defaultPollInterval),
-		Timeout:      durationFromEnv(envTimeout, defaultTimeout),
+		PollInterval: d.NgsiemPollInterval,
+		Timeout:      d.NgsiemTimeout,
 	}
-}
-
-// durationFromEnv reads a whole-seconds duration from the named environment
-// variable, falling back to def when the variable is unset, unparseable, or not
-// a positive integer. It mirrors the Python module's int(os.environ.get(...))
-// with a safe default.
-func durationFromEnv(name string, def time.Duration) time.Duration {
-	v, ok := os.LookupEnv(name)
-	if !ok {
-		return def
-	}
-	secs, err := strconv.Atoi(v)
-	if err != nil || secs <= 0 {
-		return def
-	}
-	return time.Duration(secs) * time.Second
 }
 
 // ngsiemAPI is the minimal slice of the gofalcon ngsiem client this module
@@ -182,15 +153,30 @@ const repositoryDescription = "Repository (or view) to search. Defaults to searc
 	"forensics_view (Falcon Forensics triage data). " +
 	"Custom and other built-in repositories/views can also be passed by name."
 
-// cqlEmptyHint is attached to an empty search result. The NGSIEM API
-// free-text-matches malformed CQL and returns an empty HTTP 200 rather than a
-// parser error, so an empty result is the most common silent-failure signal;
-// the hint (and the accompanying guide) lets a caller self-correct. Mirrors the
-// Python module's _CQL_EMPTY_HINT 1:1.
-const cqlEmptyHint = "0 events returned. This can mean no data matched, but it is also how the API " +
-	"reports an invalid query (it free-text-matches malformed CQL rather than " +
-	"erroring). If this is unexpected, review the CQL guide above and verify your " +
-	"query syntax and field names. Consult `falcon://ngsiem/search/cql-guide`."
+// A zero-row result carries one of two hints, chosen by whether the job
+// actually scanned any events. The NGSIEM API free-text-matches malformed CQL
+// and returns an empty HTTP 200 rather than a parser error, so an empty result
+// is the most common silent-failure signal; job.processed_events distinguishes
+// a real negative (a completed scan that matched nothing) from an unscanned one
+// (a query that likely never parsed as intended). Mirror the Python module's
+// _CQL_CONFIRMED_ZERO_HINT and _CQL_UNSCANNED_ZERO_HINT 1:1; the confirmed hint
+// takes the scanned-event count.
+const (
+	cqlConfirmedZeroHint = "No rows matched, and the job scanned %s events — a real negative. " +
+		"Report it as such rather than retrying. If you expected rows, check " +
+		"`job.parsed_query` against the query you sent."
+	cqlUnscannedZeroHint = "No rows, and `job.processed_events` does not show a completed scan, so " +
+		"this alone is not a confirmed negative. Compare `job.parsed_query` to the " +
+		"query you sent: unrecognized words become free-text stages instead of an error."
+)
+
+// Repository names must be safe path segments: the value is placed directly in
+// the query-job endpoint's URL path, so a value containing a path or escape
+// character, or a "." / ".." dot segment, is rejected before the request is
+// built. Mirrors the Python module's _UNSAFE_REPOSITORY_CHARS / _DOT_SEGMENTS.
+const unsafeRepositoryChars = `/\%`
+
+var dotSegments = map[string]bool{".": true, "..": true}
 
 // searchNGSIEMSchema is the served input schema for falcon_search_ngsiem. It is
 // inferred from SearchInput, then a mutate func applies the query_string and
@@ -239,23 +225,40 @@ type SearchInput struct {
 }
 
 // searchResult is the success-path envelope for falcon_search_ngsiem. Results
-// holds the matching event records (always a non-nil JSON array). On an empty
-// result the CQL guide and a repair hint are attached: the API free-text-matches
-// malformed CQL and returns an empty HTTP 200 rather than a parser error, so an
-// empty result is the common silent-failure signal a caller must be able to
-// self-correct from.
-//
-// Upstream returns the bare events list on the success path and a
-// {"results": [], "query_used", "cql_guide", "hint"} dict on the empty path. A
-// single Go return type cannot be both a list and a dict, so both paths use this
-// struct; the results key matches upstream's empty-path key and Total is a Go
-// convenience addition not present upstream.
+// holds the matching event records (always a non-nil JSON array); Job carries
+// the completed job's metadata (see jobMetadata) and QueryUsed echoes the CQL
+// that ran, so a caller can compare what it sent against what the API parsed.
+// On a zero-row result the CQL guide and a repair hint are attached: the API
+// free-text-matches malformed CQL and returns an empty HTTP 200 rather than a
+// parser error, so an empty result is the common silent-failure signal a caller
+// must be able to self-correct from. CQLGuide and Hint are present only when
+// Results is empty.
 type searchResult struct {
-	Results   []any  `json:"results"`
-	Total     int    `json:"total"`
-	QueryUsed string `json:"query_used,omitempty"`
-	CQLGuide  string `json:"cql_guide,omitempty"`
-	Hint      string `json:"hint,omitempty"`
+	Results   []any        `json:"results"`
+	QueryUsed string       `json:"query_used"`
+	Job       *jobMetadata `json:"job,omitempty"`
+	CQLGuide  string       `json:"cql_guide,omitempty"`
+	Hint      string       `json:"hint,omitempty"`
+}
+
+// jobMetadata summarizes a completed NGSIEM query job for the caller. It is
+// built from the poll payload's MetaData and top-level fields. Numeric fields
+// are pointers so an absent value is omitted rather than reported as a
+// misleading zero; ParsedQuery and the ISO timestamps are omitted when the API
+// did not supply them. Warnings concatenates the job's top-level warnings and
+// its metadata warnings (each an arbitrary JSON object or string).
+type jobMetadata struct {
+	JobID           string `json:"job_id,omitempty"`
+	Repository      string `json:"repository,omitempty"`
+	EventCount      *int64 `json:"event_count,omitempty"`
+	ProcessedEvents *int64 `json:"processed_events,omitempty"`
+	ProcessedBytes  *int64 `json:"processed_bytes,omitempty"`
+	ParsedQuery     string `json:"parsed_query,omitempty"`
+	SearchStart     string `json:"search_start,omitempty"`
+	SearchEnd       string `json:"search_end,omitempty"`
+	DurationMS      *int64 `json:"duration_ms,omitempty"`
+	IsAggregate     *bool  `json:"is_aggregate,omitempty"`
+	Warnings        []any  `json:"warnings,omitempty"`
 }
 
 // searchNGSIEM starts a CQL query job, polls it to completion, and returns the
@@ -278,6 +281,9 @@ func (m *Module) searchNGSIEM(ctx context.Context, _ *mcp.CallToolRequest, in Se
 	repository := in.Repository
 	if repository == "" {
 		repository = defaultRepository
+	}
+	if err := validateRepository(repository); err != nil {
+		return nil, zero, fmt.Errorf("%w: %w", errSearch, err)
 	}
 
 	// Step 1: start the search job. The API expects epoch-millisecond strings for
@@ -357,22 +363,29 @@ func (m *Module) searchNGSIEM(ctx context.Context, _ *mcp.CallToolRequest, in Se
 			}
 			events := toEvents(payload.Events)
 			m.Logger.Debug("search_ngsiem job completed", "job_id", jobID, "events", len(events))
+			job := buildJobMetadata(jobID, repository, payload)
 			// No meta is attached: the job-results payload carries MetaData
 			// (quota/costs/event counts), not a pagination cursor, and this
-			// endpoint is not paginated.
+			// endpoint is not paginated; the counts are surfaced via job instead.
 			if len(events) == 0 {
 				// The API free-text-matches invalid CQL and returns HTTP 200 with
 				// an empty list, so an empty result is the most common silent-
-				// failure signal. Attach the guide and hint so the caller can
-				// self-correct rather than assume the data simply isn't there.
+				// failure signal. Attach the guide and a hint chosen by whether the
+				// job actually scanned events, so the caller can tell a real
+				// negative from a query that never parsed as intended.
 				return nil, searchResult{
 					Results:   []any{},
 					QueryUsed: in.QueryString,
+					Job:       job,
 					CQLGuide:  cqlGuide,
-					Hint:      cqlEmptyHint,
+					Hint:      zeroRowHint(job),
 				}, nil
 			}
-			return nil, searchResult{Results: events, Total: len(events)}, nil
+			return nil, searchResult{
+				Results:   events,
+				QueryUsed: in.QueryString,
+				Job:       job,
+			}, nil
 		}
 	}
 
@@ -425,4 +438,115 @@ func isoToEpochMS(iso string) (string, error) {
 		}
 	}
 	return strconv.FormatInt(t.UnixMilli(), 10), nil
+}
+
+// validateRepository rejects a repository name that would be unsafe in the
+// query-job endpoint's URL path: a name containing a path or escape character
+// (/, \, %) or equal to a "." / ".." dot segment. It returns a plain validation
+// error (the caller wraps it in errSearch), distinct from the CQL-guide
+// soft-error path, since a bad repository is a request mistake, not a query one.
+func validateRepository(repository string) error {
+	if dotSegments[repository] {
+		return fmt.Errorf("repository %q is not a valid name", repository)
+	}
+	if i := strings.IndexAny(repository, unsafeRepositoryChars); i >= 0 {
+		return fmt.Errorf("repository %q contains an unsafe character %q", repository, string(repository[i]))
+	}
+	return nil
+}
+
+// buildJobMetadata assembles the jobMetadata envelope from a completed job's
+// poll payload. Numeric fields are carried as pointers straight from the API
+// metadata so an absent value stays absent rather than becoming a misleading
+// zero; the ISO timestamps and parsed query are omitted when the API did not
+// supply them.
+func buildJobMetadata(jobID, repository string, payload *models.APIQueryJobsResults) *jobMetadata {
+	job := &jobMetadata{
+		JobID:      jobID,
+		Repository: repository,
+	}
+	if meta := payload.MetaData; meta != nil {
+		job.EventCount = meta.EventCount
+		job.ProcessedEvents = meta.ProcessedEvents
+		job.ProcessedBytes = meta.ProcessedBytes
+		job.DurationMS = meta.TimeMillis
+		job.IsAggregate = meta.IsAggregate
+		job.ParsedQuery = parsedQueryFrom(meta.FilterQuery)
+		job.SearchStart = epochMSToISO(meta.QueryStart)
+		job.SearchEnd = epochMSToISO(meta.QueryEnd)
+	}
+	job.Warnings = warningsFrom(payload)
+	return job
+}
+
+// parsedQueryFrom extracts the queryString the API parsed from a job's filter
+// query. FilterQuery is an untyped JSON value (interface{}); the parsed query
+// lives at its "queryString" key when present.
+func parsedQueryFrom(filterQuery any) string {
+	m, ok := filterQuery.(map[string]any)
+	if !ok {
+		return ""
+	}
+	s, _ := m["queryString"].(string)
+	return s
+}
+
+// epochMSToISO renders an epoch-millisecond pointer as a UTC RFC 3339 string,
+// returning "" when the value is absent so the field is omitted.
+func epochMSToISO(ms *int64) string {
+	if ms == nil {
+		return ""
+	}
+	return time.UnixMilli(*ms).UTC().Format(time.RFC3339)
+}
+
+// warningsFrom concatenates a job's top-level warnings and its metadata
+// warnings into a single list, preserving each warning as its native shape (the
+// structured top-level objects, then the metadata's plain strings). Returns nil
+// when there are none so the field is omitted.
+func warningsFrom(payload *models.APIQueryJobsResults) []any {
+	var out []any
+	for _, w := range payload.Warnings {
+		if w != nil {
+			out = append(out, w)
+		}
+	}
+	if meta := payload.MetaData; meta != nil {
+		for _, w := range meta.Warnings {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// zeroRowHint selects the repair hint for a zero-row result. A job that scanned
+// events matched nothing for real (the confirmed hint, carrying the scanned
+// count); otherwise the scan did not complete and the empty result is not a
+// confirmed negative (the unscanned hint).
+func zeroRowHint(job *jobMetadata) string {
+	if job != nil && job.ProcessedEvents != nil && *job.ProcessedEvents > 0 {
+		return fmt.Sprintf(cqlConfirmedZeroHint, groupThousands(*job.ProcessedEvents))
+	}
+	return cqlUnscannedZeroHint
+}
+
+// groupThousands formats n with comma thousands separators (e.g. 1234567 ->
+// "1,234,567"), matching the Python hint's {n:,} rendering.
+func groupThousands(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	neg := ""
+	if n < 0 {
+		neg, s = "-", s[1:]
+	}
+	var b strings.Builder
+	lead := len(s) % 3
+	if lead == 0 {
+		lead = 3
+	}
+	b.WriteString(s[:lead])
+	for i := lead; i < len(s); i += 3 {
+		b.WriteByte(',')
+		b.WriteString(s[i : i+3])
+	}
+	return neg + b.String()
 }

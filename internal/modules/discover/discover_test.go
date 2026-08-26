@@ -564,6 +564,263 @@ func TestSearchUnmanagedAssetsAPIError(t *testing.T) {
 	}
 }
 
+func TestSearchManagedAssetsSuccess(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK(&models.DomainDiscoverAPIHost{ID: new("host-1"), Hostname: "PC-001"})}
+	f.hostsResp.Payload.Meta = &models.DomainDiscoverAPIMetaInfo{}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, out, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Filter: "platform_name:'Windows'"})
+	if err != nil {
+		t.Fatalf("searchManagedAssets: %v", err)
+	}
+	if len(out.Resources) != 1 {
+		t.Fatalf("unexpected result: %+v", out)
+	}
+	if out.Resources[0].Hostname != "PC-001" {
+		t.Fatalf("unexpected resource: %+v", out.Resources[0])
+	}
+	if !reflect.DeepEqual(out.Meta, base.NormalizedMeta(f.hostsResp.Payload.Meta)) {
+		t.Fatalf("expected normalized meta, got %+v", out.Meta)
+	}
+}
+
+// TestSearchManagedAssetsAlwaysConstrainsManaged verifies the tool prepends
+// entity_type:'managed' and ANDs the parenthesized user filter, both when a user
+// filter is present and when it is absent. The comma cases cover the
+// scope-escape regression: an unparenthesized caller filter with a top-level
+// comma would bind as (scope AND a) OR b and return unmanaged hosts.
+func TestSearchManagedAssetsAlwaysConstrainsManaged(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		userFilter string
+		wantFilter string
+	}{
+		{"with user filter", "platform_name:'Windows'", "entity_type:'managed'+(platform_name:'Windows')"},
+		{"no user filter", "", "entity_type:'managed'"},
+		{
+			"top-level comma stays scoped",
+			"platform_name:'Windows',entity_type:'unmanaged'",
+			"entity_type:'managed'+(platform_name:'Windows',entity_type:'unmanaged')",
+		},
+		{
+			"quoted parens are not grouping",
+			"hostname:'foo)bar'",
+			"entity_type:'managed'+(hostname:'foo)bar')",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeDiscover{hostsResp: hostsOK()}
+			m := &Module{API: f, Logger: testLogger}
+
+			_, out, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Filter: tc.userFilter})
+			if err != nil {
+				t.Fatalf("searchManagedAssets: %v", err)
+			}
+			if f.lastHostFilter != tc.wantFilter {
+				t.Errorf("API filter = %q, want %q", f.lastHostFilter, tc.wantFilter)
+			}
+			if out.FilterUsed != tc.wantFilter {
+				t.Errorf("FilterUsed = %q, want %q", out.FilterUsed, tc.wantFilter)
+			}
+		})
+	}
+}
+
+// TestSearchManagedAssetsForwardsParams verifies the handler defaults the limit
+// and forwards sort to the API params.
+func TestSearchManagedAssetsForwardsParams(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	if _, _, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Sort: "hostname.asc"}); err != nil {
+		t.Fatalf("searchManagedAssets: %v", err)
+	}
+	if f.lastHostLimit != defaultLimit {
+		t.Errorf("limit = %d, want default %d", f.lastHostLimit, defaultLimit)
+	}
+	if f.lastHostSort != "hostname.asc" {
+		t.Errorf("sort = %q", f.lastHostSort)
+	}
+}
+
+func TestSearchManagedAssetsForwardsAfter(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	if _, _, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{After: "tok-123"}); err != nil {
+		t.Fatalf("searchManagedAssets: %v", err)
+	}
+	if f.lastHostAfter != "tok-123" {
+		t.Errorf("after = %q, want %q", f.lastHostAfter, "tok-123")
+	}
+}
+
+func TestSearchManagedAssetsOmitsEmptyAfter(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	if _, _, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{}); err != nil {
+		t.Fatalf("searchManagedAssets: %v", err)
+	}
+	if f.lastHostAfter != "" {
+		t.Errorf("after = %q, want unset", f.lastHostAfter)
+	}
+}
+
+func TestSearchManagedAssetsEmpty(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsResp: hostsOK()}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, out, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{})
+	if err != nil {
+		t.Fatalf("searchManagedAssets: %v", err)
+	}
+	if out.Resources == nil || len(out.Resources) != 0 {
+		t.Fatalf("expected empty non-nil resources, got %+v", out)
+	}
+}
+
+func TestSearchManagedAssetsFQLError(t *testing.T) {
+	t.Parallel()
+
+	badReq := &discover.CombinedHostsBadRequest{
+		Payload: &models.MsaspecResponseFields{
+			Errors: []*models.MsaAPIError{{Code: new(int32(400)), Message: new("invalid filter")}},
+		},
+	}
+	f := &fakeDiscover{hostsErr: badReq}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, out, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Filter: "bogus::"})
+	if err != nil {
+		t.Fatalf("expected soft FQL error result, got Go error: %v", err)
+	}
+	if len(out.Errors) != 1 || out.Errors[0].Message != "invalid filter" {
+		t.Fatalf("expected FQL error detail, got %+v", out.Errors)
+	}
+	if out.FQLGuide == "" {
+		t.Fatalf("expected FQL guide in error result")
+	}
+	// The echoed filter includes the auto-applied managed constraint.
+	if out.FilterUsed != "entity_type:'managed'+(bogus::)" {
+		t.Fatalf("expected combined filter echoed, got %q", out.FilterUsed)
+	}
+}
+
+// TestSearchManagedAssetsMalformedFilterSoftError verifies a caller filter with
+// unbalanced parentheses or an unterminated quote is rejected client-side rather
+// than wrapped, and reported as a soft FQL result carrying the guide, matching
+// the shape of an API-rejected filter so the model can self-correct either way.
+func TestSearchManagedAssetsMalformedFilterSoftError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		userFilter string
+	}{
+		{"scope escape via stray close", "platform_name:'Windows'),entity_type:'unmanaged'+(product_type_desc:'Server'"},
+		{"unmatched close", "platform_name:'Windows')"},
+		{"unclosed open", "(platform_name:'Windows'"},
+		{"unterminated quote", "hostname:'foo"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeDiscover{hostsResp: hostsOK()}
+			m := &Module{API: f, Logger: testLogger}
+
+			_, out, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Filter: tc.userFilter})
+			if err != nil {
+				t.Fatalf("expected soft FQL error result, got Go error: %v", err)
+			}
+			if len(out.Errors) != 1 {
+				t.Fatalf("expected one FQL error detail, got %+v", out.Errors)
+			}
+			if out.FQLGuide == "" {
+				t.Errorf("expected FQL guide so the caller can self-correct")
+			}
+			if out.FilterUsed != tc.userFilter {
+				t.Errorf("FilterUsed = %q, want raw caller filter %q", out.FilterUsed, tc.userFilter)
+			}
+			if f.hostCalls != 0 {
+				t.Errorf("API called %d times, want 0 — malformed filter must not reach the API", f.hostCalls)
+			}
+		})
+	}
+}
+
+// TestScopedManagedFilter exercises managed-asset filter scoping directly,
+// covering the accept path and each rejection class. Rejections must surface
+// base.ErrInvalidFilter and must not return a filter.
+func TestScopedManagedFilter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		filter     string
+		wantFilter string
+		wantErr    bool
+	}{
+		{"empty", "", "entity_type:'managed'", false},
+		{"simple term", "platform_name:'Windows'", "entity_type:'managed'+(platform_name:'Windows')", false},
+		{"balanced group", "a:'1'+(b:'2',c:'3')", "entity_type:'managed'+(a:'1'+(b:'2',c:'3'))", false},
+		{"parens inside quotes", "hostname:'foo)bar'", "entity_type:'managed'+(hostname:'foo)bar')", false},
+		{"unmatched close", "a:'1')", "", true},
+		{"unclosed open", "(a:'1'", "", true},
+		{"unterminated quote", "hostname:'foo", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := scopedManagedFilter(tc.filter)
+			if tc.wantErr {
+				if !errors.Is(err, base.ErrInvalidFilter) {
+					t.Fatalf("err = %v, want base.ErrInvalidFilter", err)
+				}
+				if got != "" {
+					t.Errorf("filter = %q, want empty on rejection", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("scopedManagedFilter(%q) = %v, want nil", tc.filter, err)
+			}
+			if got != tc.wantFilter {
+				t.Errorf("filter = %q, want %q", got, tc.wantFilter)
+			}
+		})
+	}
+}
+
+// TestSearchManagedAssetsAPIError verifies a non-FQL error is returned as a hard
+// Go error rather than swallowed into a soft FQL result, exercising the
+// base.APIError branch the FQL-error test bypasses.
+func TestSearchManagedAssetsAPIError(t *testing.T) {
+	t.Parallel()
+
+	f := &fakeDiscover{hostsErr: errors.New("boom")}
+	m := &Module{API: f, Logger: testLogger}
+
+	_, _, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Filter: "platform_name:'Windows'"})
+	if err == nil {
+		t.Fatalf("expected non-FQL error to be returned as a Go error")
+	}
+}
+
 // TestSearchEmitsDebugLog verifies the injected logger receives a structured
 // DEBUG entry for each search tool carrying the filter the handler actually
 // used. The unmanaged-assets case asserts the logged filter is the combined
@@ -583,12 +840,16 @@ func TestSearchEmitsDebugLog(t *testing.T) {
 	if _, _, err := m.searchUnmanagedAssets(context.Background(), nil, UnmanagedAssetsInput{Filter: "platform_name:'Windows'"}); err != nil {
 		t.Fatalf("searchUnmanagedAssets: %v", err)
 	}
+	if _, _, err := m.searchManagedAssets(context.Background(), nil, ManagedAssetsInput{Filter: "platform_name:'Windows'"}); err != nil {
+		t.Fatalf("searchManagedAssets: %v", err)
+	}
 
-	// Expected logged filter value per tool message. search_unmanaged_assets logs
-	// the composed filter, not the raw user input.
+	// Expected logged filter value per tool message. The asset tools log the
+	// composed filter, not the raw user input.
 	wantFilters := map[string]string{
 		"search_applications":     "name:'Chrome'",
 		"search_unmanaged_assets": "entity_type:'unmanaged'+(platform_name:'Windows')",
+		"search_managed_assets":   "entity_type:'managed'+(platform_name:'Windows')",
 	}
 	seen := map[string]bool{}
 	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {

@@ -63,12 +63,11 @@ func TestNormalizeMetaRealTypes(t *testing.T) {
 		},
 		want: `{"pagination":{"total":120,"limit":50,"offset":10},"query_time":0.02,"trace_id":"trace-xyz"}`,
 	}, {
-		name: "DomainMsaMetaInfo camelCase queryTime is normalized",
+		name: "DomainMsaMetaInfo carries only pagination",
 		meta: &models.DomainMsaMetaInfo{
 			Pagination: &models.MsaPaging{Total: &total},
-			QueryTime:  &qt,
 		},
-		want: `{"pagination":{"total":120},"query_time":0.02}`,
+		want: `{"pagination":{"total":120}}`,
 	}, {
 		name: "AssetgroupmanagerV1Meta non-pointer scalars and numeric offset",
 		meta: &models.AssetgroupmanagerV1Meta{

@@ -1,11 +1,14 @@
 // Package recon implements the CrowdStrike Falcon Intelligence Recon tools over
 // the gofalcon recon client: searching Recon notifications (recon alerts),
-// monitoring rules, and exposed-data records. It registers three FQL guide
-// resources, one per search tool.
+// monitoring rules, and exposed-data records; aggregating notifications and
+// exposed-data records into buckets; and previewing a candidate monitoring
+// rule's historical match volume. It registers four FQL guide resources: one
+// per search surface, plus a guide for the rule-preview filter dialect.
 //
-// Each tool is a two-step typed gofalcon call — a query for matching IDs
-// followed by a bulk detail fetch (base.FetchDetails) — so the module bounds
-// its fan-out with Deps.Concurrency. All three tools are read-only.
+// The three search tools are each a two-step typed gofalcon call — a query for
+// matching IDs followed by a bulk detail fetch (base.FetchDetails) — so the
+// module bounds its fan-out with Deps.Concurrency. The two aggregate tools and
+// the preview tool are single typed calls. Every tool is read-only.
 package recon
 
 import (
@@ -32,13 +35,15 @@ const defaultLimit = 10
 // net for callers that pass many IDs, not the common path.
 const recordBatchSize = 500
 
-// MCP resource URIs for the three recon FQL guides, matching falcon-mcp's
+// MCP resource URIs for the four recon FQL guides: the three
 // falcon://recon/{notifications,rules,exposed-data-records}/search/fql-guide
+// search guides plus the rule-preview guide, matching falcon-mcp's recon
 // resources.
 const (
 	notificationsFQLGuideURI      = "falcon://recon/notifications/search/fql-guide"
 	rulesFQLGuideURI              = "falcon://recon/rules/search/fql-guide"
 	exposedDataRecordsFQLGuideURI = "falcon://recon/exposed-data-records/search/fql-guide"
+	previewRuleFQLGuideURI        = "falcon://recon/rules/preview-guide"
 )
 
 // scopeMonitoringRules is the CrowdStrike API scope required by every recon
@@ -61,6 +66,9 @@ type reconAPI interface {
 	GetRulesV1(params *recon.GetRulesV1Params, opts ...recon.ClientOption) (*recon.GetRulesV1OK, error)
 	QueryNotificationsExposedDataRecordsV1(params *recon.QueryNotificationsExposedDataRecordsV1Params, opts ...recon.ClientOption) (*recon.QueryNotificationsExposedDataRecordsV1OK, error)
 	GetNotificationsExposedDataRecordsV1(params *recon.GetNotificationsExposedDataRecordsV1Params, opts ...recon.ClientOption) (*recon.GetNotificationsExposedDataRecordsV1OK, error)
+	AggregateNotificationsV1(params *recon.AggregateNotificationsV1Params, opts ...recon.ClientOption) (*recon.AggregateNotificationsV1OK, error)
+	AggregateNotificationsExposedDataRecordsV1(params *recon.AggregateNotificationsExposedDataRecordsV1Params, opts ...recon.ClientOption) (*recon.AggregateNotificationsExposedDataRecordsV1OK, error)
+	PreviewRuleV1(params *recon.PreviewRuleV1Params, opts ...recon.ClientOption) (*recon.PreviewRuleV1OK, error)
 }
 
 // Module registers the recon tools. It holds only the shared, concurrency-safe
@@ -194,10 +202,29 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Description: searchExposedDataRecordsDescription,
 		InputSchema: searchExposedDataRecordsSchema,
 	}, m.searchReconExposedDataRecords)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "aggregate_recon_notifications",
+		Description: aggregateNotificationsDescription,
+		InputSchema: aggregateNotificationsSchema,
+	}, m.aggregateNotifications)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "aggregate_recon_exposed_data_records",
+		Description: aggregateExposedDataRecordsDescription,
+		InputSchema: aggregateExposedDataRecordsSchema,
+	}, m.aggregateExposedDataRecords)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "preview_recon_rule",
+		Description: previewRuleDescription,
+		InputSchema: previewRuleSchema,
+	}, m.previewRule)
 }
 
-// RegisterResources publishes the three recon FQL guides as MCP resources,
-// mirroring falcon-mcp's recon FQL guide resources.
+// RegisterResources publishes the four recon FQL guides as MCP resources — the
+// three search-surface guides plus the rule-preview guide — mirroring
+// falcon-mcp's recon FQL guide resources.
 func (m *Module) RegisterResources(s *mcp.Server) {
 	base.TextResource(s, notificationsFQLGuideURI,
 		"search_recon_notifications_fql_guide",
@@ -213,6 +240,11 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 		"search_recon_exposed_data_records_fql_guide",
 		"Contains the guide for the `filter` param of the `falcon_search_recon_exposed_data_records` tool.",
 		"text/markdown", exposedDataRecordsFQLGuide)
+
+	base.TextResource(s, previewRuleFQLGuideURI,
+		"preview_recon_rule_guide",
+		"Contains the rule-filter dialect, valid topics, and lookback values for the `falcon_preview_recon_rule` tool.",
+		"text/markdown", previewRuleFQLGuide)
 }
 
 // RegisterPrompts is a no-op: the recon module exposes no prompts.

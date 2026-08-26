@@ -22,6 +22,16 @@ import (
 // a small fixed default rather than a function of runtime.NumCPU().
 const defaultDetailFetchConcurrency = 4
 
+// Poll-loop defaults for the ngsiem and agentworks modules. Each bounds a
+// job/invocation poll loop and is supplied as whole seconds via its
+// FALCON_MCP_* env var; a zero or non-positive value selects the default.
+const (
+	defaultNgsiemPollInterval     = 5 * time.Second
+	defaultNgsiemTimeout          = 300 * time.Second
+	defaultAgentworksPollInterval = 5 * time.Second
+	defaultAgentworksTimeout      = 45 * time.Second
+)
+
 // Sentinel errors returned by Load. Use errors.Is for control flow.
 var (
 	// ErrMissingCredentials is returned when client id/secret are absent.
@@ -155,6 +165,18 @@ type Config struct {
 	// Zero selects defaultMaxIdleConnsPerHost; a negative value is rejected by
 	// Load.
 	MaxIdleConnsPerHost int
+	// NgsiemPollInterval and NgsiemTimeout bound the ngsiem module's job poll
+	// loop: the delay between status polls and the total wait before the job is
+	// stopped. Supplied as whole seconds via FALCON_MCP_NGSIEM_POLL_INTERVAL /
+	// FALCON_MCP_NGSIEM_TIMEOUT; a zero or non-positive value selects the default.
+	NgsiemPollInterval time.Duration
+	NgsiemTimeout      time.Duration
+	// AgentworksPollInterval and AgentworksTimeout bound the agentworks module's
+	// invoke block-poll. Supplied as whole seconds via
+	// FALCON_MCP_AGENTWORKS_POLL_INTERVAL / FALCON_MCP_AGENTWORKS_TIMEOUT; a zero
+	// or non-positive value selects the default.
+	AgentworksPollInterval time.Duration
+	AgentworksTimeout      time.Duration
 }
 
 // Load validates cfg, applies defaults, and returns the normalized Config. It
@@ -204,6 +226,19 @@ func Load(cfg Config) (*Config, error) {
 
 	if cfg.DetailFetchConcurrency == 0 {
 		cfg.DetailFetchConcurrency = defaultDetailFetchConcurrency
+	}
+
+	if cfg.NgsiemPollInterval <= 0 {
+		cfg.NgsiemPollInterval = defaultNgsiemPollInterval
+	}
+	if cfg.NgsiemTimeout <= 0 {
+		cfg.NgsiemTimeout = defaultNgsiemTimeout
+	}
+	if cfg.AgentworksPollInterval <= 0 {
+		cfg.AgentworksPollInterval = defaultAgentworksPollInterval
+	}
+	if cfg.AgentworksTimeout <= 0 {
+		cfg.AgentworksTimeout = defaultAgentworksTimeout
 	}
 
 	if err := validateHTTPTuning(&cfg); err != nil {

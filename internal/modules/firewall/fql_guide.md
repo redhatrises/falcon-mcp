@@ -23,7 +23,7 @@ property_name:[operator]'value'
 |-|-|-|
 |enabled|Boolean|Filter by rule enabled state. Example: `enabled:true`|
 |platform|String|Filter by platform. Example: `platform:'windows'`|
-|name|String|Rule or rule group name. Example: `name:'Block*'`|
+|name|String|Rule or rule group name. Use the contains operator for substring search — `name:~'block'` matches whole words case-insensitively, `name:*'*block*'` matches an arbitrary substring. A trailing-glob string like `name:'Block*'` is treated literally and matches nothing.|
 |description|String|Rule or rule group description text search.|
 |created_on|Timestamp|Entity creation timestamp.|
 |modified_on|Timestamp|Entity last modified timestamp.|

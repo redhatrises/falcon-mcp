@@ -330,6 +330,89 @@ func TestExecuteHTTPTuningEnv(t *testing.T) {
 	}
 }
 
+func TestExecutePollLoopEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_NGSIEM_POLL_INTERVAL", "2")
+	t.Setenv("FALCON_MCP_NGSIEM_TIMEOUT", "120")
+	t.Setenv("FALCON_MCP_AGENTWORKS_POLL_INTERVAL", "3")
+	t.Setenv("FALCON_MCP_AGENTWORKS_TIMEOUT", "60")
+
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.NgsiemPollInterval != 2*time.Second {
+		t.Errorf("NgsiemPollInterval = %v, want 2s from FALCON_MCP_NGSIEM_POLL_INTERVAL", cfg.NgsiemPollInterval)
+	}
+	if cfg.NgsiemTimeout != 120*time.Second {
+		t.Errorf("NgsiemTimeout = %v, want 120s from FALCON_MCP_NGSIEM_TIMEOUT", cfg.NgsiemTimeout)
+	}
+	if cfg.AgentworksPollInterval != 3*time.Second {
+		t.Errorf("AgentworksPollInterval = %v, want 3s from FALCON_MCP_AGENTWORKS_POLL_INTERVAL", cfg.AgentworksPollInterval)
+	}
+	if cfg.AgentworksTimeout != 60*time.Second {
+		t.Errorf("AgentworksTimeout = %v, want 60s from FALCON_MCP_AGENTWORKS_TIMEOUT", cfg.AgentworksTimeout)
+	}
+}
+
+// TestExecutePollLoopEnvUnparseableDefaults confirms an unset or non-integer
+// poll-loop env var resolves to 0 in resolve() and is then replaced by the
+// module default in config.Load, matching the pre-refactor durationFromEnv path.
+func TestExecutePollLoopEnvUnparseableDefaults(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_NGSIEM_TIMEOUT", "garbage")
+
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.NgsiemTimeout != 300*time.Second {
+		t.Errorf("NgsiemTimeout = %v, want 300s default for unparseable env", cfg.NgsiemTimeout)
+	}
+	if cfg.NgsiemPollInterval != 5*time.Second {
+		t.Errorf("NgsiemPollInterval = %v, want 5s default when unset", cfg.NgsiemPollInterval)
+	}
+	if cfg.AgentworksTimeout != 45*time.Second {
+		t.Errorf("AgentworksTimeout = %v, want 45s default when unset", cfg.AgentworksTimeout)
+	}
+	if cfg.AgentworksPollInterval != 5*time.Second {
+		t.Errorf("AgentworksPollInterval = %v, want 5s default when unset", cfg.AgentworksPollInterval)
+	}
+}
+
+// TestExecutePollLoopEnvBase10 pins whole-seconds parsing to base 10. viper's
+// GetInt parses with base 0, which would read a leading-zero value as octal and
+// accept a hex prefix; the resolver must instead treat "010" as ten seconds and
+// reject "0x10" (falling back to the default), matching the documented contract.
+func TestExecutePollLoopEnvBase10(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_NGSIEM_POLL_INTERVAL", "010")
+	t.Setenv("FALCON_MCP_NGSIEM_TIMEOUT", "0x10")
+
+	cfg, err := resolveArgs(t, nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("resolve returned nil config")
+	}
+	if cfg.NgsiemPollInterval != 10*time.Second {
+		t.Errorf("NgsiemPollInterval = %v, want 10s (base-10 parse of \"010\")", cfg.NgsiemPollInterval)
+	}
+	if cfg.NgsiemTimeout != 300*time.Second {
+		t.Errorf("NgsiemTimeout = %v, want 300s default (\"0x10\" is not a base-10 integer)", cfg.NgsiemTimeout)
+	}
+}
+
 func TestExecuteStatelessHTTPEnv(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", validID)
 	t.Setenv("FALCON_CLIENT_SECRET", validSecret)

@@ -248,6 +248,11 @@ func bindEnv(v *viper.Viper) {
 	_ = v.BindEnv("api_response_timeout", "FALCON_MCP_API_RESPONSE_TIMEOUT")
 	_ = v.BindEnv("http_idle_timeout", "FALCON_MCP_HTTP_IDLE_TIMEOUT")
 	_ = v.BindEnv("max_idle_conns_per_host", "FALCON_MCP_MAX_IDLE_CONNS_PER_HOST")
+	// Module poll-loop knobs, whole seconds, matching upstream falcon-mcp.
+	_ = v.BindEnv("ngsiem_poll_interval", "FALCON_MCP_NGSIEM_POLL_INTERVAL")
+	_ = v.BindEnv("ngsiem_timeout", "FALCON_MCP_NGSIEM_TIMEOUT")
+	_ = v.BindEnv("agentworks_poll_interval", "FALCON_MCP_AGENTWORKS_POLL_INTERVAL")
+	_ = v.BindEnv("agentworks_timeout", "FALCON_MCP_AGENTWORKS_TIMEOUT")
 }
 
 // newViper returns a viper instance with the INI codec registered. viper v1.20+
@@ -290,7 +295,28 @@ func resolve(v *viper.Viper) config.Config {
 		ResponseHeaderTimeout: v.GetDuration("api_response_timeout"),
 		IdleTimeout:           v.GetDuration("http_idle_timeout"),
 		MaxIdleConnsPerHost:   v.GetInt("max_idle_conns_per_host"),
+
+		// Whole-seconds knobs: a base-10 parse yields 0 when unset or not a
+		// plain integer, and config.Load then supplies the module default.
+		NgsiemPollInterval:     secondsDuration(v.GetString("ngsiem_poll_interval")),
+		NgsiemTimeout:          secondsDuration(v.GetString("ngsiem_timeout")),
+		AgentworksPollInterval: secondsDuration(v.GetString("agentworks_poll_interval")),
+		AgentworksTimeout:      secondsDuration(v.GetString("agentworks_timeout")),
 	}
+}
+
+// secondsDuration parses a whole-seconds count and returns it as a Duration,
+// yielding 0 when s is empty or not a base-10 integer so config.Load applies
+// the module default. It uses strconv.Atoi rather than viper.GetInt because
+// viper parses with base 0, which would treat a leading-zero value as octal and
+// silently accept hex; base-10 keeps the whole-seconds contract these env vars
+// document.
+func secondsDuration(s string) time.Duration {
+	secs, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // searchPaths returns the directories scanned for a config file named

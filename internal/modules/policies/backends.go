@@ -92,13 +92,16 @@ func convertSettings[T any](settings any) (T, error) {
 }
 
 // actionBody builds the shared MsaEntityActionRequestV2 for a perform-action
-// call, attaching a group_id action parameter for group actions.
-func actionBody(ids []string, groupID string) *models.MsaEntityActionRequestV2 {
+// call. For group actions it attaches an action parameter whose name is the
+// body key the API expects for that action (group_id for host-group actions,
+// rule_group_id for rule-group actions); other actions carry no parameters.
+func actionBody(actionName string, ids []string, groupID string) *models.MsaEntityActionRequestV2 {
 	body := &models.MsaEntityActionRequestV2{Ids: ids}
 	if groupID != "" {
-		name := "group_id"
-		val := groupID
-		body.ActionParameters = []*models.MsaspecActionParameter{{Name: &name, Value: &val}}
+		if name, ok := groupActionParam[actionName]; ok {
+			val := groupID
+			body.ActionParameters = []*models.MsaspecActionParameter{{Name: &name, Value: &val}}
+		}
 	}
 	return body
 }
@@ -193,7 +196,7 @@ func (b preventionBackend) deleteByIDs(ctx context.Context, ids []string) (any, 
 func (b preventionBackend) action(ctx context.Context, actionName string, ids []string, groupID string) ([]map[string]any, any, error) {
 	p := prevention_policies.NewPerformPreventionPoliciesActionParamsWithContext(ctx)
 	p.ActionName = actionName
-	p.Body = actionBody(ids, groupID)
+	p.Body = actionBody(actionName, ids, groupID)
 	resp, err := b.c.PerformPreventionPoliciesAction(p)
 	if err != nil {
 		return nil, nil, err
@@ -303,7 +306,7 @@ func (b sensorUpdateBackend) deleteByIDs(ctx context.Context, ids []string) (any
 func (b sensorUpdateBackend) action(ctx context.Context, actionName string, ids []string, groupID string) ([]map[string]any, any, error) {
 	p := sensor_update_policies.NewPerformSensorUpdatePoliciesActionParamsWithContext(ctx)
 	p.ActionName = actionName
-	p.Body = actionBody(ids, groupID)
+	p.Body = actionBody(actionName, ids, groupID)
 	resp, err := b.c.PerformSensorUpdatePoliciesAction(p)
 	if err != nil {
 		return nil, nil, err
@@ -407,7 +410,7 @@ func (b firewallBackend) deleteByIDs(ctx context.Context, ids []string) (any, er
 func (b firewallBackend) action(ctx context.Context, actionName string, ids []string, groupID string) ([]map[string]any, any, error) {
 	p := firewall_policies.NewPerformFirewallPoliciesActionParamsWithContext(ctx)
 	p.ActionName = actionName
-	p.Body = actionBody(ids, groupID)
+	p.Body = actionBody(actionName, ids, groupID)
 	resp, err := b.c.PerformFirewallPoliciesAction(p)
 	if err != nil {
 		return nil, nil, err
@@ -538,7 +541,7 @@ func (b deviceControlBackend) deleteByIDs(ctx context.Context, ids []string) (an
 func (b deviceControlBackend) action(ctx context.Context, actionName string, ids []string, groupID string) ([]map[string]any, any, error) {
 	p := device_control_policies.NewPerformDeviceControlPoliciesActionParamsWithContext(ctx)
 	p.ActionName = actionName
-	p.Body = actionBody(ids, groupID)
+	p.Body = actionBody(actionName, ids, groupID)
 	resp, err := b.c.PerformDeviceControlPoliciesAction(p)
 	if err != nil {
 		return nil, nil, err
@@ -655,7 +658,7 @@ func (b responseBackend) deleteByIDs(ctx context.Context, ids []string) (any, er
 func (b responseBackend) action(ctx context.Context, actionName string, ids []string, groupID string) ([]map[string]any, any, error) {
 	p := response_policies.NewPerformRTResponsePoliciesActionParamsWithContext(ctx)
 	p.ActionName = actionName
-	p.Body = actionBody(ids, groupID)
+	p.Body = actionBody(actionName, ids, groupID)
 	resp, err := b.c.PerformRTResponsePoliciesAction(p)
 	if err != nil {
 		return nil, nil, err
@@ -767,7 +770,7 @@ func (b contentUpdateBackend) deleteByIDs(ctx context.Context, ids []string) (an
 func (b contentUpdateBackend) action(ctx context.Context, actionName string, ids []string, groupID string) ([]map[string]any, any, error) {
 	p := content_update_policies.NewPerformContentUpdatePoliciesActionParamsWithContext(ctx)
 	p.ActionName = actionName
-	p.Body = actionBody(ids, groupID)
+	p.Body = actionBody(actionName, ids, groupID)
 	resp, err := b.c.PerformContentUpdatePoliciesAction(p)
 	if err != nil {
 		return nil, nil, err

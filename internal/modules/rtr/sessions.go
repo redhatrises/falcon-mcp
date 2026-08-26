@@ -294,20 +294,27 @@ func auditSessionsFQLBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 }
 
 // domainAPIErrToDetails flattens a gofalcon *models.DomainAPIError into the
-// base.FQLErrorDetail slice an FQL-error SearchResult carries. DomainAPIError
-// carries a single flat Code/Message pair (no Errors slice), so this yields one
-// detail — or none when the payload or its fields are absent.
+// base.FQLErrorDetail slice an FQL-error SearchResult carries. The payload
+// carries its code/message pairs in an Errors slice, so this yields one detail
+// per entry — or none when the payload is absent or reports no errors.
 func domainAPIErrToDetails(e *models.DomainAPIError) []base.FQLErrorDetail {
 	if e == nil {
 		return nil
 	}
-	var code int32
-	if e.Code != nil {
-		code = *e.Code
+	details := make([]base.FQLErrorDetail, 0, len(e.Errors))
+	for _, ae := range e.Errors {
+		if ae == nil {
+			continue
+		}
+		var code int32
+		if ae.Code != nil {
+			code = *ae.Code
+		}
+		var msg string
+		if ae.Message != nil {
+			msg = *ae.Message
+		}
+		details = append(details, base.FQLErrorDetail{Code: code, Message: msg})
 	}
-	var msg string
-	if e.Message != nil {
-		msg = *e.Message
-	}
-	return []base.FQLErrorDetail{{Code: code, Message: msg}}
+	return details
 }

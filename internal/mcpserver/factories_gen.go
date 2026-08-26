@@ -3,6 +3,7 @@
 package mcpserver
 
 import (
+	"github.com/crowdstrike/falcon-mcp/internal/modules/agentworks"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/cases"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/cloud"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/correlation_rules"
@@ -12,6 +13,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/discover"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/exclusions"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/firewall"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/fusion"
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/idp"
@@ -28,12 +30,14 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/serverless"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/shield"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/spotlight"
+	zerotrustassessment "github.com/crowdstrike/falcon-mcp/internal/modules/zero_trust_assessment"
 )
 
 // moduleFactories returns every discovered module's factory, ordered by package
 // directory name for deterministic module ordering.
 func moduleFactories() []registry.Factory {
 	return []registry.Factory{
+		agentworks.Factory,
 		cases.Factory,
 		cloud.Factory,
 		correlation_rules.Factory,
@@ -43,6 +47,7 @@ func moduleFactories() []registry.Factory {
 		discover.Factory,
 		exclusions.Factory,
 		firewall.Factory,
+		fusion.Factory,
 		hostgroups.Factory,
 		hosts.Factory,
 		idp.Factory,
@@ -58,5 +63,6 @@ func moduleFactories() []registry.Factory {
 		serverless.Factory,
 		shield.Factory,
 		spotlight.Factory,
+		zerotrustassessment.Factory,
 	}
 }

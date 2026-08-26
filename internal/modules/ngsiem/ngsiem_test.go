@@ -21,6 +21,8 @@ var testLogger = testutil.DiscardLogger()
 
 func boolp(b bool) *bool { return &b }
 
+func int64p(n int64) *int64 { return &n }
+
 // call records the arguments of one API call so tests can assert on what the
 // handler submitted (operation, repository, job id, body).
 type call struct {
@@ -105,6 +107,14 @@ func pollCancelled() *ngsiem.GetSearchStatusV1OK {
 	return &ngsiem.GetSearchStatusV1OK{Payload: &models.APIQueryJobsResults{Done: boolp(true), Cancelled: boolp(true)}}
 }
 
+// pollDoneMeta returns a completed job carrying the given metadata alongside its
+// events, so tests can assert the job-metadata envelope the handler builds.
+func pollDoneMeta(meta *models.APIQueryMetadataJSON, events ...any) *ngsiem.GetSearchStatusV1OK {
+	resp := pollDone(events...)
+	resp.Payload.MetaData = meta
+	return resp
+}
+
 // TestSearchNGSIEMSuccess verifies a search that completes on the first poll
 // returns the events, and that the start body carries the CQL query and the
 // start time as an epoch-millisecond string.
@@ -128,7 +138,7 @@ func TestSearchNGSIEMSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	if out.Total != 2 || len(out.Results) != 2 {
+	if len(out.Results) != 2 {
 		t.Fatalf("expected 2 events, got %+v", out)
 	}
 
@@ -177,7 +187,7 @@ func TestSearchNGSIEMMultiplePolls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	if out.Total != 1 {
+	if len(out.Results) != 1 {
 		t.Fatalf("expected 1 event, got %+v", out)
 	}
 	// 1 start + 3 polls.
@@ -372,7 +382,7 @@ func TestSearchNGSIEMOptionalEndAndRepository(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	if out.Results == nil || len(out.Results) != 0 || out.Total != 0 {
+	if out.Results == nil || len(out.Results) != 0 {
 		t.Fatalf("expected empty non-nil results, got %+v", out)
 	}
 
@@ -534,8 +544,8 @@ func TestSearchNGSIEMEmptyResultHint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	if out.Hint != cqlEmptyHint {
-		t.Errorf("Hint = %q, want cqlEmptyHint", out.Hint)
+	if out.Hint != cqlUnscannedZeroHint {
+		t.Errorf("Hint = %q, want cqlUnscannedZeroHint (job scanned no events)", out.Hint)
 	}
 	if out.QueryUsed != query {
 		t.Errorf("QueryUsed = %q, want %q", out.QueryUsed, query)
@@ -545,39 +555,155 @@ func TestSearchNGSIEMEmptyResultHint(t *testing.T) {
 	}
 }
 
-// TestDurationFromEnvUnset verifies an absent env var yields the default. The
-// var name is unique to this test and set by nothing else, so its absence is
-// reliable without needing to unset it.
-func TestDurationFromEnvUnset(t *testing.T) {
-	def := 7 * time.Second
-	if got := durationFromEnv("FALCON_MCP_NGSIEM_TEST_DURATION_UNSET", def); got != def {
-		t.Errorf("durationFromEnv(unset)=%v, want %v", got, def)
+// TestSearchNGSIEMJobEnvelope verifies a completed job's metadata is surfaced in
+// the result's job object: counts as-is, epoch-ms timestamps rendered as UTC
+// ISO 8601, the parsed query pulled from filterQuery.queryString, and both
+// top-level and metadata warnings concatenated. The success path must not carry
+// the CQL guide or a hint.
+func TestSearchNGSIEMJobEnvelope(t *testing.T) {
+	t.Parallel()
+
+	meta := &models.APIQueryMetadataJSON{
+		EventCount:      int64p(2),
+		ProcessedEvents: int64p(1500),
+		ProcessedBytes:  int64p(4096),
+		TimeMillis:      int64p(37),
+		IsAggregate:     boolp(false),
+		QueryStart:      int64p(1735689600000), // 2025-01-01T00:00:00Z
+		QueryEnd:        int64p(1738800000000), // 2025-02-06T00:00:00Z
+		FilterQuery:     map[string]any{"queryString": "#event_simpleName=ProcessRollup2"},
+		Warnings:        []string{"meta warning"},
+	}
+	done := pollDoneMeta(meta, map[string]any{"aid": "agent-1"})
+	done.Payload.Warnings = []*models.APIWarningJSON{{Message: new("top warning")}}
+
+	f := &fakeNGSIEM{startResp: startOK("job-meta"), pollResps: []*ngsiem.GetSearchStatusV1OK{done}}
+	m := newModule(f)
+
+	_, out, err := m.searchNGSIEM(context.Background(), nil, SearchInput{
+		QueryString: "#event_simpleName=ProcessRollup2",
+		Start:       "2025-01-01T00:00:00Z",
+		Repository:  "search-all",
+	})
+	if err != nil {
+		t.Fatalf("searchNGSIEM: %v", err)
+	}
+	if out.Job == nil {
+		t.Fatal("expected a job envelope on a completed search")
+	}
+	job := out.Job
+	if job.JobID != "job-meta" || job.Repository != "search-all" {
+		t.Errorf("job id/repository = %q/%q, want job-meta/search-all", job.JobID, job.Repository)
+	}
+	if job.EventCount == nil || *job.EventCount != 2 {
+		t.Errorf("event_count = %v, want 2", job.EventCount)
+	}
+	if job.ProcessedEvents == nil || *job.ProcessedEvents != 1500 {
+		t.Errorf("processed_events = %v, want 1500", job.ProcessedEvents)
+	}
+	if job.ProcessedBytes == nil || *job.ProcessedBytes != 4096 {
+		t.Errorf("processed_bytes = %v, want 4096", job.ProcessedBytes)
+	}
+	if job.DurationMS == nil || *job.DurationMS != 37 {
+		t.Errorf("duration_ms = %v, want 37", job.DurationMS)
+	}
+	if job.ParsedQuery != "#event_simpleName=ProcessRollup2" {
+		t.Errorf("parsed_query = %q", job.ParsedQuery)
+	}
+	if job.SearchStart != "2025-01-01T00:00:00Z" {
+		t.Errorf("search_start = %q, want 2025-01-01T00:00:00Z", job.SearchStart)
+	}
+	if job.SearchEnd != "2025-02-06T00:00:00Z" {
+		t.Errorf("search_end = %q, want 2025-02-06T00:00:00Z", job.SearchEnd)
+	}
+	if len(job.Warnings) != 2 {
+		t.Errorf("warnings = %+v, want 2 (top-level + meta)", job.Warnings)
+	}
+	// Success path: no guide/hint.
+	if out.CQLGuide != "" || out.Hint != "" {
+		t.Errorf("success path should carry no guide/hint, got guide=%d bytes hint=%q", len(out.CQLGuide), out.Hint)
+	}
+	if out.QueryUsed != "#event_simpleName=ProcessRollup2" {
+		t.Errorf("query_used = %q", out.QueryUsed)
 	}
 }
 
-// TestDurationFromEnvParsing covers the env override parsing: a valid positive
-// integer is used; invalid or non-positive values fall back to the default.
-func TestDurationFromEnvParsing(t *testing.T) {
-	const name = "FALCON_MCP_NGSIEM_TEST_DURATION"
-	def := 7 * time.Second
+// TestSearchNGSIEMConfirmedZeroHint verifies that a zero-row result from a job
+// that did scan events carries the confirmed-negative hint with the scanned
+// count formatted with thousands separators.
+func TestSearchNGSIEMConfirmedZeroHint(t *testing.T) {
+	t.Parallel()
 
-	tests := []struct {
-		name  string
-		value string
-		want  time.Duration
-	}{
-		{"valid", "10", 10 * time.Second},
-		{"zero", "0", def},
-		{"negative", "-3", def},
-		{"nonnumeric", "abc", def},
+	meta := &models.APIQueryMetadataJSON{ProcessedEvents: int64p(1234567)}
+	f := &fakeNGSIEM{startResp: startOK("job-confirmed"), pollResps: []*ngsiem.GetSearchStatusV1OK{pollDoneMeta(meta)}}
+	m := newModule(f)
+
+	_, out, err := m.searchNGSIEM(context.Background(), nil, SearchInput{
+		QueryString: "#event_simpleName=ProcessRollup2 | tail(0)",
+		Start:       "2025-01-01T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("searchNGSIEM: %v", err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(name, tc.value)
-			if got := durationFromEnv(name, def); got != tc.want {
-				t.Errorf("durationFromEnv(%q)=%v, want %v", tc.value, got, tc.want)
+	if len(out.Results) != 0 {
+		t.Fatalf("expected zero rows, got %+v", out.Results)
+	}
+	want := "scanned 1,234,567 events"
+	if !strings.Contains(out.Hint, want) {
+		t.Errorf("Hint = %q, want it to contain %q", out.Hint, want)
+	}
+	if out.CQLGuide != cqlGuide {
+		t.Errorf("zero-row result should still carry the CQL guide")
+	}
+}
+
+// TestSearchNGSIEMRepositoryValidation verifies unsafe repository names are
+// rejected with a plain validation error before any API call is made.
+func TestSearchNGSIEMRepositoryValidation(t *testing.T) {
+	t.Parallel()
+
+	for _, repo := range []string{"a/b", `a\b`, "a%b", ".", ".."} {
+		t.Run(repo, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeNGSIEM{}
+			m := newModule(f)
+			_, _, err := m.searchNGSIEM(context.Background(), nil, SearchInput{
+				QueryString: "aid=abc123",
+				Start:       "2025-01-01T00:00:00Z",
+				Repository:  repo,
+			})
+			if err == nil || !errors.Is(err, errSearch) {
+				t.Fatalf("expected errSearch for repository %q, got %v", repo, err)
+			}
+			if len(f.calls) != 0 {
+				t.Fatalf("expected no API calls for invalid repository %q, got %+v", repo, f.calls)
 			}
 		})
+	}
+}
+
+// TestGroupThousands covers the comma-grouping helper across boundary lengths
+// and a negative value.
+func TestGroupThousands(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0"},
+		{7, "7"},
+		{42, "42"},
+		{100, "100"},
+		{1000, "1,000"},
+		{12345, "12,345"},
+		{1234567, "1,234,567"},
+		{-1234, "-1,234"},
+	}
+	for _, tc := range tests {
+		if got := groupThousands(tc.in); got != tc.want {
+			t.Errorf("groupThousands(%d) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 
