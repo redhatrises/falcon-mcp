@@ -7,6 +7,7 @@ import _ "embed"
 //go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in cspm_assets_fql_guide.md
 //go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in cspm_iom_findings_fql_guide.md
 //go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in cloud_risks_fql_guide.md
+//go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in cloud_insights_fql_guide.md
 
 // FQL guide resource URIs, mirroring the Python falcon-mcp cloud module.
 const (
@@ -15,6 +16,7 @@ const (
 	cspmAssetsFQLGuideURI            = "falcon://cloud/cspm-assets/fql-guide"
 	cspmIOMFindingsFQLGuideURI       = "falcon://cloud/cspm-iom-findings/fql-guide"
 	cloudRisksFQLGuideURI            = "falcon://cloud/cloud-risks/fql-guide"
+	cloudInsightsFQLGuideURI         = "falcon://cloud/cloud-insights/fql-guide"
 )
 
 // kubernetesContainersFQLGuide is the FQL documentation for searching and
@@ -46,3 +48,9 @@ var cspmIOMFindingsFQLGuide string
 //
 //go:embed cloud_risks_fql_guide.md
 var cloudRisksFQLGuide string
+
+// cloudInsightsFQLGuide is the FQL documentation for searching cloud insights.
+// Whitespace is normalized by `go generate`.
+//
+//go:embed cloud_insights_fql_guide.md
+var cloudInsightsFQLGuide string

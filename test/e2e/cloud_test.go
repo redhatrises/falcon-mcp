@@ -153,4 +153,54 @@ var _ = Describe("cloud module", Label("integration", "cloud"), func() {
 			return idsOf(found, "id")
 		}).Should(ContainElement(id), "created suppression rule not found in search")
 	})
+
+	// ---- Cloud Insights (#535) ----------------------------------------------
+
+	It("lists cloud insight definitions with insight_id", func() {
+		res := callOK(ctx, "falcon_list_cloud_insight_definitions", map[string]any{"limit": 5})
+		// The definition catalog is static (Policy Framework rules), so it should
+		// always return entries regardless of tenant data.
+		expectSearchReturnsDetails(res, "insight_id", "category")
+		Expect(resources(res)).NotTo(BeEmpty(), "expected a non-empty insight-definition catalog")
+	})
+
+	It("lists cloud insight definitions filtered by category", func() {
+		res := callOK(ctx, "falcon_list_cloud_insight_definitions", map[string]any{
+			"categories": []any{"Identity"},
+			"limit":      5,
+		})
+		expectSearchReturnsDetails(res, "insight_id", "category")
+	})
+
+	It("searches cloud insights and returns full asset records", func() {
+		res := callOK(ctx, "falcon_search_cloud_insights", map[string]any{"limit": 3})
+		expectNoToolError(res)
+		skipIfEmpty(res, "no assets carry insights in this tenant")
+		expectSearchReturnsDetails(res, "asset_id", "insights")
+	})
+
+	It("returns an FQL error result for an invalid cloud insights filter", func() {
+		res := callOK(ctx, "falcon_search_cloud_insights", map[string]any{
+			"filter": "definitely_not_a_field:'x'",
+			"limit":  3,
+		})
+		// Invalid FQL is a data result, not a protocol/tool error.
+		obj := structured(res)
+		Expect(obj).To(HaveKey("errors"), "expected FQL error details in the result")
+	})
+
+	It("gets cloud asset insights by asset id found from search", func() {
+		cs := newSession(ctx)
+		search := callTool(ctx, cs, "falcon_search_cloud_insights", map[string]any{"limit": 1})
+		expectNoToolError(search)
+		id := firstResourceID(search, "asset_id")
+
+		details := callTool(ctx, cs, "falcon_get_cloud_asset_insights", map[string]any{"asset_ids": []string{id}})
+		expectNoToolError(details)
+		got := resources(details)
+		Expect(got).NotTo(BeEmpty(), "expected insight detail for the searched asset")
+		obj, ok := got[0].(map[string]any)
+		Expect(ok).To(BeTrue(), "asset insight detail should be an object, got %T", got[0])
+		Expect(obj).To(HaveKey("insights"))
+	})
 })

@@ -164,22 +164,25 @@ func TestSearchPoliciesInvalidSort(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		sort    string
-		wantErr bool
+		name       string
+		policyType string
+		sort       string
+		wantErr    bool
 	}{
-		{"platform_name rejected", "platform_name.asc", true},
-		{"platform_name bare rejected", "platform_name", true},
-		{"unknown field rejected", "bogus.desc", true},
-		{"valid modified_timestamp", "modified_timestamp.desc", false},
-		{"valid name pipe dir", "name|asc", false},
-		{"empty ok", "", false},
+		{"platform_name rejected", "prevention", "platform_name.asc", true},
+		{"platform_name bare rejected", "prevention", "platform_name", true},
+		{"unknown field rejected", "prevention", "bogus.desc", true},
+		{"valid modified_timestamp", "prevention", "modified_timestamp.desc", false},
+		{"pipe direction rejected", "prevention", "name|asc", true},
+		{"created_by rejected on device_control", "device_control", "created_by.desc", true},
+		{"created_by allowed on prevention", "prevention", "created_by.desc", false},
+		{"empty ok", "prevention", "", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			m := moduleWith("prevention", &fakeBackend{})
-			_, _, err := m.searchPolicies(context.Background(), nil, SearchInput{PolicyType: "prevention", Sort: tc.sort})
+			m := moduleWith(tc.policyType, &fakeBackend{})
+			_, _, err := m.searchPolicies(context.Background(), nil, SearchInput{PolicyType: tc.policyType, Sort: tc.sort})
 			if tc.wantErr && !errors.Is(err, base.ErrInvalidInput) {
 				t.Fatalf("sort %q: expected base.ErrInvalidInput, got %v", tc.sort, err)
 			}
@@ -565,14 +568,34 @@ func TestSetPolicyPrecedence(t *testing.T) {
 
 func TestValidateSort(t *testing.T) {
 	t.Parallel()
-	if err := validateSort("platform_name.desc"); err == nil {
-		t.Fatal("expected platform_name sort rejected")
+	tests := []struct {
+		name       string
+		policyType string
+		sort       string
+		wantErr    bool
+	}{
+		{"empty is valid", "prevention", "", false},
+		{"dot form valid", "prevention", "modified_timestamp.desc", false},
+		{"bare field valid", "prevention", "precedence", false},
+		{"platform_name rejected", "prevention", "platform_name.desc", true},
+		{"unknown field rejected", "prevention", "bogus.asc", true},
+		{"pipe form rejected", "prevention", "modified_timestamp|desc", true},
+		{"created_by rejected on device_control", "device_control", "created_by.desc", true},
+		{"modified_by rejected on device_control", "device_control", "modified_by", true},
+		{"created_by allowed on prevention", "prevention", "created_by.desc", false},
+		{"modified_by allowed on firewall", "firewall", "modified_by", false},
 	}
-	if err := validateSort("precedence"); err != nil {
-		t.Fatalf("expected precedence valid, got %v", err)
-	}
-	if err := validateSort(""); err != nil {
-		t.Fatalf("expected empty valid, got %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateSort(tt.policyType, tt.sort)
+			if tt.wantErr && err == nil {
+				t.Fatalf("validateSort(%q, %q): expected error, got nil", tt.policyType, tt.sort)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("validateSort(%q, %q): unexpected error %v", tt.policyType, tt.sort, err)
+			}
+		})
 	}
 }
 

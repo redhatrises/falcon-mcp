@@ -126,6 +126,13 @@ var supportsSettings = map[string]bool{
 // returns HTTP 500 on every policy type.
 var safeSortFields = actionSet("name", "created_timestamp", "modified_timestamp", "enabled", "created_by", "modified_by", "precedence")
 
+// unsafeSortFieldsByType lists otherwise-valid sort fields that return HTTP 500
+// on a specific policy type but work on the others. device_control rejects
+// created_by/modified_by; every other type accepts them.
+var unsafeSortFieldsByType = map[string]map[string]bool{
+	"device_control": actionSet("created_by", "modified_by"),
+}
+
 // actionSet builds a set from the given values.
 func actionSet(values ...string) map[string]bool {
 	m := make(map[string]bool, len(values))
@@ -309,7 +316,7 @@ type SearchInput struct {
 	Filter     string `json:"filter,omitempty" jsonschema:"FQL filter. For name matching use the contains operator name:~'value' (a name:'*value*' glob matches nothing); name is not filterable for sensor_update/content_update. See falcon://policies/search/fql-guide."`
 	Limit      int    `json:"limit,omitempty" jsonschema:"maximum policies to return [1-500]"`
 	Offset     int    `json:"offset,omitempty" jsonschema:"starting index of the result set"`
-	Sort       string `json:"sort,omitempty" jsonschema:"FQL sort (e.g. modified_timestamp.desc). Do NOT sort by platform_name (returns HTTP 500). See falcon://policies/search/fql-guide."`
+	Sort       string `json:"sort,omitempty" jsonschema:"FQL sort using the dot form (e.g. modified_timestamp.desc); the pipe form is rejected. Do NOT sort by platform_name (HTTP 500), nor by created_by/modified_by on device_control. See falcon://policies/search/fql-guide."`
 }
 
 func (m *Module) searchPolicies(ctx context.Context, _ *mcp.CallToolRequest, in SearchInput) (*mcp.CallToolResult, base.SearchResult[map[string]any], error) {
@@ -318,7 +325,7 @@ func (m *Module) searchPolicies(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if !ok {
 		return nil, zero, invalidType(in.PolicyType)
 	}
-	if err := validateSort(in.Sort); err != nil {
+	if err := validateSort(in.PolicyType, in.Sort); err != nil {
 		return nil, zero, err
 	}
 	m.Logger.Debug("search_policies", "type", in.PolicyType, "filter", in.Filter, "limit", in.Limit, "offset", in.Offset, "sort", in.Sort)
@@ -375,18 +382,26 @@ func (m *Module) searchPolicyMembers(ctx context.Context, _ *mcp.CallToolRequest
 	return nil, base.Found(members, in.Filter).WithMeta(meta), nil
 }
 
-// validateSort rejects a platform_name sort (HTTP 500) and any sort base not in
-// safeSortFields. It accepts an optional .asc/.desc/|asc/|desc direction suffix.
-func validateSort(sort string) error {
+// validateSort rejects sort expressions the policy APIs reject or answer with an
+// HTTP 500: the pipe direction form (only the dot form is accepted), a
+// platform_name sort (500 on every type), any base not in safeSortFields, and
+// per-type unsafe fields such as created_by/modified_by on device_control.
+func validateSort(policyType, sort string) error {
 	if sort == "" {
 		return nil
 	}
-	field := strings.TrimSpace(strings.SplitN(strings.SplitN(sort, ".", 2)[0], "|", 2)[0])
+	if strings.Contains(sort, "|") {
+		return base.InvalidInput("search policies", fmt.Sprintf("invalid sort separator in %q; the policy APIs accept only the dot form — use %q instead", sort, strings.ReplaceAll(sort, "|", ".")))
+	}
+	field := strings.TrimSpace(strings.SplitN(sort, ".", 2)[0])
 	if field == "platform_name" {
 		return base.InvalidInput("search policies", "sorting by 'platform_name' is not supported (the API returns HTTP 500); use name, created_timestamp, modified_timestamp, enabled, created_by, modified_by, or precedence")
 	}
 	if !safeSortFields[field] {
 		return base.InvalidInput("search policies", fmt.Sprintf("invalid sort field %q; valid sort fields are name, created_timestamp, modified_timestamp, enabled, created_by, modified_by, precedence", field))
+	}
+	if unsafeSortFieldsByType[policyType][field] {
+		return base.InvalidInput("search policies", fmt.Sprintf("sorting by %q is not supported for policy_type %q (the API returns HTTP 500), though it works for other types", field, policyType))
 	}
 	return nil
 }

@@ -3,7 +3,7 @@ module github.com/crowdstrike/falcon-mcp
 go 1.26.4
 
 require (
-	github.com/crowdstrike/gofalcon v0.22.1-0.20260825181438-6258503751bf
+	github.com/crowdstrike/gofalcon v0.22.1-0.20260828160402-6f88a717d407
 	github.com/go-openapi/runtime v0.27.1
 	github.com/go-openapi/strfmt v0.22.2
 	github.com/go-viper/encoding/ini v0.1.1

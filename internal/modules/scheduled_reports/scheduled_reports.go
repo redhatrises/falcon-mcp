@@ -15,11 +15,10 @@
 // a POST body — the gofalcon *Params expose an `Ids` field, mirroring the Python
 // module's use_params=True.
 //
-// download_report_execution needs a custom response reader: the gofalcon
-// generated reader for the download endpoint discards the 200 body (its OK type
-// carries only headers), so executionsClient wraps the client to recover the raw
-// bytes and Content-Type, matching the Python module which returns the CSV text
-// or JSON records verbatim.
+// download_report_execution passes a buffer to the generated download client to
+// capture the raw 200 body, then branches on the response Content-Type the OK
+// type reports to distinguish CSV, JSON, and rejected PDF results. It matches
+// the Python module, returning the CSV text or JSON records verbatim.
 package scheduledreports
 
 import (
@@ -36,7 +35,6 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client/report_executions"
 	"github.com/crowdstrike/gofalcon/falcon/client/scheduled_reports"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/go-openapi/runtime"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -72,14 +70,14 @@ var scopeScheduledReports = base.Scope{Name: "Scheduled Reports", Read: true}
 var errUnsupportedFormat = errors.New("scheduledreports: unsupported report format")
 
 // Factory builds the scheduled_reports module from shared deps. It consumes two
-// gofalcon sub-clients; the report_executions client is wrapped by
-// executionsClient so the download handler can recover the raw body the
-// generated reader discards. The generated aggregator (internal/mcpserver)
-// collects the Factory, so the module needs no init side effect.
+// gofalcon sub-clients directly; the download handler recovers the raw body by
+// passing a buffer to the report_executions download client. The generated
+// aggregator (internal/mcpserver) collects the Factory, so the module needs no
+// init side effect.
 var Factory registry.Factory = func(d registry.Deps) base.Module {
 	return &Module{
 		Reports:     d.API.ScheduledReports,
-		Executions:  executionsClient{ClientService: d.API.ReportExecutions},
+		Executions:  d.API.ReportExecutions,
 		Concurrency: d.Concurrency,
 		Logger:      d.Logger,
 	}
@@ -95,13 +93,15 @@ type reportsAPI interface {
 }
 
 // executionsAPI is the minimal slice of the gofalcon report_executions client
-// this module consumes. ReportExecutionsDownloadGet returns a downloadPayload
-// (raw body + Content-Type) rather than the gofalcon typed OK, because the
-// generated reader discards the download body (see executionsClient).
+// this module consumes, satisfied directly by the gofalcon ClientService.
+// ReportExecutionsDownloadGet writes the raw 200 body to the supplied writer and
+// reports its Content-Type on the returned OK; downloadReportExecution passes a
+// buffer and branches on that Content-Type to distinguish CSV, JSON, and
+// rejected PDF results.
 type executionsAPI interface {
 	ReportExecutionsQuery(params *report_executions.ReportExecutionsQueryParams, opts ...report_executions.ClientOption) (*report_executions.ReportExecutionsQueryOK, error)
 	ReportExecutionsGet(params *report_executions.ReportExecutionsGetParams, opts ...report_executions.ClientOption) (*report_executions.ReportExecutionsGetOK, error)
-	ReportExecutionsDownloadGet(params *report_executions.ReportExecutionsDownloadGetParams, opts ...report_executions.ClientOption) (*downloadPayload, error)
+	ReportExecutionsDownloadGet(params *report_executions.ReportExecutionsDownloadGetParams, writer io.Writer, opts ...report_executions.ClientOption) (*report_executions.ReportExecutionsDownloadGetOK, error)
 }
 
 // Module registers the scheduled_reports tools. It holds only the shared,
@@ -387,38 +387,38 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 	params := report_executions.NewReportExecutionsDownloadGetParamsWithContext(ctx)
 	params.Ids = id
 
-	payload, err := m.Executions.ReportExecutionsDownloadGet(params)
+	var buf bytes.Buffer
+	ok, err := m.Executions.ReportExecutionsDownloadGet(params, &buf)
 	if e := base.APIError(err, nil, scopeScheduledReports); e != nil {
 		return nil, zero, e
 	}
-	if payload == nil {
-		return nil, zero, fmt.Errorf("%w: empty download response", base.ErrInvalidInput)
+	body := buf.Bytes()
+
+	contentType := ""
+	if ok != nil {
+		contentType = ok.ContentType
 	}
 
-	// PDF is a binary format that cannot be handed to an LLM; surface the same
-	// guidance the Python module returns rather than dumping raw bytes.
-	if len(payload.Body) >= 4 && string(payload.Body[:4]) == "%PDF" {
+	// PDF is a binary format that cannot be handed to an LLM; reject it — whether
+	// the Content-Type declares it or the body carries the %PDF magic bytes —
+	// with the same guidance the Python module returns rather than dumping bytes.
+	if strings.Contains(contentType, "application/pdf") || (len(body) >= 4 && string(body[:4]) == "%PDF") {
 		return nil, zero, fmt.Errorf("%w: PDF format not supported for LLM consumption. "+
 			"Please configure the scheduled report to use CSV or JSON format instead", errUnsupportedFormat)
 	}
 
-	// JSON format: the download endpoint returns the report rows as a bare
-	// top-level JSON array (e.g. `[{...},{...}]`, or `[]` when empty) — not a
-	// {"resources": [...]} envelope. Return that array verbatim as Resources.
-	// Some endpoints/versions may wrap the rows in an object envelope, so an
-	// object body is unwrapped defensively.
-	if isJSONContentType(payload.ContentType) {
-		trimmed := bytes.TrimSpace(payload.Body)
+	// A JSON-format execution is served as application/json, mirroring the Python
+	// module's bytes-vs-dict split on content type. Its rows arrive as a bare
+	// top-level array (`[{...},{...}]`, or `[]` when empty) — not a
+	// {"resources": [...]} envelope — so that array is returned verbatim as
+	// Resources. An empty body maps to an empty array, and an object body is
+	// unwrapped defensively in case a version wraps the rows in an envelope.
+	if strings.Contains(contentType, "application/json") {
+		trimmed := bytes.TrimSpace(body)
 		switch {
 		case len(trimmed) == 0:
 			return nil, DownloadResult{Format: "json", Resources: json.RawMessage(`[]`)}, nil
-		case trimmed[0] == '[':
-			var rows json.RawMessage
-			if err := json.Unmarshal(trimmed, &rows); err != nil {
-				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", base.ErrInvalidInput)
-			}
-			return nil, DownloadResult{Format: "json", Resources: rows}, nil
-		default:
+		case trimmed[0] == '{':
 			var envelope struct {
 				Resources json.RawMessage `json:"resources"`
 			}
@@ -430,16 +430,18 @@ func (m *Module) downloadReportExecution(ctx context.Context, _ *mcp.CallToolReq
 				result.Resources = json.RawMessage(`[]`)
 			}
 			return nil, result, nil
+		default:
+			var rows json.RawMessage
+			if err := json.Unmarshal(trimmed, &rows); err != nil {
+				return nil, zero, fmt.Errorf("%w: report execution download was not valid JSON", base.ErrInvalidInput)
+			}
+			return nil, DownloadResult{Format: "json", Resources: rows}, nil
 		}
 	}
 
-	// Otherwise treat the body as CSV/text and return it verbatim.
-	return nil, DownloadResult{Format: "csv", Raw: string(payload.Body)}, nil
-}
-
-// isJSONContentType reports whether a Content-Type header denotes a JSON body.
-func isJSONContentType(contentType string) bool {
-	return strings.Contains(strings.ToLower(contentType), "application/json")
+	// Any other content type (text/csv, application/octet-stream, an absent
+	// header, …) is returned verbatim as CSV/text.
+	return nil, DownloadResult{Format: "csv", Raw: string(body)}, nil
 }
 
 // fetchReports fetches full scheduled report/search records for the given IDs.
@@ -507,69 +509,4 @@ func executionsQueryFQLBadRequest(err error) ([]base.FQLErrorDetail, bool) {
 		return nil, false
 	}
 	return base.FQLErrorDetails(badReq.Payload.Errors), true
-}
-
-// downloadPayload carries the raw download body and its Content-Type, recovered
-// by executionsClient from a response the gofalcon generated reader would
-// otherwise discard.
-type downloadPayload struct {
-	Body        []byte
-	ContentType string
-}
-
-// executionsClient adapts the gofalcon report_executions.ClientService,
-// overriding ReportExecutionsDownloadGet to recover the raw 200 body. The
-// generated download reader consumes only response headers (its OK type carries
-// no payload), and the generated method panics if the transport returns any
-// non-*ReportExecutionsDownloadGetOK value, so a Reader override cannot simply
-// return the raw bytes in its place. Instead the override captures the body and
-// Content-Type into a field on a custom reader while still returning a valid
-// *ReportExecutionsDownloadGetOK to satisfy the method's type assertion; this
-// adapter then hands the captured bytes back as a downloadPayload. Non-200
-// responses fall through to the generated typed errors. The other two methods
-// (Query, Get) are served by the embedded ClientService unchanged.
-type executionsClient struct {
-	report_executions.ClientService
-}
-
-// ReportExecutionsDownloadGet fetches the download body, recovering the 200 body
-// the generated reader discards. It returns the raw body and Content-Type on
-// success, or the generated typed error on a non-200 response.
-func (c executionsClient) ReportExecutionsDownloadGet(params *report_executions.ReportExecutionsDownloadGetParams, opts ...report_executions.ClientOption) (*downloadPayload, error) {
-	capture := &downloadReader{}
-	override := func(op *runtime.ClientOperation) {
-		capture.orig = op.Reader
-		op.Reader = capture
-	}
-	_, err := c.ClientService.ReportExecutionsDownloadGet(params, append([]report_executions.ClientOption{override}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-	return &downloadPayload{Body: capture.body, ContentType: capture.contentType}, nil
-}
-
-// downloadReader wraps the generated reader to capture the 200 response body and
-// Content-Type, which the generated reader leaves unconsumed (see
-// executionsClient). On non-200 responses it delegates to the original reader so
-// 400/403/429/500 still surface as gofalcon's typed errors.
-type downloadReader struct {
-	orig        runtime.ClientResponseReader
-	body        []byte
-	contentType string
-}
-
-// ReadResponse captures the 200 body and Content-Type into r and returns a valid
-// *ReportExecutionsDownloadGetOK so the generated method's type assertion
-// succeeds; other status codes delegate to the wrapped reader.
-func (r *downloadReader) ReadResponse(resp runtime.ClientResponse, c runtime.Consumer) (any, error) {
-	if resp.Code() == 200 {
-		b, err := io.ReadAll(resp.Body())
-		if err != nil {
-			return nil, fmt.Errorf("read report execution download body: %w", err)
-		}
-		r.body = b
-		r.contentType = resp.GetHeader("Content-Type")
-		return report_executions.NewReportExecutionsDownloadGetOK(), nil
-	}
-	return r.orig.ReadResponse(resp, c)
 }

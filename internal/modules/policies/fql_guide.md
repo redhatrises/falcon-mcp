@@ -59,10 +59,18 @@ Safe sort fields (each accepts a `.asc` / `.desc` direction): `name`,
 `created_timestamp`, `modified_timestamp`, `enabled`, `created_by`, `modified_by`,
 `precedence`.
 
+**Use the dot form (`field.asc` / `field.desc`).** The pipe form (`field|asc`) is
+rejected — only the dot separator is accepted.
+
 **Do NOT sort by `platform_name`.** Sorting by `platform_name` in either
 direction returns an HTTP 500 error on every policy type — it is not a valid sort
 field even though it is a valid filter field. Use one of the safe sort fields
 above instead.
+
+**`device_control` does not accept `created_by` or `modified_by` sorts.** Both
+return an HTTP 500 on `device_control` (they work on the other policy types). Sort
+`device_control` by `name`, `created_timestamp`, `modified_timestamp`, `enabled`,
+or `precedence` instead.
 
 ## Example queries (each confirmed to return data)
 
