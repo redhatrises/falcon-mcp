@@ -70,8 +70,21 @@ var filterHints = map[string]string{
 
 	// === Cloud: IOM Findings ===
 	"falcon_search_iom_findings": "Common fields: severity (Critical|High|Medium|Low|Informational), " +
-		"status (open|suppressed|pass), cloud_provider (aws|azure|gcp), " +
+		"status (open|suppressed|pass), cloud_provider (aws|azure|gcp — lowercase " +
+		"required; uppercase returns an empty result, not an error), " +
 		"service, region, resource_type, account_name, rule_name.",
+
+	// === Cloud: Cloud Insights ===
+	"falcon_search_cloud_insights": "Filter on insights.id (insight ID), insights.boolean_value (true|false), " +
+		"insights.string_value (string; substring match needs :*'*val*' — 'val*' and ~ return nothing), " +
+		"insights.integer_value (integer, supports range ops e.g. :>0), " +
+		"insights.date_value (ISO-8601 timestamp, e.g. :<'2025-01-01T00:00:00Z'), " +
+		"insights.string_list_value (list member match). " +
+		"All fields are asset-level: a condition matches if any insight on the asset satisfies it. " +
+		"Use snake_case field names — camelCase is rejected. " +
+		"To scope by category: call list_cloud_insight_definitions(categories=['X']) first, " +
+		"then pass the returned insight_ids as insights.id:['id1','id2']. " +
+		"Ex: insights.id:'identityIsAdmin'+insights.boolean_value:true",
 
 	// === Cloud: Cloud Risks ===
 	"falcon_search_cloud_groups": "Common fields: name, created_at (UTC datetime), updated_at (UTC datetime). " +
@@ -186,7 +199,8 @@ var filterHints = map[string]string{
 		"name: use the contains operator name:~'value' for prevention/response/firewall/device_control " +
 		"(a '*value*' glob is literal and returns nothing); name is NOT filterable for sensor_update/content_update. " +
 		"Date filters: created_timestamp:>'now-7d' (relative). " +
-		"Do NOT sort by platform_name (HTTP 500).",
+		"Sort uses the dot form (modified_timestamp.desc), not pipes. Do NOT sort by platform_name (HTTP 500), " +
+		"nor by created_by/modified_by on device_control (HTTP 500 on that type only).",
 	"falcon_search_policy_members": "Filters on HOST (device) attributes: hostname, platform_name (Windows|Linux|Mac), " +
 		"status (normal|contained), local_ip, external_ip, os_version, last_seen, " +
 		"product_type_desc (Workstation|Server|Domain Controller).",

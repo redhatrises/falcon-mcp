@@ -99,6 +99,12 @@ Returns full group details including name, selectors, and tags.`
 Use when you already have specific cloud group IDs — for example, the ` + "`cloud_groups`" + `
 field returned by ` + "`falcon_search_cloud_risks`" + `. Returns full group details including
 name, selectors, business impact, and environment tags.`
+
+	searchCloudInsightsDescription = "Search for cloud security insights using FQL. Returns asset records — one per asset — each with asset context and a nested `insights` array of insight facts. Omit `filter` to return all assets that have any insight; pass `insights.id:['id1','id2']` to scope by insight type. Use `falcon_get_cloud_asset_insights` for the full per-asset detail. Consult falcon://cloud/cloud-insights/fql-guide for filter syntax and field reference. Responses include `pagination.total` and `pagination.next` for cursor-based paging."
+
+	getCloudAssetInsightsDescription = "Retrieve the full insight detail for one or more cloud ASSET IDs. Takes cloud asset IDs (not insight-definition IDs) and returns each asset's complete `cloud_context.insights` — both the `external[]` insight instances and the richer `details{}` map (per-insight value, context, and calculatedAt) — plus asset context. Use this to drill into why an asset is flagged after finding it with falcon_search_cloud_insights or falcon_search_cspm_assets. Returns one record per requested asset that has insight data."
+
+	listInsightDefinitionsDescription = "Return all available cloud insight definitions, deduplicated by insight_id. Each entry represents one unique insight type with aggregated providers, resource_types, and (when non-empty) compliance framework controls. Call this first to discover valid insight_ids before filtering with falcon_search_cloud_insights. Returns the standard pagination envelope; `pagination.total` is an exact count rather than an estimate, because the catalog is assembled and counted locally rather than server-paged. When `categories` is supplied it counts the matching entries, not the whole catalog."
 )
 
 const (
@@ -191,4 +197,19 @@ Examples: 'severity.desc', 'first_seen.desc', 'account_name.asc'`
 Examples: "name:'prod-group'", "environment:'production'"`
 
 	cloudGroupsSortDescription = "Sort groups. Default: name.asc. Prefer the dot separator, supported on every Falcon sort endpoint. Examples: 'name.asc', 'created_at.desc'"
+
+	cloudInsightsFilterDescription = "FQL filter expression. Use `insights.id:[...]` to scope by insight ID(s), combined with value filters and asset attributes. To filter by category, first call `list_cloud_insight_definitions` to discover the insight_ids for that category, then pass them here. Omit entirely to return all assets that have any insight across all categories — do NOT call `list_cloud_insight_definitions` first when you want all insights, just leave this param empty. See `falcon://cloud/cloud-insights/fql-guide` for all supported fields and syntax. Example: insights.id:'publiclyExposedToTheInternet'+insights.boolean_value:true"
+
+	cloudInsightsSortDescription = "Sort assets using field.asc or field.desc. Asset fields: cloud_provider, account_id, account_name, resource_type, region, resource_name, service, creation_time, first_seen, updated_at. Three insight fields are also sortable — publiclyExposedToTheInternet, publiclyExposedAccessRange, publiclyExposedExposureMethod — but no other insight ID is; sorting by one returns an error naming the valid fields. Use the dot separator ('updated_at.desc'); the pipe form ('updated_at|desc') is equivalent here."
+
+	cloudInsightsAfterDescription = cspmAssetsAfterDescription
+
+	insightDefinitionsCategoriesDescription = `Filter to specific categories. Available categories and the topics they cover:
+  - Identity: MFA status, admin privileges, credential rotation, unused accounts, excessive permissions, guest users, external identities
+  - Network: internet exposure, public IPs, access ranges, exposure methods
+  - Vulnerabilities: reachable CVEs, RCE vulnerabilities, sensor presence
+  - Data: secrets, sensitive data, encryption at rest, logging, backup, credentials
+  - AI: LLM model usage, MCP server exposure, public AI service consumption
+  - Application: third-party vendor compliance, excessive actions, sensitive data sources
+Case-insensitive. Omit to return all categories.`
 )

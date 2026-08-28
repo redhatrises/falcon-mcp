@@ -25,6 +25,8 @@ type policiesAPI interface {
 	GetSuppressionRules(*cloud_policies.GetSuppressionRulesParams, ...cloud_policies.ClientOption) (*cloud_policies.GetSuppressionRulesOK, error)
 	CreateSuppressionRule(*cloud_policies.CreateSuppressionRuleParams, ...cloud_policies.ClientOption) (*cloud_policies.CreateSuppressionRuleOK, error)
 	DeleteSuppressionRules(*cloud_policies.DeleteSuppressionRulesParams, ...cloud_policies.ClientOption) (*cloud_policies.DeleteSuppressionRulesOK, error)
+	QueryRule(*cloud_policies.QueryRuleParams, ...cloud_policies.ClientOption) (*cloud_policies.QueryRuleOK, error)
+	GetRule(*cloud_policies.GetRuleParams, ...cloud_policies.ClientOption) (*cloud_policies.GetRuleOK, error)
 }
 
 // --- Search suppression rules ---

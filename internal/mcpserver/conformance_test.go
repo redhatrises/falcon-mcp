@@ -67,10 +67,14 @@ func (stubGroups) PerformGroupAction(*host_group.PerformGroupActionParams, ...ho
 
 type stubServerless struct{}
 
-func (stubServerless) GetCombinedVulnerabilitiesSARIF(*serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, ...serverless_vulnerabilities.ClientOption) (any, error) {
-	// The module decodes the raw response body; return the live-shape SARIF
-	// envelope (resources is a single object whose runs field is the payload).
-	return []byte(`{"resources":{"version":"2.1.0","runs":[]},"errors":[]}`), nil
+func (stubServerless) GetCombinedVulnerabilitiesSARIF(*serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, ...serverless_vulnerabilities.ClientOption) (*serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK, error) {
+	// Return the typed SARIF envelope (resources is a single object whose runs
+	// field is the payload) with an empty run set.
+	return &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{
+		Payload: &models.VulnerabilitiesVulnerabilityEntitySARIFResponse{
+			Resources: &models.ModelsVulnerabilitySARIF{Runs: []*models.ModelsRun{}},
+		},
+	}, nil
 }
 
 // connectTestServer registers the host and host-group modules on a server and

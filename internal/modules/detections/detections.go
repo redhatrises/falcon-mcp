@@ -6,13 +6,11 @@ package detections
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/alerts"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -66,11 +64,9 @@ func (m *Module) Description() string {
 // searchDetectionsSchema is the input schema for falcon_search_detections. It is
 // inferred from SearchInput's struct tags, then a mutate func adds the limit
 // bounds/default and offset minimum the tag syntax cannot express.
-var searchDetectionsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Schema) {
-	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
-	s.Properties["limit"].Maximum = jsonschema.Ptr(9999.0)
-	s.Properties["limit"].Default = json.RawMessage(`10`)
-	s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
+var searchDetectionsSchema = base.SearchSchema[SearchInput](base.SearchSchemaOpts{
+	MaxLimit:     9999,
+	DefaultLimit: 10,
 })
 
 // RegisterTools registers the three detection tools into r.

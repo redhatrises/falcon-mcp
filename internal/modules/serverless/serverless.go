@@ -5,29 +5,18 @@
 // search_serverless_vulnerabilities is a single-step combined query
 // (GetCombinedVulnerabilitiesSARIF) that returns vulnerability data in SARIF
 // format, so this module does no bulk detail fetch and ignores Deps.Concurrency.
-// The tool is read-only.
-//
-// The gofalcon typed response cannot be used directly: its generated model
-// declares the "resources" field as an array of SARIF documents, but the live
-// API returns a single SARIF object ({$schema, version, runs}). Decoding a real
-// response through the typed method therefore fails with a JSON unmarshal error.
-// This module wraps the gofalcon client with serverlessClient, which captures
-// the raw 200 body and lets the handler decode the actual shape and return the
-// SARIF "runs" array — matching the Python falcon-mcp module, which returns
-// response["runs"].
+// The handler returns the SARIF "runs" array, mirroring the Python falcon-mcp
+// module's response["runs"]. The tool is read-only.
 package serverless
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/serverless_vulnerabilities"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/go-openapi/runtime"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -48,85 +37,19 @@ const fqlGuideURI = "falcon://serverless/vulnerabilities/fql-guide"
 // operation ("Falcon Container Image:read"). Surfaced on a 403 via base.APIError.
 var scopeContainerImageRead = base.Scope{Name: "Falcon Container Image", Read: true}
 
-// Factory builds the serverless module from shared deps. The gofalcon client is
-// wrapped by serverlessClient so the handler can recover the raw SARIF body the
-// generated reader cannot decode. The generated aggregator (internal/mcpserver)
-// collects the Factory, so the module needs no init side effect. The single tool
-// is a one-call query, so the module ignores Deps.Concurrency.
+// Factory builds the serverless module from shared deps. The generated
+// aggregator (internal/mcpserver) collects the Factory, so the module needs no
+// init side effect. The single tool is a one-call query, so the module ignores
+// Deps.Concurrency.
 var Factory registry.Factory = func(d registry.Deps) base.Module {
-	return &Module{API: serverlessClient{ClientService: d.API.ServerlessVulnerabilities}, Logger: d.Logger}
+	return &Module{API: d.API.ServerlessVulnerabilities, Logger: d.Logger}
 }
 
 // serverlessAPI is the minimal slice of the serverless vulnerabilities client
-// this module consumes, declared next to its consumer for testability. The
-// GetCombinedVulnerabilitiesSARIF here returns the raw 200 body as an any
-// ([]byte) rather than the gofalcon typed OK, because the typed model cannot
-// decode the live response (see the package doc and serverlessClient).
+// this module consumes, declared next to its consumer for testability. gofalcon's
+// serverless_vulnerabilities.ClientService satisfies it directly.
 type serverlessAPI interface {
-	GetCombinedVulnerabilitiesSARIF(params *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, opts ...serverless_vulnerabilities.ClientOption) (any, error)
-}
-
-// serverlessClient adapts the gofalcon serverless_vulnerabilities.ClientService,
-// overriding GetCombinedVulnerabilitiesSARIF to recover the raw 200 body. The
-// generated method decodes "resources" as an array and so fails on the live
-// response (a single SARIF object); worse, it panics if the transport returns
-// any non-*GetCombinedVulnerabilitiesSARIFOK value, so a Reader override cannot
-// simply return the raw bytes in its place. Instead the override captures the
-// 200 body into a field on a custom reader while still returning a valid
-// *GetCombinedVulnerabilitiesSARIFOK to satisfy the method's type assertion;
-// this adapter then hands the captured bytes back as the any result. Non-200
-// responses (including the FQL 400) fall through to the generated typed errors.
-type serverlessClient struct {
-	serverless_vulnerabilities.ClientService
-}
-
-// GetCombinedVulnerabilitiesSARIF fetches the combined SARIF response, recovering
-// the 200 body the generated reader cannot decode. It returns the raw body as an
-// any ([]byte) on success, or the generated typed error on a non-200 response.
-func (c serverlessClient) GetCombinedVulnerabilitiesSARIF(params *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, opts ...serverless_vulnerabilities.ClientOption) (any, error) {
-	capture := &sarifReader{}
-	override := func(op *runtime.ClientOperation) {
-		capture.orig = op.Reader
-		op.Reader = capture
-	}
-	_, err := c.ClientService.GetCombinedVulnerabilitiesSARIF(params, append([]serverless_vulnerabilities.ClientOption{override}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-	return capture.body, nil
-}
-
-// sarifReader wraps the generated reader to capture the 200 response body, which
-// the generated reader cannot decode into its array-typed model (see
-// serverlessClient). On non-200 responses it delegates to the original reader so
-// 400/403/429/500 still surface as gofalcon's typed errors.
-type sarifReader struct {
-	orig runtime.ClientResponseReader
-	body []byte
-}
-
-// ReadResponse captures the 200 body into r.body and returns a valid
-// *GetCombinedVulnerabilitiesSARIFOK so the generated method's type assertion
-// succeeds; other status codes delegate to the wrapped reader.
-func (r *sarifReader) ReadResponse(resp runtime.ClientResponse, c runtime.Consumer) (any, error) {
-	if resp.Code() == 200 {
-		b, err := io.ReadAll(resp.Body())
-		if err != nil {
-			return nil, fmt.Errorf("read serverless SARIF body: %w", err)
-		}
-		r.body = b
-		return serverless_vulnerabilities.NewGetCombinedVulnerabilitiesSARIFOK(), nil
-	}
-	return r.orig.ReadResponse(resp, c)
-}
-
-// sarifResponse is the on-the-wire shape of the combined SARIF response. Unlike
-// the gofalcon model, resources is a single SARIF document, not an array — this
-// is why the typed method cannot decode a real response. Meta is the standard
-// sibling of resources and carries query_time and trace_id.
-type sarifResponse struct {
-	Meta      *models.MsaMetaInfo              `json:"meta"`
-	Resources *models.ModelsVulnerabilitySARIF `json:"resources"`
+	GetCombinedVulnerabilitiesSARIF(params *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, opts ...serverless_vulnerabilities.ClientOption) (*serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK, error)
 }
 
 // Module registers the serverless tools. It holds only the shared,
@@ -260,44 +183,34 @@ func (m *Module) searchServerlessVulnerabilities(ctx context.Context, _ *mcp.Cal
 		params.Sort = &in.Sort
 	}
 
-	raw, err := m.API.GetCombinedVulnerabilitiesSARIF(params)
-	if err != nil {
-		if details, ok := fqlBadRequest(err); ok {
-			return nil, base.FQLError[*models.ModelsRun](details, in.Filter, fqlGuide), nil
-		}
-		if e := base.APIError(err, nil, scopeContainerImageRead); e != nil {
-			return nil, zero, e
-		}
+	resp, err := m.API.GetCombinedVulnerabilitiesSARIF(params)
+	if details, ok := fqlBadRequest(err); ok {
+		return nil, base.FQLError[*models.ModelsRun](details, in.Filter, fqlGuide), nil
+	}
+	if e := base.APIError(err, resp, scopeContainerImageRead); e != nil {
+		return nil, zero, e
 	}
 
-	body, _ := raw.([]byte)
-	runs, meta, err := decodeSARIF(body)
-	if err != nil {
-		return nil, zero, err
-	}
+	runs, meta := sarifRuns(resp)
 	m.Logger.Debug("search_serverless_vulnerabilities query complete", "runs", len(runs))
 	// The endpoint carries no pagination cursor, but meta still reports the query
 	// duration and the trace ID quoted in support requests.
 	return nil, base.Found(runs, in.Filter).WithMeta(meta), nil
 }
 
-// decodeSARIF extracts the SARIF "runs" array and the response metadata from a
-// raw combined-SARIF response body, mirroring the Python module's
-// response["runs"]. An empty body or a response with no resources yields an
-// empty slice, not an error; metadata is returned whenever the body decodes, so
-// query_time and trace_id survive a result-less response.
-func decodeSARIF(body []byte) ([]*models.ModelsRun, *models.MsaMetaInfo, error) {
-	if len(body) == 0 {
-		return nil, nil, nil
+// sarifRuns extracts the SARIF "runs" array and the response metadata from a
+// combined-SARIF response, mirroring the Python module's response["runs"]. A nil
+// response or one with no SARIF document yields an empty slice, not an error;
+// metadata is returned whenever present, so query_time and trace_id survive a
+// result-less response.
+func sarifRuns(resp *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK) ([]*models.ModelsRun, *models.MsaMetaInfo) {
+	if resp == nil || resp.Payload == nil {
+		return nil, nil
 	}
-	var resp sarifResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, nil, fmt.Errorf("decode serverless SARIF response: %w", err)
+	if resp.Payload.Resources == nil {
+		return nil, resp.Payload.Meta
 	}
-	if resp.Resources == nil {
-		return nil, resp.Meta, nil
-	}
-	return resp.Resources.Runs, resp.Meta, nil
+	return resp.Payload.Resources.Runs, resp.Payload.Meta
 }
 
 // fqlBadRequest reports whether err is a 400-class combined SARIF query error

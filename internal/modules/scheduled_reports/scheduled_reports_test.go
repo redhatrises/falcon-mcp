@@ -10,7 +10,6 @@ import (
 	"github.com/crowdstrike/gofalcon/falcon/client/report_executions"
 	"github.com/crowdstrike/gofalcon/falcon/client/scheduled_reports"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/go-openapi/runtime"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/testutil"
@@ -64,10 +63,11 @@ type fakeExecutions struct {
 	getCalls int
 	getIDs   []string
 
-	dlPayload *downloadPayload
-	dlErr     error
-	dlIDs     string
-	dlCalls   int
+	dlBody        []byte
+	dlContentType string
+	dlErr         error
+	dlIDs         string
+	dlCalls       int
 }
 
 func (f *fakeExecutions) ReportExecutionsQuery(*report_executions.ReportExecutionsQueryParams, ...report_executions.ClientOption) (*report_executions.ReportExecutionsQueryOK, error) {
@@ -80,10 +80,18 @@ func (f *fakeExecutions) ReportExecutionsGet(p *report_executions.ReportExecutio
 	return f.getResp, nil
 }
 
-func (f *fakeExecutions) ReportExecutionsDownloadGet(p *report_executions.ReportExecutionsDownloadGetParams, _ ...report_executions.ClientOption) (*downloadPayload, error) {
+func (f *fakeExecutions) ReportExecutionsDownloadGet(p *report_executions.ReportExecutionsDownloadGetParams, writer io.Writer, _ ...report_executions.ClientOption) (*report_executions.ReportExecutionsDownloadGetOK, error) {
 	f.dlCalls++
 	f.dlIDs = p.Ids
-	return f.dlPayload, f.dlErr
+	if f.dlErr != nil {
+		return nil, f.dlErr
+	}
+	if _, err := writer.Write(f.dlBody); err != nil {
+		return nil, err
+	}
+	ok := report_executions.NewReportExecutionsDownloadGetOK(writer)
+	ok.ContentType = f.dlContentType
+	return ok, nil
 }
 
 func newModule(r *fakeReports, e *fakeExecutions) *Module {
@@ -323,10 +331,7 @@ func TestSearchReportExecutionsFQLError(t *testing.T) {
 func TestDownloadReportExecutionCSV(t *testing.T) {
 	t.Parallel()
 
-	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte("id,name\n1,alpha\n"),
-		ContentType: "text/csv",
-	}}
+	e := &fakeExecutions{dlBody: []byte("id,name\n1,alpha\n"), dlContentType: "text/csv"}
 	m := newModule(&fakeReports{}, e)
 
 	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
@@ -350,10 +355,7 @@ func TestDownloadReportExecutionJSON(t *testing.T) {
 	// The live download endpoint returns the report rows as a bare top-level
 	// JSON array, not a {"resources": [...]} envelope (verified against a real
 	// tenant). The handler must pass that array through verbatim.
-	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte(`[{"a":1},{"a":2}]`),
-		ContentType: "application/json; charset=utf-8",
-	}}
+	e := &fakeExecutions{dlBody: []byte(`[{"a":1},{"a":2}]`), dlContentType: "application/json"}
 	m := newModule(&fakeReports{}, e)
 
 	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
@@ -376,10 +378,7 @@ func TestDownloadReportExecutionJSONEmptyArray(t *testing.T) {
 
 	// An execution with no rows downloads as a bare empty array `[]` (verified
 	// live). It must succeed and surface an empty resources array, not error.
-	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte(`[]`),
-		ContentType: "application/json",
-	}}
+	e := &fakeExecutions{dlBody: []byte(`[]`), dlContentType: "application/json"}
 	m := newModule(&fakeReports{}, e)
 
 	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
@@ -396,10 +395,7 @@ func TestDownloadReportExecutionJSONEnvelopeFallback(t *testing.T) {
 
 	// Defensive: if a version/endpoint ever wraps rows in a {"resources": [...]}
 	// object envelope, the handler unwraps it rather than returning the object.
-	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte(`{"resources":[{"a":1},{"a":2}],"meta":{}}`),
-		ContentType: "application/json",
-	}}
+	e := &fakeExecutions{dlBody: []byte(`{"resources":[{"a":1},{"a":2}],"meta":{}}`), dlContentType: "application/json"}
 	m := newModule(&fakeReports{}, e)
 
 	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
@@ -417,11 +413,8 @@ func TestDownloadReportExecutionJSONEnvelopeFallback(t *testing.T) {
 func TestDownloadReportExecutionJSONEmptyBody(t *testing.T) {
 	t.Parallel()
 
-	// A zero-length JSON body must not error; it maps to an empty array.
-	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte(``),
-		ContentType: "application/json",
-	}}
+	// A zero-length body must not error; it maps to an empty array.
+	e := &fakeExecutions{dlBody: []byte(""), dlContentType: "application/json"}
 	m := newModule(&fakeReports{}, e)
 
 	_, out, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
@@ -436,15 +429,27 @@ func TestDownloadReportExecutionJSONEmptyBody(t *testing.T) {
 func TestDownloadReportExecutionPDFRejected(t *testing.T) {
 	t.Parallel()
 
-	e := &fakeExecutions{dlPayload: &downloadPayload{
-		Body:        []byte("%PDF-1.7\n..."),
-		ContentType: "application/pdf",
-	}}
+	// No Content-Type header: rejection falls back to the %PDF magic bytes.
+	e := &fakeExecutions{dlBody: []byte("%PDF-1.7\n...")}
 	m := newModule(&fakeReports{}, e)
 
 	_, _, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
 	if !errors.Is(err, errUnsupportedFormat) {
 		t.Fatalf("expected errUnsupportedFormat for PDF, got %v", err)
+	}
+}
+
+func TestDownloadReportExecutionPDFRejectedByContentType(t *testing.T) {
+	t.Parallel()
+
+	// An application/pdf Content-Type is rejected on its own, even when the body
+	// does not lead with the %PDF magic bytes.
+	e := &fakeExecutions{dlBody: []byte("not-really-pdf"), dlContentType: "application/pdf"}
+	m := newModule(&fakeReports{}, e)
+
+	_, _, err := m.downloadReportExecution(context.Background(), nil, DownloadInput{ID: "exec1"})
+	if !errors.Is(err, errUnsupportedFormat) {
+		t.Fatalf("expected errUnsupportedFormat for application/pdf, got %v", err)
 	}
 }
 
@@ -507,72 +512,5 @@ func TestRegisterToolsAnnotations(t *testing.T) {
 		if ann == nil || !ann.ReadOnlyHint {
 			t.Fatalf("%s should be read-only, got %+v", name, ann)
 		}
-	}
-}
-
-// --- downloadReader (raw body recovery) ---
-
-// fakeClientResponse is a minimal runtime.ClientResponse for exercising
-// downloadReader.ReadResponse directly.
-type fakeClientResponse struct {
-	code    int
-	body    string
-	headers map[string]string
-}
-
-func (r fakeClientResponse) Code() int { return r.code }
-func (r fakeClientResponse) Message() string {
-	return ""
-}
-func (r fakeClientResponse) GetHeader(name string) string { return r.headers[name] }
-func (r fakeClientResponse) GetHeaders(string) []string   { return nil }
-func (r fakeClientResponse) Body() io.ReadCloser          { return io.NopCloser(strings.NewReader(r.body)) }
-
-func TestDownloadReaderCaptures200Body(t *testing.T) {
-	t.Parallel()
-
-	dr := &downloadReader{}
-	resp := fakeClientResponse{
-		code:    200,
-		body:    "col1,col2\n",
-		headers: map[string]string{"Content-Type": "text/csv"},
-	}
-	got, err := dr.ReadResponse(resp, nil)
-	if err != nil {
-		t.Fatalf("ReadResponse: %v", err)
-	}
-	if got == nil {
-		t.Fatal("expected a non-nil OK to satisfy the generated type assertion")
-	}
-	if string(dr.body) != "col1,col2\n" {
-		t.Fatalf("body not captured: %q", dr.body)
-	}
-	if dr.contentType != "text/csv" {
-		t.Fatalf("content type not captured: %q", dr.contentType)
-	}
-}
-
-// stubReader delegates ReadResponse so non-200 responses can be routed to a
-// wrapped reader, exercising downloadReader's delegation path.
-type stubReader struct{ called bool }
-
-func (s *stubReader) ReadResponse(runtime.ClientResponse, runtime.Consumer) (any, error) {
-	s.called = true
-	return nil, errors.New("delegated")
-}
-
-func TestDownloadReaderDelegatesNon200(t *testing.T) {
-	t.Parallel()
-
-	orig := &stubReader{}
-	dr := &downloadReader{orig: orig}
-	resp := fakeClientResponse{code: 403, body: ""}
-
-	_, err := dr.ReadResponse(resp, nil)
-	if !orig.called {
-		t.Fatal("expected non-200 to delegate to the wrapped reader")
-	}
-	if err == nil {
-		t.Fatal("expected the delegated error to propagate")
 	}
 }

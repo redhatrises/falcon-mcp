@@ -19,11 +19,11 @@ import (
 var testLogger = testutil.DiscardLogger()
 
 // fakeServerless is a configurable test double for the serverlessAPI interface.
-// GetCombinedVulnerabilitiesSARIF returns the raw response body as an any
-// ([]byte), matching the wrapped serverlessClient the module uses in production.
+// GetCombinedVulnerabilitiesSARIF returns the gofalcon typed OK, matching the
+// client the module consumes in production.
 type fakeServerless struct {
-	body []byte
-	err  error
+	ok  *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK
+	err error
 
 	calls      int
 	lastFilter string
@@ -32,7 +32,7 @@ type fakeServerless struct {
 	lastOffset int64
 }
 
-func (f *fakeServerless) GetCombinedVulnerabilitiesSARIF(p *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, _ ...serverless_vulnerabilities.ClientOption) (any, error) {
+func (f *fakeServerless) GetCombinedVulnerabilitiesSARIF(p *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFParams, _ ...serverless_vulnerabilities.ClientOption) (*serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK, error) {
 	f.calls++
 	if p.Filter != nil {
 		f.lastFilter = *p.Filter
@@ -49,33 +49,31 @@ func (f *fakeServerless) GetCombinedVulnerabilitiesSARIF(p *serverless_vulnerabi
 	if f.err != nil {
 		return nil, f.err
 	}
-	return f.body, nil
+	return f.ok, nil
 }
 
-// sarifBody renders a combined-SARIF response body with the given number of
-// runs, matching the live API shape (resources is a single SARIF object whose
-// runs field is the array of interest).
-func sarifBody(runs int) []byte {
+// sarifOK builds a typed combined-SARIF success response carrying the given
+// number of SARIF runs, matching the gofalcon model the client returns
+// (resources is a single SARIF object whose runs field is the array of interest).
+func sarifOK(runs int) *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK {
 	runList := make([]*models.ModelsRun, runs)
 	for i := range runList {
 		runList[i] = &models.ModelsRun{}
 	}
-	b, err := json.Marshal(sarifResponse{
-		Resources: &models.ModelsVulnerabilitySARIF{
-			Version: new("2.1.0"),
-			Runs:    runList,
+	return &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{
+		Payload: &models.VulnerabilitiesVulnerabilityEntitySARIFResponse{
+			Resources: &models.ModelsVulnerabilitySARIF{
+				Version: new("2.1.0"),
+				Runs:    runList,
+			},
 		},
-	})
-	if err != nil {
-		panic(err)
 	}
-	return b
 }
 
 func TestSearchServerlessVulnerabilitiesSuccess(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeServerless{body: sarifBody(1)}
+	f := &fakeServerless{ok: sarifOK(1)}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{Filter: "cloud_provider:'aws'"})
@@ -95,7 +93,7 @@ func TestSearchServerlessVulnerabilitiesSuccess(t *testing.T) {
 func TestSearchServerlessVulnerabilitiesForwardsParams(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeServerless{body: sarifBody(0)}
+	f := &fakeServerless{ok: sarifOK(0)}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{
@@ -123,7 +121,7 @@ func TestSearchServerlessVulnerabilitiesForwardsParams(t *testing.T) {
 func TestSearchServerlessVulnerabilitiesEmpty(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeServerless{body: sarifBody(0)}
+	f := &fakeServerless{ok: sarifOK(0)}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, out, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{Filter: "runtime:'nodejs'"})
@@ -140,7 +138,7 @@ func TestSearchServerlessVulnerabilitiesEmpty(t *testing.T) {
 func TestSearchServerlessVulnerabilitiesRequiresFilter(t *testing.T) {
 	t.Parallel()
 
-	f := &fakeServerless{body: sarifBody(0)}
+	f := &fakeServerless{ok: sarifOK(0)}
 	m := &Module{API: f, Logger: testLogger}
 
 	_, _, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{})
@@ -186,7 +184,7 @@ func TestSearchServerlessVulnerabilitiesEmitsDebugLog(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	f := &fakeServerless{body: sarifBody(0)}
+	f := &fakeServerless{ok: sarifOK(0)}
 	m := &Module{API: f, Logger: logger}
 	if _, _, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{Filter: "severity:'CRITICAL'"}); err != nil {
 		t.Fatalf("searchServerlessVulnerabilities: %v", err)
@@ -210,28 +208,26 @@ func TestSearchServerlessVulnerabilitiesEmitsDebugLog(t *testing.T) {
 	}
 }
 
-// TestDecodeSARIF covers the SARIF body decode helper directly, including the
-// live-shape single-object resources field and the empty/absent cases.
-func TestDecodeSARIF(t *testing.T) {
+// TestSarifRuns covers the SARIF run extraction helper directly, including the
+// nil response, nil payload, and absent-resources cases.
+func TestSarifRuns(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		body []byte
+		resp *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK
 		want int
 	}{
-		{"nil body", nil, 0},
-		{"empty resources object", []byte(`{"resources":null,"errors":[]}`), 0},
-		{"one run", sarifBody(1), 1},
-		{"three runs", sarifBody(3), 3},
+		{"nil response", nil, 0},
+		{"nil payload", &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{}, 0},
+		{"absent resources", &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{Payload: &models.VulnerabilitiesVulnerabilityEntitySARIFResponse{}}, 0},
+		{"one run", sarifOK(1), 1},
+		{"three runs", sarifOK(3), 3},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			runs, _, err := decodeSARIF(tc.body)
-			if err != nil {
-				t.Fatalf("decodeSARIF: %v", err)
-			}
+			runs, _ := sarifRuns(tc.resp)
 			if len(runs) != tc.want {
 				t.Fatalf("len(runs) = %d, want %d", len(runs), tc.want)
 			}
@@ -239,47 +235,57 @@ func TestDecodeSARIF(t *testing.T) {
 	}
 }
 
-// TestDecodeSARIFSurfacesMeta proves the meta sibling of resources is decoded
+// TestSarifRunsSurfacesMeta proves the meta sibling of resources is returned
 // rather than discarded, and that it survives a response carrying no resources —
 // the trace ID is what a caller quotes in a support request, so it must outlive
 // an empty result.
-func TestDecodeSARIFSurfacesMeta(t *testing.T) {
+func TestSarifRunsSurfacesMeta(t *testing.T) {
 	t.Parallel()
 
+	meta := &models.MsaMetaInfo{QueryTime: new(0.42), TraceID: new("trace-abc")}
 	tests := []struct {
 		name string
-		body []byte
+		resp *serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK
 	}{
-		{"with resources", []byte(`{"resources":{"version":"2.1.0","runs":[{}]},"meta":{"query_time":0.42,"trace_id":"trace-abc"}}`)},
-		{"resources absent", []byte(`{"resources":null,"meta":{"query_time":0.42,"trace_id":"trace-abc"}}`)},
+		{"with resources", &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{
+			Payload: &models.VulnerabilitiesVulnerabilityEntitySARIFResponse{
+				Resources: &models.ModelsVulnerabilitySARIF{Version: new("2.1.0"), Runs: []*models.ModelsRun{{}}},
+				Meta:      meta,
+			},
+		}},
+		{"resources absent", &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{
+			Payload: &models.VulnerabilitiesVulnerabilityEntitySARIFResponse{Meta: meta},
+		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, meta, err := decodeSARIF(tc.body)
-			if err != nil {
-				t.Fatalf("decodeSARIF: %v", err)
-			}
-			if meta == nil {
+			_, got := sarifRuns(tc.resp)
+			if got == nil {
 				t.Fatal("meta is nil; the meta sibling of resources was discarded")
 			}
-			if meta.TraceID == nil || *meta.TraceID != "trace-abc" {
-				t.Errorf("trace_id = %v, want trace-abc", meta.TraceID)
+			if got.TraceID == nil || *got.TraceID != "trace-abc" {
+				t.Errorf("trace_id = %v, want trace-abc", got.TraceID)
 			}
-			if meta.QueryTime == nil || *meta.QueryTime != 0.42 {
-				t.Errorf("query_time = %v, want 0.42", meta.QueryTime)
+			if got.QueryTime == nil || *got.QueryTime != 0.42 {
+				t.Errorf("query_time = %v, want 0.42", got.QueryTime)
 			}
 		})
 	}
 }
 
 // TestSearchServerlessVulnerabilitiesAttachesMeta verifies the handler chains the
-// decoded meta onto the result envelope rather than dropping it.
+// response meta onto the result envelope rather than dropping it.
 func TestSearchServerlessVulnerabilitiesAttachesMeta(t *testing.T) {
 	t.Parallel()
 
-	body := []byte(`{"resources":{"version":"2.1.0","runs":[{}]},"meta":{"query_time":0.42,"trace_id":"trace-abc"}}`)
-	m := &Module{API: &fakeServerless{body: body}, Logger: testLogger}
+	ok := &serverless_vulnerabilities.GetCombinedVulnerabilitiesSARIFOK{
+		Payload: &models.VulnerabilitiesVulnerabilityEntitySARIFResponse{
+			Resources: &models.ModelsVulnerabilitySARIF{Version: new("2.1.0"), Runs: []*models.ModelsRun{{}}},
+			Meta:      &models.MsaMetaInfo{QueryTime: new(0.42), TraceID: new("trace-abc")},
+		},
+	}
+	m := &Module{API: &fakeServerless{ok: ok}, Logger: testLogger}
 
 	_, out, err := m.searchServerlessVulnerabilities(context.Background(), nil, SearchInput{Filter: "cloud_provider:'aws'"})
 	if err != nil {
@@ -293,14 +299,5 @@ func TestSearchServerlessVulnerabilitiesAttachesMeta(t *testing.T) {
 	}
 	if out.Meta.QueryTime == nil || *out.Meta.QueryTime != 0.42 {
 		t.Errorf("query_time = %v, want 0.42", out.Meta.QueryTime)
-	}
-}
-
-// TestDecodeSARIFInvalidJSON verifies a malformed body is a hard error, not a
-// silent empty result.
-func TestDecodeSARIFInvalidJSON(t *testing.T) {
-	t.Parallel()
-	if _, _, err := decodeSARIF([]byte(`{not json`)); err == nil {
-		t.Fatal("expected an error decoding malformed body")
 	}
 }
