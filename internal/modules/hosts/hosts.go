@@ -5,12 +5,10 @@ package hosts
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/hosts"
 	"github.com/crowdstrike/gofalcon/falcon/models"
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
@@ -102,13 +100,11 @@ Examples: 'hostname.asc', 'last_seen.desc', 'platform_name.asc'`
 // from SearchInput's struct tags, then a mutate func adds the limit/offset
 // bounds and default the tag syntax cannot express, plus the backtick-bearing
 // filter and multi-line sort descriptions that cannot live in a struct tag.
-var searchHostsSchema = base.SchemaFor[SearchInput](func(s *jsonschema.Schema) {
-	s.Properties["filter"].Description = filterParamDescription
-	s.Properties["sort"].Description = sortParamDescription
-	s.Properties["limit"].Minimum = jsonschema.Ptr(1.0)
-	s.Properties["limit"].Maximum = jsonschema.Ptr(5000.0)
-	s.Properties["limit"].Default = json.RawMessage(`10`)
-	s.Properties["offset"].Minimum = jsonschema.Ptr(0.0)
+var searchHostsSchema = base.SearchSchema[SearchInput](base.SearchSchemaOpts{
+	MaxLimit:     5000,
+	DefaultLimit: 10,
+	FilterDesc:   filterParamDescription,
+	SortDesc:     sortParamDescription,
 })
 
 // RegisterTools registers the hosts tools into r.

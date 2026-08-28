@@ -3,7 +3,7 @@
 // container_vulnerabilities), CSPM assets (cloud_security_assets), CSPM IOM
 // findings (cloud_security_detections), cloud risks and cloud groups
 // (cloud_security), and CSPM IOM suppression rules (cloud_policies). It registers
-// the five cloud FQL guide resources.
+// the six cloud FQL guide resources.
 //
 // The module provides read-only search/count/detail tools plus two mutating
 // suppression-rule tools (create and delete). Search tools that hydrate details
@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 
 	"github.com/crowdstrike/gofalcon/falcon/client/kubernetes_protection"
 	"github.com/crowdstrike/gofalcon/falcon/models"
@@ -59,10 +60,12 @@ var Factory registry.Factory = func(d registry.Deps) base.Module {
 	}
 }
 
-// Module registers the cloud tools. It holds only shared, concurrency-safe
-// gofalcon sub-clients and configuration; handlers are stateless and reentrant.
-// Logger must be non-nil. Each field is a narrow local interface over one
-// gofalcon sub-client so handlers can be tested against small fakes.
+// Module registers the cloud tools. It holds shared, concurrency-safe gofalcon
+// sub-clients and configuration, plus a mutex-guarded cache of Policy Framework
+// insight rules — its only mutable state, protected by pfmCacheMu so handlers
+// remain safe under concurrent calls. Logger must be non-nil. Each client field
+// is a narrow local interface over one gofalcon sub-client so handlers can be
+// tested against small fakes.
 type Module struct {
 	Kubernetes  kubernetesAPI
 	Vulns       vulnsAPI
@@ -72,6 +75,12 @@ type Module struct {
 	Policies    policiesAPI
 	Concurrency int // bounds concurrent detail fetches
 	Logger      *slog.Logger
+
+	// pfmCache memoizes the fetchPFMRules result for pfmRulesCacheTTL, sparing
+	// repeated insight tools the full catalog fetch. It is nil until the first
+	// fetch; pfmCacheMu guards it.
+	pfmCacheMu sync.Mutex
+	pfmCache   *pfmCacheEntry
 }
 
 // kubernetesAPI is the slice of the gofalcon kubernetes_protection client this
@@ -175,9 +184,26 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Name:        "get_cloud_groups",
 		Description: getCloudGroupsDescription,
 	}, m.getCloudGroups)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "search_cloud_insights",
+		Description: searchCloudInsightsDescription,
+		InputSchema: searchCloudInsightsSchema,
+	}, m.searchCloudInsights)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "get_cloud_asset_insights",
+		Description: getCloudAssetInsightsDescription,
+	}, m.getCloudAssetInsights)
+
+	base.AddTool(r, &mcp.Tool{
+		Name:        "list_cloud_insight_definitions",
+		Description: listInsightDefinitionsDescription,
+		InputSchema: listInsightDefinitionsSchema,
+	}, m.listCloudInsightDefinitions)
 }
 
-// RegisterResources publishes the five cloud FQL guides as MCP resources,
+// RegisterResources publishes the six cloud FQL guides as MCP resources,
 // mirroring the Python falcon-mcp cloud resources.
 func (m *Module) RegisterResources(s *mcp.Server) {
 	base.TextResource(s, kubernetesContainersFQLGuideURI,
@@ -200,6 +226,10 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 		"search_cloud_risks_fql_guide",
 		"Contains the guide for the `filter` param of the `falcon_search_cloud_risks` tool.",
 		"text/markdown", cloudRisksFQLGuide)
+	base.TextResource(s, cloudInsightsFQLGuideURI,
+		"search_cloud_insights_fql_guide",
+		"Contains the guide for the `filter` param of the `falcon_search_cloud_insights` tool.",
+		"text/markdown", cloudInsightsFQLGuide)
 }
 
 // RegisterPrompts is a no-op: the cloud module exposes no prompts.
