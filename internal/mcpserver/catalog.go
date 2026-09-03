@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -213,14 +214,17 @@ func (c *Catalog) withholdingRule(name string) (string, bool) {
 	return c.policy.describe(), true
 }
 
-// matchSet returns the catalog entries that match query, optionally restricted
-// to a single module, along with whether the match was relaxed. It mirrors
-// upstream's two-tier logic: an empty query returns every candidate; otherwise
-// it first tries a strict match (every query token appears in an entry's corpus,
-// or the query names the tool exactly) and, only if that yields nothing, falls
-// back to a relaxed match (any token appears). The bool is true when the relaxed
-// tier produced the result.
-func (c *Catalog) matchSet(query, module string) ([]catalogEntry, bool) {
+// matchSet splits the catalog entries matching query — optionally restricted to a
+// single module — into a full-coverage block and a lower-ranked partial block,
+// mirroring upstream's two-block model. An empty query returns every candidate as
+// full. Naming a tool exactly returns only that tool. Generic stopwords are dropped
+// before the every-token conjunction so an incidental word cannot veto the right
+// tool; when the full-coverage block is too thin to answer with, entries carrying at
+// least half the gate tokens — or any one of them in their own name — join it as the
+// partial block, and a still-thin result drops to any single gate token. A query
+// whose conjunction already works keeps its narrow set and pays nothing for the
+// wider one.
+func (c *Catalog) matchSet(query, module string) (full, partial []catalogEntry) {
 	candidates := c.entries
 	if module != "" {
 		key := normalizeIdentifier(module)
@@ -233,59 +237,135 @@ func (c *Catalog) matchSet(query, module string) ([]catalogEntry, bool) {
 		candidates = filtered
 	}
 
-	tokens := wordsList(query)
-	if len(tokens) == 0 {
+	if query == "" {
 		out := make([]catalogEntry, len(candidates))
 		copy(out, candidates)
-		return out, false
-	}
-	queryKey := normalizeIdentifier(query)
-
-	var strict []catalogEntry
-	for _, e := range candidates {
-		if containsAll(e.corpus, tokens) || setHas(e.nameKey, queryKey) {
-			strict = append(strict, e)
-		}
-	}
-	if len(strict) > 0 {
-		return strict, false
+		return out, nil
 	}
 
-	var relaxed []catalogEntry
-	for _, e := range candidates {
-		if containsAny(e.corpus, tokens) || setHas(e.nameKey, queryKey) {
-			relaxed = append(relaxed, e)
-		}
-	}
-	return relaxed, true
-}
-
-// matches returns the matching catalog entries ranked by relevance to query,
-// and whether the match was relaxed. An empty query returns every candidate
-// ordered by tool name; otherwise entries are ordered by the ranking score.
-func (c *Catalog) matches(query, module string) ([]catalogEntry, bool) {
-	set, relaxed := c.matchSet(query, module)
 	tokens := wordsList(query)
 	queryKey := normalizeIdentifier(query)
 
-	// An empty query cannot rank by relevance — every entry scores zero — so it
-	// gets its own by-name ordering, matching upstream's dedicated empty-query
-	// branch. Without this the general comparator would order a no-query listing
-	// by name-word-count then read-only-first, which then changes which tools
-	// survive the result limit.
+	// Naming a tool is a request for that tool, not a keyword search, so every other
+	// entry sharing a token is noise. Membership, not substring, so a short query is
+	// not absorbed into an unrelated collapsed name; this mirrors score()'s exact-name
+	// short-circuit and reaches the glued "searchhosts" form that tokenizing misses.
+	if queryKey != "" {
+		var exact []catalogEntry
+		for _, e := range candidates {
+			if setHas(e.nameKey, queryKey) {
+				exact = append(exact, e)
+			}
+		}
+		if len(exact) > 0 {
+			return exact, nil
+		}
+	}
+
+	if len(tokens) == 0 {
+		// Punctuation only: nothing to match on, and an empty gate would otherwise
+		// make the conjunction vacuously true for every entry.
+		return nil, nil
+	}
+
+	// Drop generic words before the conjunction so they cannot veto; ranking still
+	// sees every token. When every token is generic, fall back to the raw words but
+	// report them as partial by construction: these tools carry the words
+	// incidentally, which is the whole reason the words do not gate.
+	gate := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		if !setHas(stopwords, t) {
+			gate = append(gate, t)
+		}
+	}
+	if len(gate) == 0 {
+		for _, e := range candidates {
+			if containsAll(e.corpus, tokens) {
+				partial = append(partial, e)
+			}
+		}
+		return nil, partial
+	}
+
+	// At least half the gate tokens, rounding up: enough to demote a near miss
+	// rather than drop it, without admitting every tool that shares one word.
+	threshold := (len(gate) + 1) / 2
+	for _, e := range candidates {
+		hits := 0
+		for _, t := range gate {
+			if strings.Contains(e.corpus, t) {
+				hits++
+			}
+		}
+		switch {
+		case hits == len(gate):
+			full = append(full, e)
+		case hits >= threshold || e.namesAny(gate):
+			partial = append(partial, e)
+		}
+	}
+
+	if len(full) >= tierRescueBelow {
+		// A full-coverage block this size is already an answer, so a precise query
+		// pays nothing for the wider set.
+		return full, nil
+	}
+	if len(full)+len(partial) >= tierRescueBelow {
+		return full, partial
+	}
+
+	// Still too thin. Drop to any single gate token so a match the threshold excluded
+	// is demoted rather than lost — otherwise a near miss by one tool would suppress
+	// the rescue for all of them. Generic tokens stay out even here: the shortest of
+	// them are substrings of every corpus.
+	covered := make(map[string]struct{}, len(full))
+	for _, e := range full {
+		covered[e.tool.Name] = struct{}{}
+	}
+	var rescue []catalogEntry
+	for _, e := range candidates {
+		if _, ok := covered[e.tool.Name]; ok {
+			continue
+		}
+		if containsAny(e.corpus, gate) {
+			rescue = append(rescue, e)
+		}
+	}
+	return full, rescue
+}
+
+// matches returns the matching catalog entries ranked by relevance to query, and the
+// count of full-coverage matches (entries covering every gate token, which sort
+// first and which the search hint reports). An empty query returns every candidate
+// ordered by tool name; otherwise entries are ordered by the ranking score, with the
+// full-coverage block always above the partial one.
+func (c *Catalog) matches(query, module string) ([]catalogEntry, int) {
+	full, partial := c.matchSet(query, module)
+	tokens := wordsList(query)
+	queryKey := normalizeIdentifier(query)
+
+	// An empty query cannot rank by relevance — every entry scores zero — so it gets
+	// its own by-name ordering, matching upstream's dedicated empty-query branch.
+	// Without this the general comparator would order a no-query listing by
+	// name-word-count then read-only-first, which then changes which tools survive
+	// the result limit.
 	if len(tokens) == 0 && queryKey == "" {
-		out := make([]catalogEntry, len(set))
-		copy(out, set)
+		out := make([]catalogEntry, len(full))
+		copy(out, full)
 		sort.SliceStable(out, func(i, j int) bool {
 			return out[i].tool.Name < out[j].tool.Name
 		})
-		return out, relaxed
+		return out, len(out)
 	}
 
-	ranked := make([]rankedEntry, len(set))
-	for i, e := range set {
+	ranked := make([]rankedEntry, 0, len(full)+len(partial))
+	for _, e := range full {
 		matched, strength := e.score(tokens, queryKey)
-		ranked[i] = rankedEntry{entry: e, matched: matched, strength: strength}
+		ranked = append(ranked, rankedEntry{entry: e, block: 0, matched: matched, strength: strength})
+	}
+	for _, e := range partial {
+		matched, strength := e.score(tokens, queryKey)
+		ranked = append(ranked, rankedEntry{entry: e, block: 1, matched: matched, strength: strength})
 	}
 	sort.SliceStable(ranked, func(i, j int) bool {
 		return ranked[i].less(ranked[j])
@@ -295,22 +375,26 @@ func (c *Catalog) matches(query, module string) ([]catalogEntry, bool) {
 	for i, r := range ranked {
 		out[i] = r.entry
 	}
-	return out, relaxed
+	return out, len(full)
 }
 
-// rankedEntry pairs a catalog entry with its score against the current query,
-// for sorting.
+// rankedEntry pairs a catalog entry with its coverage block and its score against
+// the current query, for sorting.
 type rankedEntry struct {
 	entry    catalogEntry
+	block    int // 0 = full coverage, 1 = partial
 	matched  int
 	strength int
 }
 
-// less reports whether re should sort before o. The order is: more matched
-// tokens first, then higher strength, then a shorter name, then read-only
-// before mutating, then tool name ascending — a total order, so the sort is
-// deterministic.
+// less reports whether re should sort before o. The order is: full-coverage block
+// before partial, then more matched tokens, then higher strength, then a shorter
+// name, then read-only before mutating, then tool name ascending — a total order, so
+// the sort is deterministic.
 func (re rankedEntry) less(o rankedEntry) bool {
+	if re.block != o.block {
+		return re.block < o.block
+	}
 	if re.matched != o.matched {
 		return re.matched > o.matched
 	}
