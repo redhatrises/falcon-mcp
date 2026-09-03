@@ -133,7 +133,7 @@ func (m *MetaModule) searchTools(_ context.Context, _ *mcp.CallToolRequest, in S
 	}
 
 	limit := clampLimit(in.Limit)
-	ranked, relaxed := m.catalog.matches(in.Query, in.Module)
+	ranked, fullCount := m.catalog.matches(in.Query, in.Module)
 	total := len(ranked)
 
 	shown := ranked
@@ -155,11 +155,13 @@ func (m *MetaModule) searchTools(_ context.Context, _ *mcp.CallToolRequest, in S
 	for i, ce := range shown {
 		results[i] = leanSummary(ce)
 	}
+	fullOnPage := min(fullCount, len(results))
+	partialOnPage := len(results) - fullOnPage
 	return nil, SearchToolsResult{
 		Results:   results,
 		Total:     total,
 		Truncated: truncated,
-		Hint:      searchHint(searchHintInput{shown: len(results), total: total, truncated: truncated, relaxed: relaxed}),
+		Hint:      searchHint(searchHintInput{fullOnPage: fullOnPage, partialOnPage: partialOnPage, shown: len(results), total: total, truncated: truncated}),
 	}, nil
 }
 func clampLimit(limit int) int {
@@ -214,23 +216,31 @@ func (m *MetaModule) emptyHint(query, module string) string {
 	}
 }
 
-// searchHintInput carries the result counts and match-mode flags that shape the
-// guidance searchHint appends to a non-empty tool search.
+// searchHintInput carries the result counts and coverage split that shape the
+// guidance searchHint appends to a non-empty tool search. fullOnPage is how many of
+// the shown results cover every gate token; partialOnPage is the rest.
 type searchHintInput struct {
-	shown, total       int
-	truncated, relaxed bool
+	fullOnPage, partialOnPage int
+	shown, total              int
+	truncated                 bool
 }
 
-// searchHint builds the guidance appended to a non-empty search: a relaxed-match
-// note when the fallback ran, a truncation note when the limit capped results,
-// and always, last, the reminder that lean results carry no parameters.
+// searchHint builds the guidance appended to a non-empty search: a coverage note
+// describing how much of the query the page matched, a truncation note when the
+// limit capped results, and always, last, the reminder that lean results carry no
+// parameters.
 func searchHint(in searchHintInput) string {
 	var hints []string
-	if in.relaxed {
+	if in.fullOnPage == 0 {
 		hints = append(hints,
 			"No tool matched every word, so these match at least one of them, ordered "+
 				"by likely relevance. Read the descriptions and pick the one that fits "+
 				"rather than assuming the capability is missing.")
+	} else if in.partialOnPage > 0 {
+		hints = append(hints, fmt.Sprintf(
+			"The first %d match every word; the remaining %d match only some of them "+
+				"and rank below. Read the descriptions rather than assuming the top "+
+				"result is the right tool.", in.fullOnPage, in.partialOnPage))
 	}
 	if in.truncated {
 		hints = append(hints, fmt.Sprintf(

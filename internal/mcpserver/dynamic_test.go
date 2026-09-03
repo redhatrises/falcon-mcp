@@ -132,7 +132,7 @@ func TestSearchTools(t *testing.T) {
 		{name: "empty query returns all", in: SearchToolsInput{}, want: []string{"falcon_search_hosts", "falcon_search_detections", "falcon_update_detections"}, exact: true},
 		{name: "single token", in: SearchToolsInput{Query: "hosts"}, want: []string{"falcon_search_hosts"}, exact: true},
 		{name: "multi token AND", in: SearchToolsInput{Query: "update detections"}, want: []string{"falcon_update_detections"}, exact: true},
-		{name: "multi token no strict match falls back to relaxed", in: SearchToolsInput{Query: "update hosts"}, want: []string{"falcon_search_hosts", "falcon_update_detections"}, exact: true},
+		{name: "multi token no full match falls back to partial coverage", in: SearchToolsInput{Query: "update hosts"}, want: []string{"falcon_search_hosts", "falcon_update_detections"}, exact: true},
 		{name: "token matches param name", in: SearchToolsInput{Query: "filter"}, want: []string{"falcon_search_hosts", "falcon_search_detections"}, exact: true},
 		{name: "module filter", in: SearchToolsInput{Module: "detections"}, want: []string{"falcon_search_detections", "falcon_update_detections"}, exact: true},
 		{name: "module plus query", in: SearchToolsInput{Module: "detections", Query: "search"}, want: []string{"falcon_search_detections"}, exact: true},
@@ -171,10 +171,10 @@ func TestSearchToolsEmptyQueryOrderedByName(t *testing.T) {
 // --- ranking -----------------------------------------------------------------
 
 // TestSearchToolsRanking pins the score ordering search relies on: a name-word
-// hit outranks a bare name substring, an exactly-named tool is lifted above a
-// strong partial match by the exact-name short-circuit, and read-only sorts
-// before mutating when the weighted strength ties. The full ranked order is
-// asserted, so a regression that only perturbs relative position is caught.
+// hit outranks a bare name substring, an exactly-named tool short-circuits to
+// only itself, and read-only sorts before mutating when the weighted strength
+// ties. The full ranked order is asserted, so a regression that only perturbs
+// relative position is caught.
 func TestSearchToolsRanking(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -192,12 +192,13 @@ func TestSearchToolsRanking(t *testing.T) {
 			want: []string{"falcon_search_hosts", "falcon_search_hoststorage"},
 		},
 		{
-			// The query names search_host exactly (short-circuit: matched=3),
-			// beating search_hosts's strong two-token partial hit (matched=2).
-			name: "exact name lifted above strong partial",
+			// Naming search_host exactly is a request for that tool, so the
+			// exact-name short-circuit returns only it — search_hosts, a strong
+			// two-token partial, is dropped rather than listed below.
+			name: "exact name returns only the named tool",
 			mods: []fakeToolModule{{name: "host"}, {name: "hosts"}},
 			in:   SearchToolsInput{Query: "search_host"},
-			want: []string{"falcon_search_host", "falcon_search_hosts"},
+			want: []string{"falcon_search_host"},
 		},
 		{
 			// Both score the same on "detections" (name word, 10), so the
@@ -217,6 +218,58 @@ func TestSearchToolsRanking(t *testing.T) {
 				t.Errorf("ranked order = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestSearchToolsStopwords verifies the v0.19.0 stopword gate: a generic word is
+// dropped before the every-token conjunction so it cannot veto the right tool, and
+// a query made entirely of generic words cannot gate, so its results are reported
+// as partial coverage rather than a precise match.
+func TestSearchToolsStopwords(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t,
+		fakeToolModule{name: "hosts"},
+		fakeToolModule{name: "detections"},
+	)
+
+	// "search" is a stopword and appears in every tool's corpus, so it cannot gate:
+	// the whole set comes back as partial coverage, not a precise match.
+	stop := callSearch(t, m, SearchToolsInput{Query: "search"})
+	assertSameSet(t, toolNames(stop), []string{"falcon_search_hosts", "falcon_search_detections"})
+	if !strings.Contains(stop.Hint, "No tool matched every word") {
+		t.Errorf("stopword-only hint = %q, want the partial-coverage note", stop.Hint)
+	}
+
+	// "get" is a stopword; only "hosts" gates. Stripping "get" does not broaden the
+	// result, and the surviving match is clean full coverage (no coverage caveat).
+	narrow := callSearch(t, m, SearchToolsInput{Query: "get hosts"})
+	if got := toolNames(narrow); !slices.Equal(got, []string{"falcon_search_hosts"}) {
+		t.Errorf("query %q = %v, want [falcon_search_hosts]", "get hosts", got)
+	}
+	if strings.Contains(narrow.Hint, "No tool matched every word") || strings.Contains(narrow.Hint, "match only some") {
+		t.Errorf("full-coverage hint = %q, want no coverage caveat", narrow.Hint)
+	}
+}
+
+// TestSearchToolsCoverageBlocks verifies the two-block model: a tool covering every
+// gate token sorts above tools covering only some, and the hint reports the split.
+// "hosts fql" gates on "hosts" (only the hosts tool's corpus) and "fql" (every
+// tool's "using FQL" description), so search_hosts is full coverage and the rest
+// are partial, ranked below and ordered by name.
+func TestSearchToolsCoverageBlocks(t *testing.T) {
+	t.Parallel()
+	m := buildCatalog(t,
+		fakeToolModule{name: "hosts"},
+		fakeToolModule{name: "cases"},
+		fakeToolModule{name: "detections"},
+	)
+	res := callSearch(t, m, SearchToolsInput{Query: "hosts fql"})
+	want := []string{"falcon_search_hosts", "falcon_search_cases", "falcon_search_detections"}
+	if got := toolNames(res); !slices.Equal(got, want) {
+		t.Errorf("ranked order = %v, want %v (full coverage first, partials by name)", got, want)
+	}
+	if !strings.Contains(res.Hint, "The first 1 match every word; the remaining 2 match only some") {
+		t.Errorf("mixed-coverage hint = %q, want the full/partial split note", res.Hint)
 	}
 }
 

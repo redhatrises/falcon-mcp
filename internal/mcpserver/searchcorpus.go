@@ -29,6 +29,30 @@ const (
 	scoreDescription     = 1
 )
 
+// tierRescueBelow is how many full-coverage matches make a result page an answer on
+// its own. Below it, the partial block is admitted to rescue a right answer the
+// conjunction excluded; at or above it a precise query never pays for the wider set.
+const tierRescueBelow = 3
+
+// stopwords carry intent but not identity: generic verbs, determiners, and
+// conversational filler. They are dropped before the every-token conjunction and
+// score nothing outside a tool's own name, because they reach most of the corpus as
+// prose ("returns an empty list") and so decide nothing about which tool is wanted.
+// Words that identify an entity or an operation kind stay out — "count", "aggregate",
+// "members", "details", "full" all genuinely narrow. "falcon" and "return"/"returns"
+// are here because they reach very nearly every entry: the corpus is built from the
+// prefixed tool name, and almost every description has a "Returns" line.
+var stopwords = words(
+	"a an the of for to in on at and or from with by is are was were be been am " +
+		"i me my we our us you your it its this that these those there " +
+		"do does did done can could would should will shall may might must " +
+		"what which who whom whose when where why how " +
+		"show list get find search see look tell give fetch return returns retrieve display " +
+		"all any some every each single both many much more most " +
+		"please thanks thank hey hi ok okay just really actually now right currently " +
+		"need needs want wants know knows help helps figure out way best able " +
+		"have has had having falcon")
+
 // words splits text into the set of its lowercase alphanumeric words.
 func words(text string) map[string]struct{} {
 	out := map[string]struct{}{}
@@ -175,7 +199,8 @@ func (ce *catalogEntry) deriveRanking() {
 // each token scored once at the strongest field it hits, so a tool named for
 // the query outranks one that only mentions it in prose. queryKey is the whole
 // normalized query, matched against the name key for the exact-name
-// short-circuit. A token that hits nothing adds to neither total.
+// short-circuit. A token that hits nothing adds to neither total, and a generic
+// token (stopwords) counts only where it hits this tool's own name.
 func (ce catalogEntry) score(tokens []string, queryKey string) (matched, strength int) {
 	if queryKey != "" {
 		if _, ok := ce.nameKey[queryKey]; ok {
@@ -188,6 +213,11 @@ func (ce catalogEntry) score(tokens []string, queryKey string) (matched, strengt
 			strength += scoreNameWord
 		case strings.Contains(ce.unprefixedName, token):
 			strength += scoreNameSubstring
+		case setHas(stopwords, token):
+			// A generic word reaches most descriptions as prose, so crediting it
+			// outside a tool's own name measures docstring wording rather than
+			// relevance — enough to let a mutator outrank its read-only sibling.
+			continue
 		case setHas(ce.moduleWords, token):
 			strength += scoreModuleWord
 		case strings.Contains(ce.moduleKey, token):
@@ -200,6 +230,21 @@ func (ce catalogEntry) score(tokens []string, queryKey string) (matched, strengt
 		matched++
 	}
 	return matched, strength
+}
+
+// namesAny reports whether any token hits this entry's own name — the two name
+// tiers score() rewards, asked as a yes/no. Candidate selection counts corpus hits
+// without regard to where they land, which lets a tool matching several words only
+// in prose qualify while a sibling named for the query misses the count; the score
+// already treats a name hit as worth many prose hits, and this keeps selection
+// consistent with that.
+func (ce catalogEntry) namesAny(tokens []string) bool {
+	for _, t := range tokens {
+		if setHas(ce.nameWords, t) || strings.Contains(ce.unprefixedName, t) {
+			return true
+		}
+	}
+	return false
 }
 
 // setHas reports membership in a string set.
