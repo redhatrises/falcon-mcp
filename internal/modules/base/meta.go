@@ -95,11 +95,19 @@ type Quota struct {
 // count, the server-side query duration, the trace ID to quote in a support
 // request, and the Spotlight request quota — rather than whatever the endpoint
 // happened to return.
+//
+// Notices are advisory strings a module attaches when it served the request
+// differently than asked — a lookback window narrowed after the API refused it,
+// an unsupported parameter dropped, an aggregate truncated at the server-side
+// group cap. They change what the numbers mean, so they travel with the data
+// rather than being applied silently. Only the Guardian tools populate this
+// today; it is omitempty so every other module's meta is unchanged.
 type Meta struct {
 	Pagination *Paging  `json:"pagination,omitempty"`
 	QueryTime  *float64 `json:"query_time,omitempty"`
 	TraceID    string   `json:"trace_id,omitempty"`
 	Quota      *Quota   `json:"quota,omitempty"`
+	Notices    []string `json:"notices,omitempty"`
 }
 
 // UnmarshalJSON decodes an API meta object into m, accepting both spellings of
@@ -123,11 +131,12 @@ func (m *Meta) UnmarshalJSON(b []byte) error {
 		TraceID        string   `json:"trace_id"`
 		Quota          *Quota   `json:"quota"`
 		Next           string   `json:"next"`
+		Notices        []string `json:"notices"`
 	}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
-	m.Pagination, m.TraceID, m.Quota = raw.Pagination, raw.TraceID, raw.Quota
+	m.Pagination, m.TraceID, m.Quota, m.Notices = raw.Pagination, raw.TraceID, raw.Quota, raw.Notices
 	if m.QueryTime = raw.QueryTime; m.QueryTime == nil {
 		m.QueryTime = raw.QueryTimeCamel
 	}
@@ -145,7 +154,7 @@ func (m *Meta) UnmarshalJSON(b []byte) error {
 // isEmpty reports whether m carries nothing worth sending, so the caller can
 // omit the field entirely rather than emit an empty object.
 func (m *Meta) isEmpty() bool {
-	return m.Pagination == nil && m.QueryTime == nil && m.TraceID == "" && m.Quota == nil
+	return m.Pagination == nil && m.QueryTime == nil && m.TraceID == "" && m.Quota == nil && len(m.Notices) == 0
 }
 
 // NormalizedMeta converts a gofalcon response meta object into the Meta shape a

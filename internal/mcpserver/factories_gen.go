@@ -14,6 +14,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/exclusions"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/firewall"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/fusion"
+	"github.com/crowdstrike/falcon-mcp/internal/modules/guardian"
 	hostgroups "github.com/crowdstrike/falcon-mcp/internal/modules/host_groups"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/hosts"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/idp"
@@ -48,6 +49,7 @@ func moduleFactories() []registry.Factory {
 		exclusions.Factory,
 		firewall.Factory,
 		fusion.Factory,
+		guardian.Factory,
 		hostgroups.Factory,
 		hosts.Factory,
 		idp.Factory,
