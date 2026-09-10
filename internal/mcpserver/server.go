@@ -14,6 +14,7 @@ import (
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	falconapi "github.com/crowdstrike/falcon-mcp/internal/falcon"
+	"github.com/crowdstrike/falcon-mcp/internal/metrics"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 	"github.com/crowdstrike/falcon-mcp/internal/version"
@@ -80,14 +81,33 @@ type Server struct {
 	catalog *Catalog // non-nil only in dynamic mode
 }
 
-// New builds a Server from cfg and the shared Falcon client. It constructs all
-// registered modules (via the generated factory list) and registers them under
-// the tool policy derived from cfg (--modules, --tools, --exclude-tools,
+// options holds the optional configuration for New, populated by Option values.
+type options struct {
+	metrics *metrics.Recorder
+}
+
+// Option configures the server built by New.
+type Option func(*options)
+
+// WithMetrics instruments every tool call on the server (and, in dynamic mode,
+// the internal catalog server) so that call counts, durations, and outcomes are
+// recorded into rec. A nil rec is ignored.
+func WithMetrics(rec *metrics.Recorder) Option {
+	return func(o *options) { o.metrics = rec }
+}
+
+// New builds the falcon-mcp server, registering the enabled tool modules subject
+// to the module allow-list and tool policy (--modules, --tools, --exclude-tools,
 // --read-only). It returns ErrUnknownModule (wrapped) when --modules names a
 // module that does not exist, or ErrUnknownToolName (wrapped) when an
 // allow/deny-list entry names no registered tool. In dynamic mode it wires the
 // catalog's in-process session; call Close to release it.
-func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, error) {
+func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification, opts ...Option) (*Server, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	s := mcp.NewServer(&mcp.Implementation{Name: "falcon-mcp", Title: serverTitle, Version: version.Version}, &mcp.ServerOptions{
 		Instructions: serverInstructions(cfg.Dynamic),
 		// KeepAlive pings idle sessions to detect dead peers and hold long-lived
@@ -95,6 +115,15 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 		// and unconfigured deployments are unaffected.
 		KeepAlive: cfg.KeepAlive,
 	})
+
+	// A single metrics middleware is applied to the served server here and,
+	// below, to the dynamic-mode catalog server so real tool names are recorded
+	// in both modes.
+	var mw mcp.Middleware
+	if o.metrics != nil {
+		mw = toolMetricsMiddleware(o.metrics)
+		s.AddReceivingMiddleware(mw)
+	}
 
 	// The process logger's level was already set by the CLI (preRunE) before we
 	// are called; injecting it here keeps handlers free of the slog global.
@@ -129,12 +158,13 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification) (*Server, 
 
 	policy := newToolPolicy(cfg)
 	cat, err := registerModules(registerParams{
-		server:   s,
-		all:      allModules,
-		reported: reported,
-		policy:   policy,
-		check:    check,
-		dynamic:  cfg.Dynamic,
+		server:     s,
+		all:        allModules,
+		reported:   reported,
+		policy:     policy,
+		check:      check,
+		dynamic:    cfg.Dynamic,
+		middleware: mw,
 	})
 	if err != nil {
 		return nil, err
@@ -152,6 +182,9 @@ type registerParams struct {
 	policy   toolPolicy
 	check    ConnectivityChecker
 	dynamic  bool
+	// middleware, when non-nil, is applied to the dynamic-mode catalog server so
+	// tool calls dispatched through it are instrumented with their real names.
+	middleware mcp.Middleware
 }
 
 // registerModules registers the core tools and every module tool that survives
@@ -181,6 +214,9 @@ func registerModules(p registerParams) (*Catalog, error) {
 	next := func(base.Module) base.Registrar { return served }
 	if p.dynamic {
 		cat = NewCatalog()
+		if p.middleware != nil {
+			cat.Instrument(p.middleware)
+		}
 		next = func(m base.Module) base.Registrar { return cat.ForModule(m.Name()) }
 	} else {
 		core.registerNormalOnly(served)

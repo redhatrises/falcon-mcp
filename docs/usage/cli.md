@@ -86,7 +86,7 @@ falcon-mcp --help
 | `--tools` | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `--exclude-tools` | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names to withhold |
 | `--health-addr` | `FALCON_MCP_HEALTH_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/healthz` liveness probe. Empty disables it. |
-| `--metrics-addr` | `FALCON_MCP_METRICS_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/metrics` (expvar) endpoint. Empty disables it. |
+| `--metrics-addr` | `FALCON_MCP_METRICS_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/metrics` (Prometheus) endpoint. Empty disables it. |
 | `--pprof-addr` | `FALCON_MCP_PPROF_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/debug/pprof/` profiling endpoints. Empty disables it. |
 
 ## Restricting the Tool Surface
@@ -153,7 +153,7 @@ each works under any transport, including `stdio`.
 | Endpoint | Flag / Env | Path | Purpose |
 |----------|------------|------|---------|
 | Health | `--health-addr` / `FALCON_MCP_HEALTH_ADDR` | `/healthz` | Liveness probe. Returns `200 ok` when the process is up. It does **not** check that CrowdStrike APIs are reachable. |
-| Metrics | `--metrics-addr` / `FALCON_MCP_METRICS_ADDR` | `/metrics` | Go runtime metrics (`memstats`) as JSON via the stdlib `expvar` package. |
+| Metrics | `--metrics-addr` / `FALCON_MCP_METRICS_ADDR` | `/metrics` | Prometheus metrics in the text exposition format: per-tool call counts, durations, and outcomes, plus Go runtime and process collectors. |
 | Profiling | `--pprof-addr` / `FALCON_MCP_PPROF_ADDR` | `/debug/pprof/` | `net/http/pprof` profiling (heap, CPU, goroutine, trace). |
 
 Each endpoint binds a **separate listener** so operators can expose, firewall,
@@ -167,12 +167,13 @@ falcon-mcp --transport streamable-http \
   --pprof-addr 127.0.0.1:6060
 ```
 
-!!! warning "Metrics and profiling are debugging tools"
-    The `/metrics` and `/debug/pprof/` endpoints are intended for **debugging
-    and troubleshooting only**, not for continuous production exposure.
+!!! warning "Operational endpoints are unauthenticated"
+    The `/metrics` and `/debug/pprof/` endpoints are **unauthenticated**. The
+    `/metrics` endpoint is safe to scrape continuously (that is its purpose), but
+    both it and profiling expose internal runtime detail and must not be openly
+    reachable. `/debug/pprof/` is for **debugging and troubleshooting only**:
     `/debug/pprof/heap` dumps live process memory, and `/debug/pprof/profile`
-    blocks the process while it captures a CPU profile. These endpoints are
-    **unauthenticated**.
+    blocks the process while it captures a CPU profile.
 
     Prefer binding `--pprof-addr` and `--metrics-addr` to a loopback address
     (`127.0.0.1:PORT`) and reaching them through an SSH tunnel or
