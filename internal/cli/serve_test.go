@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
+	"github.com/crowdstrike/falcon-mcp/internal/metrics"
 )
 
 func TestServeHTTPGracefulShutdown(t *testing.T) {
@@ -117,7 +117,7 @@ func TestOpsHandlers(t *testing.T) {
 		wantInBody string // substring that must appear in the response body
 	}{
 		{name: "health returns ok", handler: healthHandler(), path: "/healthz", wantStatus: http.StatusOK, wantInBody: "ok"},
-		{name: "metrics exposes memstats", handler: metricsHandler(), path: "/metrics", wantStatus: http.StatusOK, wantInBody: "memstats"},
+		{name: "metrics exposes prometheus", handler: metrics.New().Handler(), path: "/metrics", wantStatus: http.StatusOK, wantInBody: "go_goroutines"},
 		{name: "pprof index served", handler: pprofHandler(), path: "/debug/pprof/", wantStatus: http.StatusOK, wantInBody: "goroutine"},
 	}
 	for _, tt := range tests {
@@ -135,32 +135,6 @@ func TestOpsHandlers(t *testing.T) {
 				t.Errorf("body = %q, want to contain %q", string(body), tt.wantInBody)
 			}
 		})
-	}
-}
-
-// TestMetricsHandlerOmitsCmdline verifies the metrics handler emits valid JSON
-// that includes memstats but not cmdline: cmdline is the process os.Args and
-// would leak credentials passed as flags.
-func TestMetricsHandlerOmitsCmdline(t *testing.T) {
-	t.Parallel()
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	rec := httptest.NewRecorder()
-	metricsHandler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	body, _ := io.ReadAll(rec.Body)
-
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(body, &m); err != nil {
-		t.Fatalf("response is not valid JSON: %v\nbody: %s", err, body)
-	}
-	if _, ok := m["cmdline"]; ok {
-		t.Error("metrics response contains cmdline; it must be omitted to avoid leaking os.Args")
-	}
-	if _, ok := m["memstats"]; !ok {
-		t.Error("metrics response missing memstats")
 	}
 }
 
