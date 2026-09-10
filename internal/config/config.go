@@ -102,7 +102,7 @@ type Config struct {
 	// disables it. It is independent of HTTPAddr and works under any transport,
 	// including stdio.
 	HealthAddr string
-	// MetricsAddr is the listen address for the /metrics endpoint (stdlib expvar).
+	// MetricsAddr is the listen address for the /metrics endpoint (Prometheus).
 	// Empty disables it. It is independent of HTTPAddr and works under any
 	// transport, including stdio.
 	MetricsAddr string

@@ -58,7 +58,6 @@ func New(ctx context.Context, cfg *config.Config) (*client.CrowdStrikeAPISpecifi
 	slog.Default().Debug("falcon client constructed",
 		"cloud", cfg.Cloud,
 		"host_override", cfg.HostOverride,
-		"member_cid_set", cfg.MemberCID != "",
 		"user_agent", cfg.UserAgent,
 		"proxy_set", cfg.Proxy != "",
 	)

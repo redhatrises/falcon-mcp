@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
-	"expvar"
 	"fmt"
 	"log/slog"
 	"net"
@@ -19,6 +18,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	falconapi "github.com/crowdstrike/falcon-mcp/internal/falcon"
 	"github.com/crowdstrike/falcon-mcp/internal/mcpserver"
+	"github.com/crowdstrike/falcon-mcp/internal/metrics"
 )
 
 // serve builds the Falcon client and MCP server, then serves over the
@@ -33,7 +33,19 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	srv, err := mcpserver.New(cfg, api)
+
+	// Metrics are collected only when the /metrics endpoint is enabled, so a
+	// disabled endpoint adds no per-call middleware overhead.
+	var (
+		metricsRec  *metrics.Recorder
+		metricsHTTP http.Handler
+	)
+	if cfg.MetricsAddr != "" {
+		metricsRec = metrics.New()
+		metricsHTTP = metricsRec.Handler()
+	}
+
+	srv, err := mcpserver.New(cfg, api, mcpserver.WithMetrics(metricsRec))
 	if err != nil {
 		return err
 	}
@@ -52,7 +64,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		sensitive  bool
 	}{
 		{"health", cfg.HealthAddr, healthHandler(), false},
-		{"metrics", cfg.MetricsAddr, metricsHandler(), true},
+		{"metrics", cfg.MetricsAddr, metricsHTTP, true},
 		{"pprof", cfg.PprofAddr, pprofHandler(), true},
 	} {
 		if ops.sensitive && ops.addr != "" && !isLoopbackAddr(ops.addr) {
@@ -192,32 +204,6 @@ func healthHandler() http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	})
-	return mux
-}
-
-// metricsHandler serves the stdlib expvar metrics on /metrics. expvar is used
-// directly to avoid a metrics dependency. It deliberately does not use
-// expvar.Handler: that handler publishes "cmdline" (the process os.Args), which
-// would expose credentials passed as flags rather than env vars. This handler
-// emits the same JSON object but skips "cmdline".
-func metricsHandler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		fmt.Fprintf(w, "{\n")
-		first := true
-		expvar.Do(func(kv expvar.KeyValue) {
-			if kv.Key == "cmdline" {
-				return
-			}
-			if !first {
-				fmt.Fprintf(w, ",\n")
-			}
-			first = false
-			fmt.Fprintf(w, "%q: %s", kv.Key, kv.Value)
-		})
-		fmt.Fprintf(w, "\n}\n")
 	})
 	return mux
 }
