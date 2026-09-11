@@ -228,7 +228,7 @@ func (m *Module) Name() string { return "policies" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Search and manage Falcon prevention, sensor update, firewall, device control, response, and content update policies"
+	return "Search and manage Falcon host-based policies across all six types — prevention, sensor update, firewall, device control, response, and content update — behind a single policy_type discriminator"
 }
 
 // searchPoliciesSchema is the input schema for falcon_search_policies. It is

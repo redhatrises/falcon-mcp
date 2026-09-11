@@ -46,9 +46,17 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
 )
 
-// scopeIdentityProtection is the CrowdStrike API scope required by this module's
-// GraphQL operation. Surfaced on a 403 via base.APIError.
-var scopeIdentityProtection = base.Scope{Name: "Identity Protection Entities", Read: true}
+// The CrowdStrike API scopes required by this module's GraphQL operation. The
+// Identity Protection GraphQL endpoint requires read on every entity facet it
+// can resolve plus write on the GraphQL permission itself; all are surfaced on a
+// 403 via base.APIError.
+var (
+	scopeIDPEntities   = base.Scope{Name: "Identity Protection Entities", Read: true}
+	scopeIDPTimeline   = base.Scope{Name: "Identity Protection Timeline", Read: true}
+	scopeIDPDetections = base.Scope{Name: "Identity Protection Detections", Read: true}
+	scopeIDPAssessment = base.Scope{Name: "Identity Protection Assessment", Read: true}
+	scopeIDPGraphQL    = base.Scope{Name: "Identity Protection GraphQL", Write: true}
+)
 
 // Investigation type identifiers.
 const (

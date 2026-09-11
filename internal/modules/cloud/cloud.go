@@ -117,7 +117,7 @@ func (m *Module) Name() string { return "cloud" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Search Falcon cloud resources: Kubernetes containers, image vulnerabilities, CSPM assets, IOM findings, cloud risks, groups, and suppression rules"
+	return "Search Falcon cloud resources: Kubernetes containers, image vulnerabilities, CSPM assets, IOM findings, cloud risks, cloud groups, suppression rules, and cloud insights"
 }
 
 // limitBounds applies limit/offset constraints and default that the jsonschema

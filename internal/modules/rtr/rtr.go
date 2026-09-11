@@ -125,7 +125,7 @@ func (m *Module) Name() string { return "rtr" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Audit, summarize, and run read-only RTR triage workflows"
+	return "Initiate and inspect Real Time Response sessions, run read-only RTR commands during host investigations, and audit and summarize RTR activity"
 }
 
 // searchRTRSessionsSchema and searchRTRAuditSessionsSchema are the input schemas

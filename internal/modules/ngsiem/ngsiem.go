@@ -125,7 +125,7 @@ func (m *Module) Name() string { return "ngsiem" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Run search queries against CrowdStrike Next-Gen SIEM"
+	return "Run search queries against CrowdStrike Next-Gen SIEM via its asynchronous job-based search API"
 }
 
 // searchNGSIEMDescription mirrors the Python falcon-mcp ngsiem module's tool
