@@ -5,9 +5,10 @@ on:
     branches: [ main ]
     paths:
       - 'Dockerfile'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'falcon_mcp/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
       - '.github/workflows/docker-build-test.yml'
 
 permissions:

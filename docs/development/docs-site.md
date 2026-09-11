@@ -17,7 +17,7 @@ docs/
   usage/                   # Hand-authored: CLI, transports, editor integration, flight control
   modules/                 # AUTO-GENERATED: one page per Go module + overview
   deployment/              # Hand-authored: Docker, Amazon Bedrock, Google Cloud
-  development/             # Hand-authored: contributing, module dev, resource dev, testing, this guide
+  development/             # Hand-authored: contributing, Go module dev, testing, this guide
   examples/                # Hand-authored: basic usage, MCP config
   changelog.md             # AUTO-GENERATED: copied from root CHANGELOG.md
 ```

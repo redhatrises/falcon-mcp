@@ -3,7 +3,7 @@
 <!-- meta:section examples -->
 <!-- meta:link-base /falcon-mcp/ -->
 
-The `examples/mcp_config.json` file shows all three transport configurations in a single file.
+Example configurations for all three transports:
 
 ## All Transport Configurations
 
@@ -14,7 +14,8 @@ The `examples/mcp_config.json` file shows all three transport configurations in 
       "name": "falcon-stdio",
       "transport": {
         "type": "stdio",
-        "command": "python -m falcon_mcp.server"
+        "command": "uvx",
+        "args": ["falcon-mcp"]
       }
     },
     {
