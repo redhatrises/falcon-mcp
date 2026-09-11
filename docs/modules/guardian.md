@@ -1,10 +1,10 @@
 <!-- meta:title Guardian -->
-<!-- meta:description Provides tools for querying AI agent inventory and activity data -->
+<!-- meta:description Query AI agent activity and inventory via the Guardian (AIDR) API: agents, sessions, tools, skills, executions, prompts, detections, and fleet rollups -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Provides tools for querying AI agent inventory and activity data
+Query AI agent activity and inventory via the Guardian (AIDR) API: agents, sessions, tools, skills, executions, prompts, detections, and fleet rollups
 
 ## API Scopes
 
@@ -25,11 +25,6 @@ HOST), and the `AgentIds[]` content hash(es) (width varies). See
 falcon://guardian/inventory/schema-guide for the full field reference
 and the `Id` vs `SensorId` vs `AgentIds` distinction.
 
-**Example prompts:**
-
-- "List AI agents running Claude Code in the last 7 days"
-- "Find AI agents on hostname WORKSTATION-42"
-
 ### `falcon_get_guardian_agent`
 
 **Required scopes:** `AIDR:read`
@@ -46,10 +41,6 @@ search_guardian_tool_usage, search_guardian_detections) take as
 generate_guardian_report with report_type='agent_detail'. For
 discovering agents by criteria, use search_guardian_agents instead.
 
-**Example prompts:**
-
-- "Show the record for that AI agent instance"
-
 ### `falcon_search_guardian_mcp_servers`
 
 **Required scopes:** `AIDR:read`
@@ -62,10 +53,6 @@ human-friendly server name lives in `Cim.MCPServerName.serverName` (the
 filter, so this is fleet-wide. To see which MCP servers a single session
 connected to, use get_guardian_session_detail (its activity graph
 exposes them under `ConnectedMcpMcpsrv`).
-
-**Example prompts:**
-
-- "Which MCP servers have AI agents connected to across the fleet?"
 
 ### `falcon_get_guardian_agent_sessions`
 
@@ -93,11 +80,6 @@ host-scoped session grain, which also reports the model and token counts
 for each process. For a ready-made count by product, use
 `sessions.by_product` from get_guardian_inventory.
 
-**Example prompts:**
-
-- "Show me AI agent sessions for the CLAUDE_CODE product from the past 24 hours"
-- "How many Cursor sessions ran across the fleet this week?"
-
 ### `falcon_get_guardian_session_detail`
 
 **Required scopes:** `AIDR:read`
@@ -111,10 +93,6 @@ per-invocation tools and skills used. When `include_activity` is true,
 also returns the threat-graph activity (which adds processes, models,
 MCP servers, and child sessions as edges).
 
-**Example prompts:**
-
-- "Show full details for that AI session"
-
 ### `falcon_get_guardian_session_activity`
 
 **Required scopes:** `AIDR:read`
@@ -124,10 +102,6 @@ Get activity for one or more AI sessions.
 Use this to see full graph relationships including tools, models, processes,
 sub-agents, and MCP servers. Accepts vertex IDs or inventory session IDs.
 Returns session activity with all connected graph entities.
-
-**Example prompts:**
-
-- "Show the full activity graph for that session — tools, models, and processes"
 
 ### `falcon_search_guardian_tools`
 
@@ -144,11 +118,6 @@ tools an agent's host actually invoked, prefer
 search_guardian_tool_usage(aid=...), which also carries file paths and
 command lines.
 
-**Example prompts:**
-
-- "List the AI tool inventory across the fleet"
-- "Which tools exist on that host?"
-
 ### `falcon_search_guardian_tool_usage`
 
 **Required scopes:** `AIDR:read`
@@ -163,11 +132,6 @@ ladder narrows it back to 7d). Returns tool usage records
 (AgenticToolName, AgenticPath, CommandLine, aid). If the requested
 window had to be narrowed, the result is `{results, notices}` instead
 of a bare list; read `notices` before reporting counts.
-
-**Example prompts:**
-
-- "Find every Bash tool invocation in the last 7 days"
-- "Show tool usage for that session"
 
 ### `falcon_search_guardian_executions`
 
@@ -188,12 +152,6 @@ to the 7 days this route allows — it scans raw LogScale events, and a
 wider window is refused, after which the retry ladder narrows it back to
 7d and reports the change in `notices`.
 
-**Example prompts:**
-
-- "Show the per-process executions for that session"
-- "How many input and output tokens did that session use?"
-- "Which models and token counts did that agent's processes use?"
-
 ### `falcon_search_guardian_prompts`
 
 **Required scopes:** `AIDR:read`
@@ -211,10 +169,6 @@ falcon://guardian/inventory/schema-guide for the full field
 reference. If the requested window had to be narrowed, the result is
 `{results, notices}` instead of a bare list.
 
-**Example prompts:**
-
-- "Show me the prompts from that session"
-
 ### `falcon_get_guardian_inventory`
 
 **Required scopes:** `AIDR:read`
@@ -230,10 +184,6 @@ name (e.g. "Claude Code") when the API resolves the tag, falling back to
 the numeric tag ID for unrecognized products. Read `notices` before
 reporting any count.
 
-**Example prompts:**
-
-- "Give me a summary of AI activity across the fleet"
-
 ### `falcon_search_guardian_skills`
 
 **Required scopes:** `AIDR:read`
@@ -244,10 +194,6 @@ Use this for the fleet-wide inventory of skills. Each row carries
 `SkillName`, `SkillDescription`, and the seen timestamps; the endpoint
 has no agent_id filter. For per-invocation skill events, use
 search_guardian_skill_usage instead.
-
-**Example prompts:**
-
-- "List the AI skill frontmatters matching 'review'"
 
 ### `falcon_search_guardian_skill_usage`
 
@@ -262,10 +208,6 @@ window is 2 hours, so widen `time_range` explicitly for older activity,
 up to the 7-day maximum this route allows (it scans raw LogScale events;
 a wider window is refused and the ladder narrows it back to 7d).
 
-**Example prompts:**
-
-- "Show every invocation of the code-review skill in the last 7 days"
-
 ### `falcon_get_guardian_fleet_skill_inventory`
 
 **Required scopes:** `AIDR:read`
@@ -278,10 +220,6 @@ aggregate with no server-side pagination; `limit` is applied
 client-side. For the per-skill records, use search_guardian_skills
 instead.
 
-**Example prompts:**
-
-- "Which skills are most used across all AI agents?"
-
 ### `falcon_search_guardian_os_users`
 
 **Required scopes:** `AIDR:read`
@@ -290,10 +228,6 @@ List OS users that have run AI agents (AIAgentOSUser entity).
 
 Use this to find which OS accounts ran agents, by sensor, username, or
 AD ObjectSid.
-
-**Example prompts:**
-
-- "Which OS users have run AI agents on that host?"
 
 ### `falcon_pivot_on_guardian_attribute`
 
@@ -311,12 +245,8 @@ with that value:
 - `Name` — merges per-invocation skill-usage and tool-usage, deduped
   by sensor (`aid`); rows without an `aid` are all kept.
 
-Returns the `{results, pagination}` envelope for every branch.
-
-**Example prompts:**
-
-- "Find all agents running the CLAUDE_CODE product"
-- "Show every agent that used the git-commit skill"
+Returns matching agents or activity rows with pagination metadata for
+every branch.
 
 ### `falcon_get_guardian_process_tree`
 
@@ -327,10 +257,6 @@ Get the spawned process tree for an AI session.
 Use this to see what processes an AI session launched. Returns process
 tree with command lines, image filenames, and timestamps.
 
-**Example prompts:**
-
-- "Show the process tree spawned by that AI session"
-
 ### `falcon_get_guardian_network_events`
 
 **Required scopes:** `AIDR:read`
@@ -339,10 +265,6 @@ Get outbound network connections from an AI session's processes.
 
 Use this to see what network activity an AI session generated.
 Returns destination IPs, ports, protocols, and timestamps.
-
-**Example prompts:**
-
-- "What outbound connections did that AI session make?"
 
 ### `falcon_get_guardian_file_events`
 
@@ -355,11 +277,6 @@ usage; use `sensitive_only` to filter to credential and secret paths.
 Returns combined file events from the graph and inventory layers.
 The graph leg has no time dimension; `time_range` applies only to
 the tool-usage leg, which defaults to 2 hours.
-
-**Example prompts:**
-
-- "Show files written by that session's processes"
-- "Did that session touch any credential or secret files?"
 
 ### `falcon_get_guardian_classified_file_access`
 
@@ -374,11 +291,6 @@ credentials, etc.), classification policy names, rule actions
 (allowed/blocked), and individual file details (path, name, SHA256,
 timestamps).
 
-**Example prompts:**
-
-- "What sensitive files did that process access?"
-- "Did that process trigger any data protection policy violations?"
-
 ### `falcon_generate_guardian_report`
 
 **Required scopes:** `AIDR:read`
@@ -390,11 +302,6 @@ sensitive_access reports; agent_detail requires agent_id.
 `time_range` applies only to fleet_summary and sensitive_access; the
 other two types use their own per-leg windows. Returns a structured
 report with timestamp and data.
-
-**Example prompts:**
-
-- "Generate a fleet summary report for the last 7 days"
-- "Produce an agent detail report for that instance"
 
 ### `falcon_search_guardian_detections`
 
@@ -412,11 +319,6 @@ host. See falcon://guardian/events/query-guide for the full field
 reference and a `product` filter trap: it takes the product name,
 not the numeric tag value the API itself returns in responses.
 
-**Example prompts:**
-
-- "What AI-agent detections fired in the last 30 days?"
-- "Show detections involving Kiro agents"
-
 ### `falcon_get_guardian_detection_scores`
 
 **Required scopes:** `AIDR:read`
@@ -425,7 +327,7 @@ Get the Agentic Threat Score for each agent.
 
 Returns rows of `{AgentId, AgenticProductTag, maxDetectionScore}`.
 Joining these onto agents needs BOTH `AgentId == AIAgent.SensorId`
-AND `AgenticProductTag == AIAgent.Product`, because `AgentId`
+AND `AgenticProductTag == AIAgent.AgentProduct`, because `AgentId`
 identifies a HOST and a host usually runs several AI agents; most
 rows leave the product tag unattributed, so an exact join resolves
 few agents (the agent_detail report handles that fallback and labels
@@ -433,10 +335,6 @@ the result host-scoped). `offset` is silently ignored here and the
 grouping caps at 500 groups; see falcon://guardian/events/query-guide
 for the join details and read `notices` before treating this as
 fleet-complete.
-
-**Example prompts:**
-
-- "What's the agentic threat score for each agent?"
 
 ### `falcon_search_guardian_installs`
 
@@ -449,10 +347,6 @@ Returns `Id`, `SensorId`, `Hostname`, `AgentName`, `AgentProduct`,
 `AgentVersion`, `InstallSource`, `AgentDeclarationPath`, `BinaryPath`,
 `FileSha256`, `LastExecutionTime`, and the seen timestamps — see
 falcon://guardian/inventory/schema-guide for the full field reference.
-
-**Example prompts:**
-
-- "What AI agent installations are on that host?"
 
 ### `falcon_search_guardian_models`
 
@@ -469,10 +363,6 @@ prefer get_guardian_agent_sessions (its
 `AgenticModel`). This tool reports no usage volume — for per-process
 model plus token counts (`AgenticInputTokens`/`AgenticOutputTokens`), use
 search_guardian_executions.
-
-**Example prompts:**
-
-- "List the AI models observed across the fleet"
 
 ## Resources
 

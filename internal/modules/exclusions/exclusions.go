@@ -135,7 +135,7 @@ func (m *Module) Name() string { return "exclusions" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Search, create, update, and delete Falcon IOA, ML, sensor visibility, and certificate-based exclusions"
+	return "Search, create, update, and delete Falcon exclusions across four types — IOA, machine learning, sensor visibility, and certificate-based — behind a single exclusion_type discriminator"
 }
 
 // searchExclusionsSchema is the input schema for falcon_search_exclusions. It is

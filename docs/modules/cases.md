@@ -1,10 +1,10 @@
 <!-- meta:title Case Management -->
-<!-- meta:description Managing CrowdStrike cases, including searching, creating, updating, and managing evidence and tags -->
+<!-- meta:description Search, retrieve, create, update, and manage CrowdStrike Falcon cases, evidence, tags, and templates -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Managing CrowdStrike cases, including searching, creating, updating, and managing evidence and tags
+Search, retrieve, create, update, and manage CrowdStrike Falcon cases, evidence, tags, and templates
 
 ## API Scopes
 
@@ -18,13 +18,7 @@ Managing CrowdStrike cases, including searching, creating, updating, and managin
 
 **Required scopes:** `Cases:read`
 
-Find cases by criteria and return their complete details.
-
-Use this to discover cases by status, severity, assignee, time range, or
-evidence attributes. Consult falcon://cases/search/fql-guide before
-constructing filter expressions. Returns full case records including
-status, severity, evidence, assigned user, and analysis results.
-Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
+Find cases by criteria and return their complete details. Use this to discover cases by status, severity, assignee, time range, or evidence attributes. Consult falcon://cases/search/fql-guide before constructing filter expressions. Returns full case records including status, severity, evidence, assigned user, and analysis results. Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
 
@@ -35,14 +29,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Cases:read`
 
-Retrieve details for case IDs you already have.
-
-Use when you have specific case IDs from search results or external
-references. For discovering cases by criteria, use falcon_search_cases;
-for files attached to a case, use falcon_aggregate_case_file_details.
-Returns full case records. Their `analysis_results.files` field lists
-forensic artifacts from detections, not attachments, and is empty for
-cases that do have attachments.
+Retrieve details for case IDs you already have. Use when you have specific case IDs from search results or external references. For discovering cases by criteria, use falcon_search_cases instead; for files attached to a case, use falcon_aggregate_case_file_details. Returns full case records — note their `analysis_results.files` field lists forensic artifacts from detections, not attachments, and is empty for cases that do have attachments.
 
 **Example prompts:**
 
@@ -55,11 +42,7 @@ cases that do have attachments.
 
 **Required scopes:** `Cases:write`
 
-Create a new case in CrowdStrike.
-
-Provide a name and severity at minimum. Optionally attach alert or event
-evidence, assign a user, apply a template, and set tags. Returns the
-created case record.
+Create a new case in CrowdStrike. Provide a name and severity at minimum. Optionally attach alert or event evidence, assign a user, apply a template, and set tags. Returns the created case record.
 
 **Example prompts:**
 
@@ -74,11 +57,7 @@ created case record.
 
 **Required scopes:** `Cases:write`
 
-Update an existing case's fields.
-
-Provide the case ID and any fields to change. Use expected_version for
-optimistic concurrency control to prevent conflicting updates. Returns the
-updated case record with incremented version.
+Update an existing case's fields. Provide the case ID and any fields to change. Use expected_version for optimistic concurrency control to prevent conflicting updates. Returns the updated case record with incremented version.
 
 **Example prompts:**
 
@@ -93,11 +72,7 @@ updated case record with incremented version.
 
 **Required scopes:** `Cases:write`
 
-Attach alert evidence to an existing case.
-
-Provide alert composite_id values from the Alerts v2 API (e.g. from
-falcon_search_detections). Each case supports a maximum of 100 combined
-evidence items. Returns the updated case record.
+Attach alert evidence to an existing case. Provide alert composite_id values from the Alerts v2 API (e.g. from falcon_search_detections). Each case supports a maximum of 100 combined evidence items. Returns the updated case record.
 
 **Example prompts:**
 
@@ -110,11 +85,7 @@ evidence items. Returns the updated case record.
 
 **Required scopes:** `Cases:write`
 
-Attach LogScale event evidence to an existing case.
-
-Provide event IDs obtained from falcon_search_ngsiem or the Falcon
-console. Each case supports a maximum of 100 combined evidence items.
-Returns the updated case record.
+Attach LogScale event evidence to an existing case. Provide event IDs obtained from falcon_search_ngsiem or the Falcon console. Each case supports a maximum of 100 combined evidence items. Returns the updated case record.
 
 **Example prompts:**
 
@@ -127,10 +98,7 @@ Returns the updated case record.
 
 **Required scopes:** `Cases:write`
 
-Add or remove tags on a case.
-
-Set action to 'add' to attach new tags, or 'remove' to delete existing
-tags. Returns the updated case record.
+Add or remove tags on a case. Set action to 'add' to attach new tags, or 'remove' to delete existing tags. Returns the updated case record.
 
 **Example prompts:**
 
@@ -141,11 +109,7 @@ tags. Returns the updated case record.
 
 **Required scopes:** `Case Templates:read`
 
-List available case templates.
-
-Use to discover templates that can be applied when creating or updating
-cases. Returns template details including name, custom fields, and SLA
-configuration.
+List available case templates. Use to discover templates that can be applied when creating or updating cases. Returns template details including name, custom fields, and SLA configuration.
 
 **Example prompts:**
 
@@ -157,11 +121,7 @@ configuration.
 
 Count case SLA definitions grouped by a field.
 
-Use this to summarize the SLA policies configured in your tenant — for
-example how many exist, or who created them — rather than to list them
-individually. Consult falcon://cases/aggregates/fql-guide before
-constructing filter expressions. Returns buckets of `label` and `count`.
-Requires the Case Templates:read scope.
+Use this to summarize the SLA policies configured in your tenant — for example how many exist, or who created them — rather than to list them individually. Consult falcon://cases/aggregates/fql-guide before constructing filter expressions. Returns buckets of `label` and `count`. Requires the Case Templates:read scope.
 
 **Example prompts:**
 
@@ -174,12 +134,7 @@ Requires the Case Templates:read scope.
 
 Count case templates grouped by a field.
 
-Use this to summarize the case templates configured in your tenant, such
-as how many exist or which users author them; falcon_list_case_templates
-returns the individual template records instead. Consult
-falcon://cases/aggregates/fql-guide before constructing filter
-expressions. Returns buckets of `label` and `count`. Requires the
-Case Templates:read scope.
+Use this to summarize the case templates configured in your tenant, such as how many exist or which users author them; falcon_list_case_templates returns the individual template records instead. Consult falcon://cases/aggregates/fql-guide before constructing filter expressions. Returns buckets of `label` and `count`. Requires the Case Templates:read scope.
 
 **Example prompts:**
 
@@ -192,12 +147,7 @@ Case Templates:read scope.
 
 Count case access tags grouped by a field.
 
-Use this to see which access tags control case visibility in your tenant
-and how many of each exist. Access tags accept a narrower field set than
-the other case aggregates — only key, id, and cid. Consult
-falcon://cases/aggregates/fql-guide before constructing filter
-expressions. Returns buckets of `label` and `count`. Requires the
-Case Templates:read scope.
+Use this to see which access tags control case visibility in your tenant and how many of each exist. Access tags accept a narrower field set than the other case aggregates — only key, id, and cid. Consult falcon://cases/aggregates/fql-guide before constructing filter expressions. Returns buckets of `label` and `count`. Requires the Case Templates:read scope.
 
 **Example prompts:**
 
@@ -209,11 +159,7 @@ Case Templates:read scope.
 
 Count case notification groups grouped by a field.
 
-Use this to summarize the notification groups that receive case updates,
-such as how many are configured or who created them. Consult
-falcon://cases/aggregates/fql-guide before constructing filter
-expressions. Returns buckets of `label` and `count`. Requires the
-Case Templates:read scope.
+Use this to summarize the notification groups that receive case updates, such as how many are configured or who created them. Consult falcon://cases/aggregates/fql-guide before constructing filter expressions. Returns buckets of `label` and `count`. Requires the Case Templates:read scope.
 
 **Example prompts:**
 
@@ -226,15 +172,7 @@ Case Templates:read scope.
 
 Report the files attached to cases, grouped and counted by a field.
 
-Use this whenever a question mentions files, attachments or screenshots
-on a case, including "what files are attached to case X" and "how many
-files does case X have" — pass the case IDs as case_ids. Case records
-from falcon_get_cases do not list attachments; their
-`analysis_results.files` field holds forensic artifacts from detections
-and is empty for cases that do have attachments. Consult
-falcon://cases/file-aggregates/fql-guide before constructing filter
-expressions. Returns buckets of `label` and `count`. Requires the
-Cases:read scope.
+Use this whenever a question mentions files, attachments or screenshots on a case, including "what files are attached to case X" and "how many files does case X have" — pass the case IDs as case_ids. Case records from falcon_get_cases do not list attachments; their `analysis_results.files` field holds forensic artifacts from detections and is empty for cases that do have attachments. Consult falcon://cases/file-aggregates/fql-guide before constructing filter expressions. Returns buckets of `label` and `count`. Requires the Cases:read scope.
 
 **Example prompts:**
 
@@ -244,5 +182,5 @@ Cases:read scope.
 ## Resources
 
 - **`falcon://cases/search/fql-guide`**: Contains the guide for the `filter` param of the `falcon_search_cases` tool.
-- **`falcon://cases/aggregates/fql-guide`**: Contains the guide for the `filter` param of the `falcon_aggregate_case_slas`, `falcon_aggregate_case_templates`, `falcon_aggregate_case_access_tags`, and `falcon_aggregate_case_notification_groups` tools.
+- **`falcon://cases/aggregates/fql-guide`**: Contains the guide for the `filter` param of the case-configuration aggregate tools (falcon_aggregate_case_slas, falcon_aggregate_case_templates, falcon_aggregate_case_access_tags, falcon_aggregate_case_notification_groups).
 - **`falcon://cases/file-aggregates/fql-guide`**: Contains the guide for the `filter` param of the `falcon_aggregate_case_file_details` tool.

@@ -1,10 +1,10 @@
 <!-- meta:title Quarantine -->
-<!-- meta:description Investigating quarantined files and applying quarantine actions during triage and remediation workflows -->
+<!-- meta:description Search quarantine records, preview action counts, and release, unrelease, or delete quarantined files -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Investigating quarantined files and applying quarantine actions during triage and remediation workflows
+Search quarantine records, preview action counts, and release, unrelease, or delete quarantined files
 
 ## API Scopes
 
@@ -17,13 +17,7 @@ Investigating quarantined files and applying quarantine actions during triage an
 
 **Required scopes:** `Quarantined Files:read`
 
-Search quarantined files and return full quarantine metadata.
-
-Use this to discover quarantine records by host, hash, user, or state.
-Consult falcon://quarantine/files/search/fql-guide before constructing
-filter expressions. Returns full quarantine details including hostname,
-sha256, paths, state, and associated alert and detection IDs.
-Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
+Search quarantined files in your CrowdStrike environment by host, hash, user, or quarantine state, and return full quarantine metadata. Consult falcon://quarantine/files/search/fql-guide before constructing filter expressions. Returns full quarantine details including hostname, sha256, paths, state, and associated alert and detection IDs. Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
 
@@ -35,12 +29,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Quarantined Files:read`
 
-Estimate how many quarantine records each action would affect for a given filter.
-
-Use this read-only tool before calling a mutating quarantine action to
-understand the blast radius of a release, unrelease, or delete request.
-Consult falcon://quarantine/files/search/fql-guide before constructing
-filter expressions. Returns a list of action counts keyed by action name.
+Estimate how many quarantine records each action would affect for a given FQL filter. Use this read-only tool before calling a mutating quarantine action to understand the blast radius of a release, unrelease, or delete request. Consult falcon://quarantine/files/search/fql-guide before constructing filter expressions. Returns a list of action counts keyed by action name.
 
 **Example prompts:**
 
@@ -54,12 +43,7 @@ filter expressions. Returns a list of action counts keyed by action name.
 
 **Required scopes:** `Quarantined Files:write`
 
-Apply a reversible quarantine action to records selected by IDs or filter.
-
-Use this to release or unrelease quarantined files. Provide `ids` for
-specific records, or `filter` to select by query. Consult
-falcon://quarantine/files/search/fql-guide before constructing filter
-expressions. Returns an empty list on success.
+Apply a reversible quarantine action (release or unrelease) to records selected by IDs or filter. Provide `ids` for specific records, or `filter` to select by query. Consult falcon://quarantine/files/search/fql-guide before constructing filter expressions. Returns success with no records.
 
 **Example prompts:**
 
@@ -73,12 +57,7 @@ expressions. Returns an empty list on success.
 
 **Required scopes:** `Quarantined Files:write`
 
-Delete quarantine records selected by IDs or filter.
-
-This tool is destructive and should be used only when quarantine records
-should be removed rather than released. Provide `ids` for specific records,
-or `filter` to select by query. Consult falcon://quarantine/files/search/fql-guide
-before constructing filter expressions. Returns an empty list on success.
+Delete quarantine records selected by IDs or filter. This tool is destructive and should be used only when quarantine records should be removed rather than released. Provide `ids` for specific records, or `filter` to select by query. Consult falcon://quarantine/files/search/fql-guide before constructing filter expressions. Returns success with no records.
 
 **Example prompts:**
 

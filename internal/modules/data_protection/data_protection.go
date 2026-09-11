@@ -105,7 +105,7 @@ func (m *Module) Name() string { return "dataprotection" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Search Falcon Data Protection classifications, policies, and content patterns"
+	return "Read-only access to Falcon Data Protection configuration — classifications, policies, and content patterns — so you can reason about why a Data Protection detection fired"
 }
 
 // Tool and parameter descriptions, kept 1:1 with the Python falcon-mcp

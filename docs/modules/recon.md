@@ -1,10 +1,10 @@
 <!-- meta:title Recon -->
-<!-- meta:description Searching Falcon Intelligence Recon notifications, monitoring rules, and exposed-data records -->
+<!-- meta:description Search Falcon Intelligence Recon notifications, monitoring rules, and exposed-data records -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Searching Falcon Intelligence Recon notifications, monitoring rules, and exposed-data records
+Search Falcon Intelligence Recon notifications, monitoring rules, and exposed-data records
 
 ## API Scopes
 
@@ -16,8 +16,7 @@ Searching Falcon Intelligence Recon notifications, monitoring rules, and exposed
 
 **Required scopes:** `Monitoring rules (Falcon Intelligence Recon):read`
 
-Search Falcon Intelligence Recon notifications (also called recon alerts)
-and return their full details.
+Search Falcon Intelligence Recon notifications (also called recon alerts) and return their full details.
 
 Use this for dark web matches, leaked credentials, typosquatting matches, and breach
 summaries triggered by your monitoring rules. Consult
@@ -81,14 +80,13 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Monitoring rules (Falcon Intelligence Recon):read`
 
-Count and group Falcon Intelligence Recon notifications into summary buckets.
+Count and summarize Falcon Intelligence Recon notifications without retrieving each record.
 
-Use this to answer how many, top, most common, per day, or over time questions about
-recon notifications — the mix of statuses, the noisiest monitoring rules, or the
-typosquatting trend — without retrieving individual records. Consult
-`falcon://recon/notifications/aggregate-guide` for aggregatable fields and
-`falcon://recon/notifications/search/fql-guide` before writing a filter. Returns one
-entry per aggregation, each with a `name` and `buckets` keyed on `label` and `count`.
+Use this for "how many" and "top N" questions over recon notifications — counts per status,
+rule priority, or topic, and notification volume over time — instead of paging through
+`falcon_search_recon_notifications`. Consult
+`falcon://recon/notifications/search/fql-guide` before constructing filter expressions.
+Returns aggregation buckets keyed by `label` with a `count`.
 
 **Example prompts:**
 
@@ -101,15 +99,13 @@ entry per aggregation, each with a `name` and `buckets` keyed on `label` and `co
 
 **Required scopes:** `Monitoring rules (Falcon Intelligence Recon):read`
 
-Count and group Falcon Intelligence Recon exposed-data records into summary buckets.
+Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.
 
-Use this to answer how many, top, most common, per day, or over time questions about
-leaked credentials and PII — which sites leak the most, the newly-versus-previously
-reported mix, or exposure volume over time — without retrieving individual rows.
-Consult `falcon://recon/exposed-data-records/aggregate-guide` for the restricted field
-list and `falcon://recon/exposed-data-records/search/fql-guide` before writing a filter.
-Returns one entry per aggregation, each with a `name` and `buckets` keyed on `label`
-and `count`.
+Use this for "how many" and "top N" questions over leaked credential and PII rows — counts
+per credential status, site, source category, or rule topic — instead of paging through
+`falcon_search_recon_exposed_data_records`. Consult
+`falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions.
+Returns aggregation buckets keyed by `label` with a `count`.
 
 **Example prompts:**
 
@@ -121,15 +117,12 @@ and `count`.
 
 **Required scopes:** `Monitoring rules (Falcon Intelligence Recon):read`
 
-Estimate how many notifications a prospective Recon monitoring rule would generate.
+Preview how many Falcon Intelligence Recon notifications a monitoring rule would have generated.
 
-Use this before creating a monitoring rule to judge how noisy it would be, or to
-compare candidate filters — a high total means the rule needs tightening. Consult
-`falcon://recon/rules/preview-guide` for the rule-filter dialect, since `filter` is a
-rule definition rather than a notification search filter; to summarize notifications
-that already exist, use `falcon_aggregate_recon_notifications` instead. Returns a
-fixed breakdown of `channel`, `count`, and `site` aggregations with `label`/`count`
-buckets.
+Use this to size a candidate rule before creating it: it evaluates the rule's `filter`
+against historical data for the chosen `topic` and reports the match volume, so you can
+tune the filter without generating live notifications. Returns aggregation buckets describing
+the historical match counts.
 
 **Example prompts:**
 
@@ -142,6 +135,4 @@ buckets.
 - **`falcon://recon/notifications/search/fql-guide`**: Contains the guide for the `filter` param of the `falcon_search_recon_notifications` tool.
 - **`falcon://recon/rules/search/fql-guide`**: Contains the guide for the `filter` param of the `falcon_search_recon_rules` tool.
 - **`falcon://recon/exposed-data-records/search/fql-guide`**: Contains the guide for the `filter` param of the `falcon_search_recon_exposed_data_records` tool.
-- **`falcon://recon/notifications/aggregate-guide`**: Contains the aggregatable fields and usage guide for the `falcon_aggregate_recon_notifications` tool.
-- **`falcon://recon/exposed-data-records/aggregate-guide`**: Contains the aggregatable fields and usage guide for the `falcon_aggregate_recon_exposed_data_records` tool.
 - **`falcon://recon/rules/preview-guide`**: Contains the rule-filter dialect, valid topics, and lookback values for the `falcon_preview_recon_rule` tool.

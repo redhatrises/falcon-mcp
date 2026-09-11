@@ -1,10 +1,10 @@
 <!-- meta:title Serverless -->
-<!-- meta:description Accessing and managing CrowdStrike Falcon Serverless Vulnerabilities -->
+<!-- meta:description Search CrowdStrike Falcon serverless (Lambda/Cloud Functions/Azure Functions) vulnerabilities -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing and managing CrowdStrike Falcon Serverless Vulnerabilities
+Search CrowdStrike Falcon serverless (Lambda/Cloud Functions/Azure Functions) vulnerabilities
 
 ## API Scopes
 

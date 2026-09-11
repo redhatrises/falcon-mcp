@@ -1,10 +1,10 @@
 <!-- meta:title Custom IOA -->
-<!-- meta:description Searching, creating, updating, and deleting Custom IOA (Indicators of Attack) behavioral rules and rule groups using Falcon Custom IOA Service Collection endpoints -->
+<!-- meta:description Search, create, update, and delete Custom IOA (Indicators of Attack) behavioral detection rules and rule groups -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Searching, creating, updating, and deleting Custom IOA (Indicators of Attack) behavioral rules and rule groups using Falcon Custom IOA Service Collection endpoints
+Search, create, update, and delete Custom IOA (Indicators of Attack) behavioral detection rules and rule groups
 
 ## API Scopes
 
@@ -17,12 +17,7 @@ Searching, creating, updating, and deleting Custom IOA (Indicators of Attack) be
 
 **Required scopes:** `Custom IOA Rules:read`
 
-Search Custom IOA rule groups and return full details including their rules.
-
-Use this to find rule groups by platform, name, or enabled state. Consult
-falcon://custom-ioa/rule-groups/fql-guide before constructing filter expressions.
-Returns rule group objects with their contained behavioral detection rules.
-Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
+Search Custom IOA rule groups by platform, name, or enabled state, and return their contained behavioral detection rules. Consult falcon://custom-ioa/rule-groups/fql-guide before constructing filter expressions. Returns full rule group records including their rules. Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
 
@@ -32,10 +27,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Custom IOA Rules:read`
 
-Get all available platforms for Custom IOA rule groups.
-
-Use this to discover valid platform values (windows, mac, linux) before
-creating a rule group. Returns platform details.
+Get the platforms available for Custom IOA rule groups. Use this to discover valid platform values (windows, mac, linux) before creating a rule group. Returns the platform identifiers.
 
 **Example prompts:**
 
@@ -45,11 +37,7 @@ creating a rule group. Returns platform details.
 
 **Required scopes:** `Custom IOA Rules:read`
 
-Get all available Custom IOA rule types.
-
-Use this to discover valid rule type IDs, required fields, and disposition IDs
-before creating a behavioral detection rule. Returns rule type details including
-platform, fields, and supported actions.
+Get the Custom IOA rule types available in your environment. Use this to discover valid rule type IDs, required fields, and disposition IDs before creating a behavioral detection rule. Returns rule type details including platform, fields, and dispositions.
 
 **Example prompts:**
 
@@ -62,11 +50,7 @@ platform, fields, and supported actions.
 
 **Required scopes:** `Custom IOA Rules:write`
 
-Create a new Custom IOA rule group.
-
-Rule groups are containers for behavioral detection rules scoped to a platform.
-Use falcon_get_ioa_platforms to see valid platform values. After creating a
-group, use falcon_create_ioa_rule to add detection rules to it.
+Create a Custom IOA rule group, a platform-scoped container for behavioral detection rules. Use falcon_get_ioa_platforms for valid platform values, then falcon_create_ioa_rule to add rules. Returns the created group.
 
 **Example prompts:**
 
@@ -79,10 +63,7 @@ group, use falcon_create_ioa_rule to add detection rules to it.
 
 **Required scopes:** `Custom IOA Rules:write`
 
-Update an existing Custom IOA rule group.
-
-Modify name, description, or enabled state. Requires rulegroup_version for
-optimistic locking — get it from falcon_search_ioa_rule_groups.
+Update a Custom IOA rule group's name, description, or enabled state. Requires the current rulegroup_version for optimistic locking — get it from falcon_search_ioa_rule_groups. Returns the updated group.
 
 **Example prompts:**
 
@@ -95,10 +76,7 @@ optimistic locking — get it from falcon_search_ioa_rule_groups.
 
 **Required scopes:** `Custom IOA Rules:write`
 
-Delete Custom IOA rule groups by ID.
-
-Permanently removes the rule groups and all rules within them. Use
-falcon_search_ioa_rule_groups to find rule group IDs.
+Permanently delete Custom IOA rule groups by ID, removing all rules within them. Use falcon_search_ioa_rule_groups to find rule group IDs. Idempotent.
 
 **Example prompts:**
 
@@ -111,11 +89,7 @@ falcon_search_ioa_rule_groups to find rule group IDs.
 
 **Required scopes:** `Custom IOA Rules:write`
 
-Create a new Custom IOA behavioral detection rule within a rule group.
-
-Use falcon_get_ioa_rule_types first to discover rule type IDs, required fields,
-and valid disposition IDs. The field_values parameter defines the behavioral
-criteria the rule matches against (process names, file paths, command line regex).
+Create a Custom IOA behavioral detection rule within a rule group. Use falcon_get_ioa_rule_types first to discover rule type IDs, required fields, and valid disposition IDs. The field_values define the behavioral matching criteria. Returns the created rule.
 
 **Example prompts:**
 
@@ -128,10 +102,7 @@ criteria the rule matches against (process names, file paths, command line regex
 
 **Required scopes:** `Custom IOA Rules:write`
 
-Update an existing Custom IOA behavioral detection rule.
-
-Requires rulegroup_version for optimistic locking. Get the current version
-and instance_id from falcon_search_ioa_rule_groups.
+Update a Custom IOA behavioral detection rule. Requires the rule group's current rulegroup_version and the rule instance_id — get both from falcon_search_ioa_rule_groups. Returns the updated rule.
 
 **Example prompts:**
 
@@ -144,10 +115,7 @@ and instance_id from falcon_search_ioa_rule_groups.
 
 **Required scopes:** `Custom IOA Rules:write`
 
-Delete Custom IOA behavioral detection rules from a rule group.
-
-Use falcon_search_ioa_rule_groups to find the rule group ID and individual
-rule instance IDs to delete.
+Delete Custom IOA behavioral detection rules from a rule group by rule instance ID. Use falcon_search_ioa_rule_groups to find the rule group ID and rule instance IDs. Idempotent.
 
 **Example prompts:**
 

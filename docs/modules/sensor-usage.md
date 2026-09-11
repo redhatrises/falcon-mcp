@@ -1,10 +1,10 @@
 <!-- meta:title Sensor Usage -->
-<!-- meta:description Accessing CrowdStrike Falcon sensor usage data -->
+<!-- meta:description Access CrowdStrike Falcon sensor usage data -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing CrowdStrike Falcon sensor usage data
+Access CrowdStrike Falcon sensor usage data
 
 ## API Scopes
 

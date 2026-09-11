@@ -1,10 +1,10 @@
 <!-- meta:title Identity Protection -->
-<!-- meta:description Accessing and managing CrowdStrike Falcon Identity Protection capabilities -->
+<!-- meta:description Investigate CrowdStrike Falcon Identity Protection entities -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing and managing CrowdStrike Falcon Identity Protection capabilities
+Investigate CrowdStrike Falcon Identity Protection entities
 
 ## API Scopes
 

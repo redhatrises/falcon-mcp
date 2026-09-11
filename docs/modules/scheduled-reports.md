@@ -1,10 +1,10 @@
 <!-- meta:title Scheduled Reports -->
-<!-- meta:description Accessing and managing CrowdStrike Falcon scheduled reports and scheduled searches -->
+<!-- meta:description Access and manage CrowdStrike Falcon scheduled reports and scheduled searches -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing and managing CrowdStrike Falcon scheduled reports and scheduled searches
+Access and manage CrowdStrike Falcon scheduled reports and scheduled searches
 
 ## API Scopes
 

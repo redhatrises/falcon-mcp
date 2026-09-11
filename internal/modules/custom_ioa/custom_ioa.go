@@ -106,7 +106,7 @@ func (m *Module) Name() string { return "customioa" }
 
 // Description reports a one-line summary of the module.
 func (m *Module) Description() string {
-	return "Search, create, update, and delete Custom IOA behavioral detection rules and rule groups"
+	return "Search, create, update, and delete Custom IOA (Indicators of Attack) behavioral detection rules and rule groups"
 }
 
 // searchRuleGroupsSchema is the input schema for falcon_search_ioa_rule_groups.

@@ -50,8 +50,12 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: generate
-generate: ## Run go generate (regenerate module aggregator and embedded FQL guide).
+generate: ## Run go generate (regenerate module aggregator, embedded FQL guides, and module docs).
 	go generate ./...
+
+.PHONY: gen-docs
+gen-docs: ## Regenerate the module documentation under docs/modules from Go sources.
+	go run ./tools/gendocs -modules internal/modules -out docs/modules
 
 .PHONY: test
 test: fmt vet ## Run unit tests with the race detector and coverage.

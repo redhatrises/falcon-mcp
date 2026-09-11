@@ -1,10 +1,10 @@
 <!-- meta:title IOC -->
-<!-- meta:description Searching, creating, and deleting custom IOCs using Falcon IOC Service Collection endpoints -->
+<!-- meta:description Search, create, and delete custom Falcon IOCs (indicators of compromise) -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Searching, creating, and deleting custom IOCs using Falcon IOC Service Collection endpoints
+Search, create, and delete custom Falcon IOCs (indicators of compromise)
 
 ## API Scopes
 
@@ -17,11 +17,7 @@ Searching, creating, and deleting custom IOCs using Falcon IOC Service Collectio
 
 **Required scopes:** `IOC Management:read`
 
-Search custom IOCs and return full IOC details.
-
-Use this to find IOCs by type, value, action, severity, or expiration status.
-Consult falcon://ioc/search/fql-guide before constructing filter expressions.
-Returns full indicator records including metadata, platforms, and host groups.
+Search custom IOCs in CrowdStrike Falcon using IOC FQL (fields: type, value, action, source, severity_number, expiration, expired, applied_globally, metadata.filename.raw). Consult falcon://ioc/search/fql-guide before constructing filter expressions. Returns full indicator records.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions. For cursor-based paging, use `pagination.next` as the `after` parameter on the next call.
 
 **Example prompts:**
@@ -36,10 +32,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `IOC Management:write`
 
-Create one or more custom IOCs.
-
-Provide type/value/action for a single IOC, or pass a bulk indicators array.
-Returns the created indicator records on success.
+Create one or more custom IOCs. Provide type/value (plus optional action, severity, expiration, etc.) for a single IOC, or a bulk indicators array. Returns the created indicator records.
 
 **Example prompts:**
 
@@ -53,10 +46,7 @@ Returns the created indicator records on success.
 
 **Required scopes:** `IOC Management:write`
 
-Remove custom IOCs by IDs or FQL filter.
-
-Provide either specific IDs or an FQL filter for bulk removal. If both are
-given, filter takes precedence. Returns a success summary with deleted IOC IDs.
+Delete custom IOCs by IDs or FQL filter. If both are given, filter takes precedence. Returns the deleted IOC IDs. Idempotent.
 
 **Example prompts:**
 

@@ -1,10 +1,10 @@
 <!-- meta:title Discover -->
-<!-- meta:description Accessing and managing CrowdStrike Falcon Discover applications, managed assets, and unmanaged assets -->
+<!-- meta:description Search Falcon Discover applications, managed assets, and unmanaged assets -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing and managing CrowdStrike Falcon Discover applications, managed assets, and unmanaged assets
+Search Falcon Discover applications, managed assets, and unmanaged assets
 
 ## API Scopes
 
@@ -52,11 +52,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 Search hosts by asset and configuration posture: drive encryption status, encrypted/unencrypted drives, OS security settings (Secure Boot, Credential Guard, IOMMU), disk/memory/CPU usage, asset criticality, and internet exposure.
 
-Use this when the question is about a device's storage, hardware, or security
-configuration rather than its sensor state. For containment status, sensor version,
-or policy assignment, use `falcon_search_hosts`. See
-`falcon://discover/managed-assets/fql-guide` for filters; returns full asset details.
-Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
+Use this when the question is about a device's storage, hardware, or security configuration rather than its sensor state. For containment status, sensor version, or policy assignment, use `falcon_search_hosts`. See `falcon://discover/managed-assets/fql-guide` for filters; returns full asset details. Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
 

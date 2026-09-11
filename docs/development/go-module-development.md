@@ -11,7 +11,7 @@ This is the architectural reference for the **Go** falcon-mcp server. Follow it 
 
 ## Architecture
 
-```
+```text
 cmd/falcon-mcp                 process entry
 internal/cli                   cobra flags, transport selection
 internal/config                env/file config
@@ -118,7 +118,7 @@ Annotations: base.DestructiveAnnotations(true), // true if idempotent
 
 ### Package layout
 
-```
+```text
 internal/modules/<name>/
   <name>.go          // Module, Factory, local *API interface, Register*, search/get
   mutations.go       // optional: create/update/delete/action

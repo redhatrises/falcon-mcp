@@ -62,8 +62,8 @@ const defaultSort = "name.asc"
 // CrowdStrike API scopes required by this module's operations. Surfaced on a
 // 403 via base.APIError, referenced directly at each call site.
 var (
-	scopeHostGroupRead  = base.Scope{Name: "host-group", Read: true}
-	scopeHostGroupWrite = base.Scope{Name: "host-group", Write: true}
+	scopeHostGroupRead  = base.Scope{Name: "Host Groups", Read: true}
+	scopeHostGroupWrite = base.Scope{Name: "Host Groups", Write: true}
 )
 
 // hostGroupAPI is the minimal slice of the gofalcon host_group client this
@@ -133,20 +133,26 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	}, m.searchHostGroupMembers)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "create_host_group",
-		Description: "Create a host group of type static, staticByID, or dynamic. A dynamic group requires an assignment_rule (host FQL); the API rejects an assignment_rule on static and staticByID groups.",
+		Name: "create_host_group",
+		Description: "Create a host group of type static, staticByID, or dynamic. A dynamic group requires " +
+			"an assignment_rule (host FQL) that auto-includes matching hosts; the API rejects an assignment_rule " +
+			"on static and staticByID groups, which are created empty and populated afterwards via " +
+			"falcon_perform_host_group_action. Returns the created host group record.",
 		Annotations: base.MutatingAnnotations(false),
 	}, m.createHostGroup)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "update_host_group",
-		Description: "Update a host group's name, description, or assignment_rule. Unspecified fields are left unchanged. Only set assignment_rule on dynamic groups.",
+		Name: "update_host_group",
+		Description: "Update an existing host group's name, description, or assignment_rule. name and description " +
+			"are safe for any group type; only set assignment_rule on dynamic groups. Unspecified fields are left " +
+			"unchanged. Returns the updated host group record.",
 		Annotations: base.MutatingAnnotations(false),
 	}, m.updateHostGroup)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "delete_host_groups",
-		Description: "Permanently delete one or more host groups by ID. Idempotent.",
+		Name: "delete_host_groups",
+		Description: "Permanently delete one or more host groups by ID. This removes the groups only; the member " +
+			"hosts are not affected. Idempotent — deleting an already-absent group succeeds.",
 		Annotations: base.DestructiveAnnotations(true),
 	}, m.deleteHostGroups)
 

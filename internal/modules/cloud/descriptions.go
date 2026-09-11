@@ -102,7 +102,14 @@ first. Returns a confirmation response.`
 Use this to find risks by severity, status, cloud provider, account, asset, rule,
 or threat actor. Cloud risks aggregate IOM and IOA findings into per-asset risk
 records and include threat intelligence attribution. For individual compliance rule
-violations on specific resources, use falcon_search_iom_findings instead. Consult
+violations on specific resources, use falcon_search_iom_findings instead.
+For the underlying per-asset security facts that risks are computed from, use
+falcon_search_cloud_insights instead — it covers all insight categories: Identity
+(MFA status, admin privileges, credential rotation, unused accounts), Network
+(internet exposure, public IPs, access ranges), Vulnerabilities (reachable CVEs,
+RCE, sensor presence), Data (secrets, sensitive data, encryption, logging), AI
+(LLM model usage, MCP server exposure), and Application (third-party vendor
+compliance, excessive permissions). Consult
 falcon://cloud/cloud-risks/fql-guide before constructing filter expressions.
 Returns full risk details including severity, lifecycle status, asset context, and
 threat intelligence attribution.

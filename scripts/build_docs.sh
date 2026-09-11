@@ -6,7 +6,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 echo "=== Step 1: Generate module documentation ==="
 cd "$PROJECT_ROOT"
-uv run python scripts/generate_module_docs.py
+make gen-docs
 
 echo "=== Step 2: Copy changelog ==="
 {

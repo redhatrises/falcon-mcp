@@ -217,7 +217,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 		Name: "get_cases",
 		Description: "Retrieve details for case IDs you already have. Use when you have specific " +
 			"case IDs from search results or external references. For discovering cases by criteria, " +
-			"use falcon_search_cases instead. Returns full case records.",
+			"use falcon_search_cases instead; for files attached to a case, use falcon_aggregate_case_file_details. " +
+			"Returns full case records — note their `analysis_results.files` field lists forensic artifacts from " +
+			"detections, not attachments, and is empty for cases that do have attachments.",
 	}, m.getCases)
 
 	base.AddTool(r, &mcp.Tool{

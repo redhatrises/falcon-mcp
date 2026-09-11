@@ -1,10 +1,10 @@
 <!-- meta:title Intel -->
-<!-- meta:description Accessing and analyzing CrowdStrike Falcon intelligence data -->
+<!-- meta:description Search Falcon threat intelligence: adversaries, indicators, reports, and MITRE ATT&CK profiles -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing and analyzing CrowdStrike Falcon intelligence data
+Search Falcon threat intelligence: adversaries, indicators, reports, and MITRE ATT&CK profiles
 
 ## API Scopes
 
@@ -18,11 +18,7 @@ Accessing and analyzing CrowdStrike Falcon intelligence data
 
 **Required scopes:** `Actors (Falcon Intelligence):read`
 
-Research threat actors and adversary groups tracked by CrowdStrike intelligence.
-
-Use this to search actors by name, target countries/industries, or activity dates.
-Consult falcon://intel/actors/fql-guide before constructing filter expressions.
-Returns full actor profiles including aliases, motivations, and targeting details.
+Research threat actors and adversary groups tracked by CrowdStrike intelligence using intel FQL (fields: name, actor_type, target_countries, target_industries, motivations, created_date, last_activity_date). Consult falcon://intel/actors/fql-guide before constructing filter expressions. Returns full actor profiles.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
@@ -34,12 +30,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Indicators (Falcon Intelligence):read`
 
-Search for threat indicators and IOCs from CrowdStrike intelligence.
-
-Use this to find indicators by type, publish date, malware family, or threat actor
-association. Consult falcon://intel/indicators/fql-guide before constructing filter
-expressions. Returns full indicator details including labels, relations, and kill
-chain stage.
+Search threat indicators/IOCs from CrowdStrike intelligence using intel FQL (fields: type, indicator, malicious_confidence, malware_families, kill_chains, published_date, threat_types, vulnerabilities). Consult falcon://intel/indicators/fql-guide before constructing filter expressions. Returns full indicator details.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
@@ -50,11 +41,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Reports (Falcon Intelligence):read`
 
-Search CrowdStrike intelligence publications and threat reports.
-
-Use this to find reports by name, target industry, threat type, or publication date.
-Consult falcon://intel/reports/fql-guide before constructing filter expressions.
-Returns full report metadata including title, description, and target details.
+Search CrowdStrike intelligence publications and threat reports using intel FQL (fields: name, type, sub_type, actors, target_countries, target_industries, motivations, tags, created_date). Consult falcon://intel/reports/fql-guide before constructing filter expressions. Returns full report metadata.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
@@ -65,11 +52,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Actors (Falcon Intelligence):read`
 
-Generate a MITRE ATT&CK report for a given threat actor.
-
-Accepts an actor name (e.g., 'WARP PANDA') or numeric ID. Returns MITRE ATT&CK
-tactics, techniques, and procedures (TTPs) for the actor. JSON format returns a
-parsed list of dicts; CSV format returns raw CSV text.
+Generate a MITRE ATT&CK report for a threat actor — its tactics, techniques, and procedures (TTPs). Accepts an actor name (e.g. 'WARP PANDA') or numeric ID. Format 'json' returns a parsed list; 'csv' returns raw CSV text.
 
 **Example prompts:**
 

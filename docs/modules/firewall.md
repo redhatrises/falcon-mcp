@@ -1,10 +1,10 @@
 <!-- meta:title Firewall Management -->
-<!-- meta:description Searching and managing firewall rules and rule groups -->
+<!-- meta:description Search and manage Falcon firewall rules and rule groups -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Searching and managing firewall rules and rule groups
+Search and manage Falcon firewall rules and rule groups
 
 ## API Scopes
 

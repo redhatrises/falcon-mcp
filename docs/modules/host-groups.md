@@ -1,10 +1,10 @@
 <!-- meta:title Host Groups -->
-<!-- meta:description Searching, creating, updating, and deleting CrowdStrike Falcon host groups, as well as managing group membership -->
+<!-- meta:description Search, create, update, and delete Falcon host groups and manage their membership -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Searching, creating, updating, and deleting CrowdStrike Falcon host groups, as well as managing group membership
+Search, create, update, and delete Falcon host groups and manage their membership
 
 ## API Scopes
 
@@ -17,12 +17,7 @@ Searching, creating, updating, and deleting CrowdStrike Falcon host groups, as w
 
 **Required scopes:** `Host Groups:read`
 
-Search for host groups in your CrowdStrike environment.
-
-Use this to find host groups by name, type, creator, or timestamps. Consult
-falcon://host-groups/search/fql-guide before constructing filter expressions.
-Returns full host group details including id, name, group_type, description,
-and audit metadata in a single call.
+Search host groups in CrowdStrike Falcon using host-group FQL (fields: name, group_type, created_by, created_timestamp, modified_by, modified_timestamp). Consult falcon://host-groups/search/fql-guide before constructing filter expressions. Returns full group records.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
@@ -34,12 +29,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Host Groups:read`
 
-Search for the host members of a specific host group.
-
-Use this to list the devices that belong to a host group. Requires the group
-`id` and filters on HOST attributes (platform, hostname, etc.) — consult
-falcon://hosts/search/fql-guide for the filter syntax. Returns full host device
-entities including device_id, hostname, platform, and network context.
+List the member devices of a host group. The filter and sort operate on HOST/DEVICE attributes (e.g. platform_name, hostname), not group attributes. Consult falcon://hosts/search/fql-guide before constructing filter expressions. Returns full host device records.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
@@ -54,12 +44,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `Host Groups:write`
 
-Create a host group.
-
-Provide a name and group_type. 'dynamic' groups take an assignment_rule (host
-FQL) that automatically includes matching hosts. 'static' and 'staticByID' groups
-are created empty (no assignment_rule) and populated afterwards via
-falcon_perform_host_group_action. Returns the created host group record on success.
+Create a host group of type static, staticByID, or dynamic. A dynamic group requires an assignment_rule (host FQL) that auto-includes matching hosts; the API rejects an assignment_rule on static and staticByID groups, which are created empty and populated afterwards via falcon_perform_host_group_action. Returns the created host group record.
 
 **Example prompts:**
 
@@ -73,11 +58,7 @@ falcon_perform_host_group_action. Returns the created host group record on succe
 
 **Required scopes:** `Host Groups:write`
 
-Update an existing host group.
-
-Provide the group `id` and any fields to change. name and description are safe
-for any group type; only set assignment_rule on 'dynamic' groups. Unspecified
-fields are left unchanged. Returns the updated host group record on success.
+Update an existing host group's name, description, or assignment_rule. name and description are safe for any group type; only set assignment_rule on dynamic groups. Unspecified fields are left unchanged. Returns the updated host group record.
 
 **Example prompts:**
 
@@ -91,10 +72,7 @@ fields are left unchanged. Returns the updated host group record on success.
 
 **Required scopes:** `Host Groups:write`
 
-Delete one or more host groups.
-
-Provide the host group `ids` to delete. This permanently removes the groups.
-Returns an empty list on success.
+Permanently delete one or more host groups by ID. This removes the groups only; the member hosts are not affected. Idempotent — deleting an already-absent group succeeds.
 
 **Example prompts:**
 
@@ -107,11 +85,7 @@ Returns an empty list on success.
 
 **Required scopes:** `Host Groups:write`
 
-Add or remove hosts from one or more host groups.
-
-Set action_name to 'add-hosts' or 'remove-hosts', provide the target group
-`ids`, and a host FQL filter selecting which hosts to act on. Applies only to
-static groups. Returns the updated host group records on success.
+Add or remove hosts from static host groups. The filter selects which hosts to act on using HOST/DEVICE FQL (see the hosts FQL guide). Applies to static groups only.
 
 **Example prompts:**
 
