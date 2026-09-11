@@ -21,20 +21,21 @@ Never made an open source contribution before? Wondering how contributions work 
 
     ``git checkout -b BRANCH-NAME-HERE``
 
-1. **Install dependencies:**
+1. **Install dependencies / build:**
 
     ```bash
-    uv sync --all-extras
+    make build
     ```
 
 1. Make the appropriate changes for the issue you are trying to address or the feature you would like to add.
 
-1. Follow [this guide](https://google.github.io/styleguide/pyguide.html#docstrings) for docstrings.
+1. Follow existing Go module patterns in `internal/modules/` and the [Go Module Development Guide](../docs/development/go-module-development.md).
 
-1. Run [`ruff`](https://docs.astral.sh/ruff/) to format your code and check for linting issues. This helps maintain consistent code style across the project.
+1. Run formatting, vet, and lint:
 
-    ``uv run ruff check . --select I``
-    ``uv run ruff check .``
+    ```bash
+    make fmt vet lint
+    ```
 
 1. Add the file contents of the changed files to the "snapshot" git uses to manage the state of the project (also known as the index). Here is the git command that will add your changes:
 
@@ -146,10 +147,10 @@ Before submitting your pull request, verify your changes pass the test suite:
 
 ```bash
 # Unit tests
-uv run pytest
+make test
 
-# Integration tests (requires API credentials)
-uv run pytest --run-integration tests/integration/
+# Live e2e tests (requires API credentials; see test/e2e/README.md)
+make test-e2e
 ```
 
 ### Rebase Early, Rebase Often

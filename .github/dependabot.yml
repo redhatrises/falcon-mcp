@@ -1,8 +1,8 @@
 version: 2
 updates:
-  # Python dependencies configuration (uv ecosystem)
+  # Python wrapper package dependencies (uv ecosystem)
   - package-ecosystem: "uv"
-    directory: "/"
+    directory: "/python"
     schedule:
       interval: "monthly"
     cooldown:
