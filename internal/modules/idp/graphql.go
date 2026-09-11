@@ -59,7 +59,7 @@ func (m *Module) runGraphQL(ctx context.Context, query string) (map[string]any, 
 	params.Body = &models.SwaggerGraphQLQuery{Query: &query}
 
 	resp, err := m.API.APIPreemptProxyPostGraphql(params)
-	if e := base.APIError(err, resp, scopeIdentityProtection); e != nil {
+	if e := base.APIError(err, resp, scopeIDPEntities, scopeIDPTimeline, scopeIDPDetections, scopeIDPAssessment, scopeIDPGraphQL); e != nil {
 		return nil, e
 	}
 

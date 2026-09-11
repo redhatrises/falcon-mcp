@@ -1,10 +1,10 @@
 <!-- meta:title Spotlight -->
-<!-- meta:description Accessing and managing CrowdStrike Falcon Spotlight vulnerabilities -->
+<!-- meta:description Search CrowdStrike Falcon Spotlight vulnerabilities -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Accessing and managing CrowdStrike Falcon Spotlight vulnerabilities
+Search CrowdStrike Falcon Spotlight vulnerabilities
 
 ## API Scopes
 

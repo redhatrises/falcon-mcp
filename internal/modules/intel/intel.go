@@ -124,8 +124,9 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	}, m.searchReports)
 
 	base.AddTool(r, &mcp.Tool{
-		Name:        "get_mitre_report",
-		Description: "Generate a MITRE ATT&CK report (TTPs) for a threat actor. Accepts an actor name (e.g. 'WARP PANDA') or numeric ID; format 'json' (parsed) or 'csv' (raw text).",
+		Name: "get_mitre_report",
+		Description: "Generate a MITRE ATT&CK report for a threat actor — its tactics, techniques, and procedures (TTPs). " +
+			"Accepts an actor name (e.g. 'WARP PANDA') or numeric ID. Format 'json' returns a parsed list; 'csv' returns raw CSV text.",
 	}, m.getMitreReport)
 }
 

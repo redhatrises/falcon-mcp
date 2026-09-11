@@ -1,10 +1,10 @@
 <!-- meta:title Data Protection -->
-<!-- meta:description Provides read-only access to Data Protection configuration data — classifications, policies, and content patterns — so an LLM can reason about why a Data Protection detection fired -->
+<!-- meta:description Read-only access to Falcon Data Protection configuration — classifications, policies, and content patterns — so you can reason about why a Data Protection detection fired -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-Provides read-only access to Data Protection configuration data — classifications, policies, and content patterns — so an LLM can reason about why a Data Protection detection fired
+Read-only access to Falcon Data Protection configuration — classifications, policies, and content patterns — so you can reason about why a Data Protection detection fired
 
 ## API Scopes
 
@@ -18,11 +18,10 @@ Provides read-only access to Data Protection configuration data — classificati
 
 Search for Data Protection classifications in your CrowdStrike environment.
 
-Use this to find classification rules that define what sensitive data
-patterns to detect. Consult
-falcon://data-protection/classifications/fql-guide before constructing
-filter expressions. Returns full classification details including content
-pattern references and rule configuration.
+Use this to find classification rules that define what sensitive data patterns
+to detect. Consult falcon://data-protection/classifications/fql-guide before
+constructing filter expressions. Returns full classification details including
+content pattern references and rule configuration.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
@@ -36,8 +35,8 @@ Responses include `pagination.total` (the total number of records matching the f
 
 Search for Data Protection policies in your CrowdStrike environment.
 
-Use this to find data protection policies by platform, enablement status,
-or precedence. Requires a platform_name ('win' or 'mac'). Consult
+Use this to find data protection policies by platform, enablement status, or
+precedence. Requires a platform_name ('win' or 'mac'). Consult
 falcon://data-protection/policies/fql-guide before constructing filter
 expressions. Returns full policy details including host groups and
 classification assignments.
@@ -54,10 +53,10 @@ Responses include `pagination.total` (the total number of records matching the f
 
 Search for Data Protection content patterns in your CrowdStrike environment.
 
-Use this to find regex-based content detection patterns by type, category,
-or region. Consult falcon://data-protection/content-patterns/fql-guide
-before constructing filter expressions. Returns full pattern details
-including regex definitions and match thresholds.
+Use this to find regex-based content detection patterns by type, category, or
+region. Consult falcon://data-protection/content-patterns/fql-guide before
+constructing filter expressions. Returns full pattern details including regex
+definitions and match thresholds.
 Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**

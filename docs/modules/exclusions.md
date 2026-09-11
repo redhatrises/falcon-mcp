@@ -1,10 +1,10 @@
 <!-- meta:title Exclusions -->
-<!-- meta:description This module provides a unified set of tools for managing CrowdStrike exclusions across four types — IOA, Machine Learning, Sensor Visibility, and Certificate-Based — behind a single `exclusion_type` discriminator -->
+<!-- meta:description Search, create, update, and delete Falcon exclusions across four types — IOA, machine learning, sensor visibility, and certificate-based — behind a single exclusion_type discriminator -->
 <!-- meta:section modules -->
 <!-- meta:link-base /falcon-mcp/ -->
 <!-- frontmatter:sidebar order:10 -->
 
-This module provides a unified set of tools for managing CrowdStrike exclusions across four types — IOA, Machine Learning, Sensor Visibility, and Certificate-Based — behind a single `exclusion_type` discriminator
+Search, create, update, and delete Falcon exclusions across four types — IOA, machine learning, sensor visibility, and certificate-based — behind a single exclusion_type discriminator
 
 ## API Scopes
 
@@ -21,15 +21,7 @@ This module provides a unified set of tools for managing CrowdStrike exclusions 
 
 **Required scopes:** `IOA Exclusions:read`, `Machine Learning Exclusions:read`, `Sensor Visibility Exclusions:read`
 
-Search exclusions of a given type and return full exclusion records.
-
-Use this to find IOA, machine learning, sensor visibility, or
-certificate-based exclusions by name, value, scope, or timestamp. The
-`exclusion_type` parameter selects which exclusion API is queried.
-Consult falcon://exclusions/search/fql-guide before constructing filter
-expressions — the available fields differ per type. Returns full
-exclusion records including id, scope, and timestamps.
-Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
+Search IOA, machine learning, sensor visibility, or certificate-based exclusions by name, value, scope, or timestamp. Select which API is queried with exclusion_type. Consult falcon://exclusions/search/fql-guide before constructing filter expressions — the available fields differ per type. Returns full exclusion records including id, scope, and timestamps. Responses include `pagination.total` (the total number of records matching the filter, or null when the API does not report a count) — use it to answer "how many" questions.
 
 **Example prompts:**
 
@@ -43,13 +35,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 **Required scopes:** `IOA Exclusions:write`, `Machine Learning Exclusions:write`, `Sensor Visibility Exclusions:write`
 
-Create an exclusion of the given type.
-
-The `exclusion_type` selects which fields are required: 'ioa' needs name,
-pattern_id, ifn_regex, and cl_regex; 'ml' and 'sensor_visibility' need
-value (sensor_visibility also needs host_groups); 'certificate' needs
-name, certificate, and status. Invalid or missing fields return a guiding
-error before any API call. Returns the created exclusion record(s).
+Create an exclusion of the given exclusion_type. 'ioa' needs name, pattern_id, ifn_regex, and cl_regex; 'ml' and 'sensor_visibility' need value (sensor_visibility also needs host_groups); 'certificate' needs name, certificate, and status. applied_globally is honored only for 'ml' and 'certificate'; the 'ioa' and 'sensor_visibility' APIs have no such field, so applied_globally:true is rejected for those types rather than silently narrowing the exclusion's scope — use host_groups instead. Returns the created exclusion record(s).
 
 **Example prompts:**
 
@@ -63,12 +49,7 @@ error before any API call. Returns the created exclusion record(s).
 
 **Required scopes:** `IOA Exclusions:write`, `Machine Learning Exclusions:write`, `Sensor Visibility Exclusions:write`
 
-Update an existing exclusion of the given type.
-
-Provide the `id` of the exclusion plus the same fields used when creating
-that type. All four types update via HTTP PATCH. Invalid or missing
-fields return a guiding error before any API call. Returns the updated
-exclusion record(s).
+Update an existing exclusion of the given exclusion_type. Provide the id plus the same fields used when creating that type. All four types update via HTTP PATCH. As with create, applied_globally:true is rejected for 'ioa' and 'sensor_visibility'. Returns the updated exclusion record(s).
 
 **Example prompts:**
 
@@ -81,10 +62,7 @@ exclusion record(s).
 
 **Required scopes:** `IOA Exclusions:write`, `Machine Learning Exclusions:write`, `Sensor Visibility Exclusions:write`
 
-Delete one or more exclusions of the given type.
-
-Provide the `exclusion_type` and a non-empty list of exclusion `ids`.
-Returns the API response for the deletion.
+Delete one or more exclusions of the given exclusion_type by ID, with an optional audit comment. Idempotent.
 
 **Example prompts:**
 
@@ -94,13 +72,7 @@ Returns the API response for the deletion.
 
 **Required scopes:** `Machine Learning Exclusions:read`
 
-Retrieve the code-signing certificate metadata for a file by SHA256.
-
-Use this as the pre-flight lookup before building a certificate-based
-exclusion: it returns the file's signing certificate details (issuer,
-subject, serial, thumbprint, validity window) which you then pass as the
-`certificate` argument to falcon_create_exclusion. Returns certificate
-metadata for the given hash.
+Retrieve the code-signing certificate metadata for a file by SHA256 (issuer, subject, serial, thumbprint, validity window). Use this as the pre-flight lookup before building a certificate-based exclusion, then pass the result as the certificate argument to falcon_create_exclusion. Returns certificate metadata for the given hash.
 
 **Example prompts:**
 

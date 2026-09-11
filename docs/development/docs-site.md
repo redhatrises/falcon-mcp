@@ -15,7 +15,7 @@ For the full annotation reference, see [Content Tag Guide](/falcon-mcp/developme
 docs/
   getting-started/         # Hand-authored: installation, credentials, config, quickstart
   usage/                   # Hand-authored: CLI, transports, editor integration, flight control
-  modules/                 # AUTO-GENERATED: one page per Python module + overview
+  modules/                 # AUTO-GENERATED: one page per Go module + overview
   deployment/              # Hand-authored: Docker, Amazon Bedrock, Google Cloud
   development/             # Hand-authored: contributing, module dev, resource dev, testing, this guide
   examples/                # Hand-authored: basic usage, MCP config
@@ -75,11 +75,11 @@ These render natively on GitHub and get converted to Starlight `:::` directives 
 
 ### Module Pages
 
-The script `scripts/generate_module_docs.py` introspects the Python source in `falcon_mcp/modules/` and produces one page per module under `docs/modules/`, each containing:
+The generator `tools/gendocs` statically analyzes the Go source in `internal/modules/` and produces one page per module under `docs/modules/`, each containing:
 
-- Title and description (derived from the module file's docstring)
-- API scopes (derived from operation names found in source code)
-- Tools with docstrings, per-tool scopes, annotations (read-only / mutating / destructive), and example prompts
+- Title and description (title from the generator's metadata map; description from the module's `Description()` method)
+- API scopes (traced from the `base.Scope` values each tool's handler passes to `base.APIError`)
+- Tools with descriptions, per-tool scopes, annotations (read-only / mutating / destructive), and example prompts
 - Resources with URIs and descriptions
 
 ### Module Overview Page
@@ -92,36 +92,31 @@ The root `CHANGELOG.md` is copied with annotation tags prepended. This happens i
 
 ### How Titles and Descriptions Are Derived
 
-The generator reads each module file's docstring:
+- **Title**: Looked up in the `moduleMetadata` map in `tools/gendocs/data.go`, keyed by the module's `Name()`. A module absent from the map falls back to a title-cased key.
+- **Description**: Taken verbatim from the module's `Description()` method.
+- **Slug** (output filename): From `moduleMetadata`, defaulting to the module key.
 
-- **Title**: Extracted from the first line by stripping the `module for Falcon MCP Server.` suffix
-- **Description**: Extracted from the second paragraph's first sentence, stripping the common `This module provides tools for ...` prefix
-
-To override either, add an entry to `MODULE_METADATA` in `scripts/generate_module_docs.py`.
+To override a title or slug, add or edit an entry in `moduleMetadata` in `tools/gendocs/data.go`.
 
 ## Adding a New Module to Docs
 
-Nothing is needed. The generator uses `pkgutil.iter_modules()` to discover all Python modules in `falcon_mcp/modules/` automatically. Any new module file is picked up on the next build.
+Nothing is needed. The generator discovers every package under `internal/modules/` (except `base` and `registry`) automatically. Any new module is picked up on the next `make generate`.
 
-If you need a custom title, slug, or description, add an entry to `MODULE_METADATA` in `scripts/generate_module_docs.py`:
+If you need a custom title or slug, add an entry to `moduleMetadata` in `tools/gendocs/data.go`:
 
-```python
-MODULE_METADATA: dict[str, dict[str, Any]] = {
-    "mymodule": {
-        "title": "My Custom Title",      # optional
-        "slug": "my-module",             # optional (defaults to module key)
-        "description": "Custom desc.",   # optional (defaults to docstring-derived)
-    },
+```go
+var moduleMetadata = map[string]meta{
+    "mymodule": {title: "My Custom Title", slug: "my-module"},
 }
 ```
 
-To add example prompts for a tool, add entries to `TOOL_EXAMPLES`:
+To add example prompts for a tool, add entries to `toolExamples` in `tools/gendocs/examples.go`:
 
-```python
-TOOL_EXAMPLES: dict[str, list[str]] = {
-    "falcon_my_tool": [
+```go
+var toolExamples = map[string][]string{
+    "falcon_my_tool": {
         "Example prompt for the tool",
-    ],
+    },
 }
 ```
 
@@ -141,28 +136,30 @@ bash scripts/build_docs.sh
 
 This runs:
 
-1. `uv run python scripts/generate_module_docs.py` — regenerates `docs/modules/`
+1. `make gen-docs` — regenerates `docs/modules/`
 2. Copies `CHANGELOG.md` with annotation tags to `docs/changelog.md`
 3. Runs `markdownlint` on all files under `docs/`
 
-You can also run the generation script directly:
+You can also regenerate the module docs directly:
 
 ```bash
-uv run python scripts/generate_module_docs.py
+make gen-docs
+# or, alongside the other generators:
+make generate
 ```
 
 ## CI Freshness Check
 
-The `.github/workflows/docs-check.yml` workflow ensures module documentation stays in sync with the code. On pull requests that touch `falcon_mcp/`, `scripts/generate_module_docs.py`, or `docs/`, the workflow:
+The `.github/workflows/docs-check.yml` workflow ensures module documentation stays in sync with the code. On pull requests that touch `internal/modules/`, `tools/gendocs/`, or `docs/`, the workflow:
 
-1. Runs `uv run python scripts/generate_module_docs.py`
+1. Runs `make gen-docs`
 2. Checks `git diff --exit-code docs/modules/`
 
-If the committed module docs differ from what the script produces, the check fails. This prevents stale documentation from being merged.
+If the committed module docs differ from what the generator produces, the check fails. This prevents stale documentation from being merged.
 
 After adding or modifying a module, always regenerate and commit the updated docs:
 
 ```bash
-uv run python scripts/generate_module_docs.py
+make generate
 git add docs/modules/
 ```
