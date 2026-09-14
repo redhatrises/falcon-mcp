@@ -78,7 +78,7 @@ type Catalog struct {
 	// Connect and used by falcon_execute_tool to dispatch by name. It is nil
 	// until Connect succeeds. stdio is a single client; HTTP transports may
 	// dispatch concurrently on this shared session. The Go MCP SDK is assumed
-	// to allow concurrent ClientSession.CallTool (see docs/development/go-port-diffs.md).
+	// to allow concurrent ClientSession.CallTool (see .github/go-port-diffs.md).
 	session *mcp.ClientSession
 	ss      *mcp.ServerSession
 }

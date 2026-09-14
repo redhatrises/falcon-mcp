@@ -144,7 +144,7 @@ Never made an open source contribution before? Wondering how contributions work 
 
 ### Releases
 
-Releases are automated: **release-please** opens a changelog PR from conventional commits, then **GoReleaser** attaches binaries to the GitHub Release. Install wrappers publish over **OIDC trusted publishing** only (PyPI and npm) — no long-lived registry tokens in GitHub secrets. See [go-port-diffs.md](../docs/development/go-port-diffs.md#release-pipeline).
+Releases are automated: **release-please** opens a changelog PR from conventional commits, then **GoReleaser** attaches binaries to the GitHub Release. Install wrappers publish over **OIDC trusted publishing** only (PyPI and npm) — no long-lived registry tokens in GitHub secrets. Temporary Go-port cutover notes (including the release pipeline checklist) live in [go-port-diffs.md](go-port-diffs.md#release-pipeline).
 
 1. Push your local changes back to your account on github.com:
 

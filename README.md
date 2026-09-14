@@ -341,7 +341,6 @@ cd python && uv sync --extra dev && pytest
 ### Developer Documentation
 
 - [Go Module Development](docs/development/go-module-development.md): How to add tools, resources, and prompts
-- [Known Go-port diffs](docs/development/go-port-diffs.md): Intentional differences vs the former Python server
 - [Documentation Guide](docs/development/docs-site.md): Architecture and maintenance guide for the documentation
 - [Integration Testing](docs/development/integration-testing.md): Live e2e tests against a Falcon tenant
 

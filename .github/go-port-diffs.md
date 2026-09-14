@@ -1,11 +1,7 @@
-<!-- meta:title Go Port Diffs -->
-<!-- meta:description Intentional behavioral differences between the Go falcon-mcp server and the former Python implementation. -->
-<!-- meta:section development -->
-<!-- meta:link-base /falcon-mcp/ -->
-
 # Known diffs vs the former Python server
 
-This branch ships **one Go MCP server**. `uvx` / PyPI and `npx` only download or vendor that binary. The notes below are the remaining, **intentional** differences so an upstream PR is not a surprise. Delete this page once the Go server is the only documented contract.
+> Contributor / porting notes for the Go MCP cutover. Not part of the published
+> product docs — delete this file once the Go server is the only contract.
 
 ## Inventory (mechanical)
 
@@ -75,7 +71,7 @@ Before the first npm release, configure a Trusted Publisher on npmjs.com for **e
 
 Version stamps for wrappers/registry files live in `release-please-config.json` / `.release-please-manifest.json`. The workflow only syncs derived files release-please does not own (`docs/changelog.md`, `python/uv.lock`).
 
-The release job uses **googleapis/release-please-action v4.4.1** (release-please ^17) with manifest config (`release-please-config.json` + `.release-please-manifest.json`). The workflow runs only on `push` to `main` (no `workflow_dispatch`). To preview a release PR locally:
+The release job uses **googleapis/release-please-action v5.0.0** (release-please ^17, Node 24) with manifest config (`release-please-config.json` + `.release-please-manifest.json`). The workflow runs only on `push` to `main` (no `workflow_dispatch`). To preview a release PR locally:
 
 ```bash
 # Config files must already be on the remote branch (release-please reads GitHub, not your working tree):

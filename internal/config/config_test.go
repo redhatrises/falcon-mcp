@@ -60,7 +60,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "odd-shaped credentials accepted",
-			in:   Config{ClientID: "too-short", ClientSecret: "also-not-40-chars"},
+			in:   Config{ClientID: "too-short", ClientSecret: "also-not-40-chars"}, //nolint:gosec // G101: intentional non-credential test values (shape validation removed)
 			check: func(t *testing.T, c *Config) {
 				if c.ClientID != "too-short" {
 					t.Errorf("ClientID = %q, want too-short", c.ClientID)
