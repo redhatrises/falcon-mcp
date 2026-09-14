@@ -1,5 +1,7 @@
 # falcon-mcp (Python)
 
+<!-- mcp-name: io.github.CrowdStrike/falcon-mcp -->
+
 Installs and runs the CrowdStrike Falcon MCP server binary.
 
     uvx falcon-mcp --help

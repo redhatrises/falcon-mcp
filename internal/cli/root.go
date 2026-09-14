@@ -443,10 +443,14 @@ func hoistFalconSection(v *viper.Viper) {
 // normalizeFalconPrefix strips a leading falcon_mcp_ or falcon_ from any key,
 // setting the stripped key only when it is not already set (non-prefixed
 // wins). falcon_mcp_ is stripped first so a .env FALCON_MCP_API_KEY becomes
-// api_key rather than mcp_api_key. falcon_ covers FALCON_CLIENT_ID-style keys.
+// api_key rather than mcp_api_key. falcon_ covers FALCON_CLIENT_ID-style keys
+// and must skip falcon_mcp_* so the second pass does not invent mcp_* junk.
 func normalizeFalconPrefix(v *viper.Viper) {
 	for _, prefix := range []string{"falcon_mcp_", "falcon_"} {
 		for k, val := range v.AllSettings() {
+			if prefix == "falcon_" && strings.HasPrefix(k, "falcon_mcp_") {
+				continue
+			}
 			stripped, ok := strings.CutPrefix(k, prefix)
 			if !ok || stripped == "" {
 				continue

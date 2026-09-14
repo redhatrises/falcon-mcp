@@ -83,7 +83,11 @@ the historical match counts.`
 
 	aggregateExposedDataRecordsFieldDescription = "Exposed-data record field to aggregate on. Supported: cid, notification_id, notification_group_id, created_date, rule.id, rule.name, rule.topic, source_category, site, author, file.name, credential_status, bot.operating_system.hardware_id, bot.bot_id. See `falcon://recon/exposed-data-records/aggregate-guide`."
 
-	aggregateTypeDescription = "Aggregation to run. Use terms to count records per distinct value, date_histogram for a time series, date_range or range for explicit buckets, cardinality for a distinct-value count, and max or min for a numeric extreme. The recon endpoint rejects sum, avg, and percentiles. See `falcon://recon/notifications/aggregate-guide`."
+	aggregateTypeDescription = "Aggregation to run. Use terms to count records per distinct value, date_histogram for a time series, date_range or range for explicit buckets, cardinality for a distinct-value count, and max or min for a numeric extreme. The recon endpoint rejects sum, avg, and percentiles."
+
+	aggregateNotificationsTypeDescription = aggregateTypeDescription + " See `falcon://recon/notifications/aggregate-guide`."
+
+	aggregateExposedDataRecordsTypeDescription = aggregateTypeDescription + " See `falcon://recon/exposed-data-records/aggregate-guide`."
 
 	aggregateNotificationsFilterDescription      = "FQL filter expression narrowing which notifications are counted. See `falcon://recon/notifications/search/fql-guide` for syntax."
 	aggregateExposedDataRecordsFilterDescription = "FQL filter expression narrowing which exposed-data records are counted. See `falcon://recon/exposed-data-records/search/fql-guide` for syntax."
@@ -105,12 +109,12 @@ the historical match counts.`
 
 // aggregateSchema builds an aggregate input schema, applying the recon
 // aggregation-type enum, the date_histogram interval enum, the size bounds, and
-// the backtick-bearing field/filter descriptions the struct tags cannot express.
-func aggregateSchema[In any](fieldDesc, filterDesc string) *jsonschema.Schema {
+// the backtick-bearing field/filter/type descriptions the struct tags cannot express.
+func aggregateSchema[In any](fieldDesc, filterDesc, typeDesc string) *jsonschema.Schema {
 	return base.SchemaFor[In](func(s *jsonschema.Schema) {
 		s.Properties["field"].Description = fieldDesc
 		s.Properties["filter"].Description = filterDesc
-		s.Properties["type"].Description = aggregateTypeDescription
+		s.Properties["type"].Description = typeDesc
 		s.Properties["interval"].Description = aggregateIntervalDescription
 		s.Properties["date_ranges"].Description = aggregateDateRangesDescription
 		s.Properties["ranges"].Description = aggregateRangesDescription
@@ -129,8 +133,16 @@ func aggregateSchema[In any](fieldDesc, filterDesc string) *jsonschema.Schema {
 }
 
 var (
-	aggregateNotificationsSchema      = aggregateSchema[AggregateInput](aggregateNotificationsFieldDescription, aggregateNotificationsFilterDescription)
-	aggregateExposedDataRecordsSchema = aggregateSchema[AggregateInput](aggregateExposedDataRecordsFieldDescription, aggregateExposedDataRecordsFilterDescription)
+	aggregateNotificationsSchema = aggregateSchema[AggregateInput](
+		aggregateNotificationsFieldDescription,
+		aggregateNotificationsFilterDescription,
+		aggregateNotificationsTypeDescription,
+	)
+	aggregateExposedDataRecordsSchema = aggregateSchema[AggregateInput](
+		aggregateExposedDataRecordsFieldDescription,
+		aggregateExposedDataRecordsFilterDescription,
+		aggregateExposedDataRecordsTypeDescription,
+	)
 
 	previewRuleSchema = base.SchemaFor[PreviewInput](func(s *jsonschema.Schema) {
 		s.Properties["filter"].Description = previewFilterDescription

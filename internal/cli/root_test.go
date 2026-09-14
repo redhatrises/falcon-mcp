@@ -1140,6 +1140,9 @@ func TestNormalizeFalconPrefixStripsMCP(t *testing.T) {
 	if got := v.GetString("modules"); got != "detections,intel" {
 		t.Errorf("modules = %q, want detections,intel", got)
 	}
+	if v.IsSet("mcp_api_key") || v.IsSet("mcp_read_only") || v.IsSet("mcp_modules") {
+		t.Errorf("unexpected mcp_* junk keys after falcon_mcp_ strip: %#v", v.AllSettings())
+	}
 }
 
 func TestMergeDotEnvUnreadableIsError(t *testing.T) {

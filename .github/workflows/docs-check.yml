@@ -2,7 +2,7 @@ name: Docs Freshness Check
 
 on:
   push:
-    branches: [main]
+    branches: [main, go_port]
     paths:
       - 'internal/modules/**'
       - 'tools/gendocs/**'

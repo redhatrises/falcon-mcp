@@ -222,7 +222,7 @@ Do not reintroduce a central Python-style operation→scope map unless a later p
 
 ## Porting status
 
-All domain modules that exist on the Python server are in `internal/modules/` and registered via `go generate`. Clone the golden modules in the table above when adding a new one. Do **not** invent new base abstractions until the same gap appears twice.
+All domain modules that exist on the Python server are in `internal/modules/` and registered via `go generate`. When adding a new module, follow the checklist above and mirror an existing nearby module (for example `hosts`, `detections`, or `host_groups`) rather than inventing new base abstractions until the same gap appears twice.
 
 ## Commands
 

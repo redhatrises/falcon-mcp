@@ -2,12 +2,12 @@ name: Python Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, go_port]
     paths:
       - "python/**"
       - ".github/workflows/python-test.yml"
   pull_request:
-    branches: [main]
+    branches: [main, go_port]
     paths:
       - "python/**"
       - ".github/workflows/python-test.yml"

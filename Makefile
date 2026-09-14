@@ -105,7 +105,9 @@ npm-package: snapshot npm-assemble ## Snapshot binaries and assemble npm package
 npm-assemble: ## Assemble npm platform sub-packages from dist/ (run make snapshot first).
 	@set -e; \
 	for p in $(NPM_PLATFORMS); do \
-	  IFS=: read -r os arch npmos npmcpu goos goarch <<< "$$p"; \
+	  old_ifs=$$IFS; \
+	  IFS=:; set -- $$p; IFS=$$old_ifs; \
+	  os=$$1; arch=$$2; npmos=$$3; npmcpu=$$4; goos=$$5; goarch=$$6; \
 	  suffix=""; if [ "$$os" = "windows" ]; then suffix=".exe"; fi; \
 	  pkg="$(BINARY)-$$os-$$arch"; \
 	  dir=$$(find $(DIST) -maxdepth 1 -type d -name "*_$${goos}_$${goarch}*" | head -n1); \
@@ -113,7 +115,8 @@ npm-assemble: ## Assemble npm platform sub-packages from dist/ (run make snapsho
 	  if [ -z "$$dir" ] || [ -z "$$src" ]; then echo "missing binary for $$goos/$$goarch in $(DIST)/"; exit 1; fi; \
 	  mkdir -p "npm/$$pkg/bin"; \
 	  cp "$$src" "npm/$$pkg/bin/$$pkg$$suffix"; \
-	  printf '{\n  "name": "%s",\n  "version": "%s",\n  "os": ["%s"],\n  "cpu": ["%s"],\n  "repository": { "type": "git", "url": "git+https://github.com/crowdstrike/falcon-mcp.git" },\n  "license": "MIT"\n}\n' \
+	  chmod +x "npm/$$pkg/bin/$$pkg$$suffix"; \
+	  printf '{\n  "name": "%s",\n  "version": "%s",\n  "os": ["%s"],\n  "cpu": ["%s"],\n  "files": ["bin"],\n  "repository": { "type": "git", "url": "git+https://github.com/crowdstrike/falcon-mcp.git" },\n  "license": "MIT"\n}\n' \
 	    "$$pkg" "$(VERSION)" "$$npmos" "$$npmcpu" > "npm/$$pkg/package.json"; \
 	  echo "assembled npm/$$pkg"; \
 	done; \

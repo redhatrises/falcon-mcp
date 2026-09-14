@@ -463,6 +463,10 @@ func (m *MetaModule) executeTool(ctx context.Context, req *mcp.CallToolRequest, 
 	if req != nil && req.Params != nil {
 		if tok := req.Params.GetProgressToken(); tok != nil {
 			params.SetProgressToken(tok)
+			// WithProgressSink on this client ctx does not reach catalog handlers
+			// across NewInMemoryTransports (fresh server ctx). Token is still
+			// copied so catalog-side progress stays correctly gated; outer-client
+			// forwarding needs a notification bridge (see .github/go-port-diffs.md).
 			ctx = base.WithProgressSink(ctx, req.Session)
 		}
 	}
