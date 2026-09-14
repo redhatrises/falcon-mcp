@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "falcon-mcp"
-version = "0.0.0"
+version = "0.18.0"  # x-release-please-version
 description = "CrowdStrike Falcon MCP Server (Model Context Protocol)"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
@@ -26,6 +26,12 @@ Repository = "https://github.com/crowdstrike/falcon-mcp"
 [project.scripts]
 falcon-mcp = "falcon_mcp:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.12.5",
+]
 
 [tool.black]
 line-length = 100
@@ -33,6 +39,7 @@ target-version = ["py311"]
 
 [tool.mypy]
 python_version = "3.11"
+files = ["falcon_mcp"]
 warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -40,41 +47,15 @@ disallow_incomplete_defs = true
 # Ignore missing stubs for third-party libraries
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disable_error_code = ["arg-type", "valid-type", "attr-defined", "misc"]
-
-[[tool.mypy.overrides]]
-module = "scripts.*"
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-
-[[tool.mypy.overrides]]
-module = "falcon_mcp.modules.*"
-# Pydantic Field() overloads cause call-overload errors - ignore them
-# Union return types cause union-attr errors - code handles these correctly at runtime
-# These are not actual type errors, just mypy/pydantic typing quirks
-disable_error_code = ["call-overload", "return-value", "list-item", "arg-type", "union-attr"]
-disallow_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = "examples.*"
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.setuptools.packages.find]
 include = ["falcon_mcp*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
-filterwarnings = [
-    "ignore::DeprecationWarning:websockets.*:",
-    "ignore::DeprecationWarning:uvicorn.protocols.websockets.*:",
-]
