@@ -40,12 +40,10 @@ Default remains **4**. The field exists on `config.Config`; there is no CLI flag
 ### Dynamic-mode progress
 
 `falcon_execute_tool` copies the outer request's progress token onto the catalog
-`CallTool` params. Progress *sink* injection via `WithProgressSink` on the client
-`CallTool` context does **not** reach catalog tool handlers: the in-memory
-JSON-RPC transport derives a fresh server context, so `ProgressFunc` still
-notifies the in-process catalog session. Treat outer-client progress in
-`--dynamic` as not yet wired; do not document it as working until a bridge
-forwards catalog progress notifications to the outer session.
+`CallTool` params and registers a short-lived bridge on the catalog client:
+catalog `notifications/progress` are forwarded to the outer session by token.
+`WithProgressSink` on the client `CallTool` context is not used for this path —
+context values do not cross `NewInMemoryTransports`.
 
 ### Catalog `ClientSession` concurrency
 

@@ -27,7 +27,9 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -104,7 +106,7 @@ func (m fakeToolModule) RegisterTools(r base.Registrar) {
 // buildCatalog builds a catalog from the given modules and connects its
 // in-process session (so falcon_execute_tool can dispatch), returning the
 // catalog and a MetaModule over it. The session is closed on test cleanup.
-func buildCatalog(t *testing.T, modules ...fakeToolModule) *MetaModule {
+func buildCatalog(t *testing.T, modules ...base.Module) *MetaModule {
 	t.Helper()
 	cat := NewCatalog()
 	mods := make([]base.Module, 0, len(modules))
@@ -117,6 +119,14 @@ func buildCatalog(t *testing.T, modules ...fakeToolModule) *MetaModule {
 	}
 	t.Cleanup(func() { _ = cat.Close() })
 	return NewMetaModule(cat, mods)
+}
+
+func asModules(mods []fakeToolModule) []base.Module {
+	out := make([]base.Module, len(mods))
+	for i := range mods {
+		out[i] = mods[i]
+	}
+	return out
 }
 
 func callSearch(t *testing.T, m *MetaModule, in SearchToolsInput) SearchToolsResult {
@@ -234,7 +244,7 @@ func TestSearchToolsRanking(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			m := buildCatalog(t, tt.mods...)
+			m := buildCatalog(t, asModules(tt.mods)...)
 			got := toolNames(callSearch(t, m, tt.in))
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("ranked order = %v, want %v", got, tt.want)
@@ -299,7 +309,7 @@ func TestSearchToolsLimit(t *testing.T) {
 	t.Parallel()
 	// Build 5 modules => 5 search tools.
 	mods := []fakeToolModule{{name: "a"}, {name: "b"}, {name: "c"}, {name: "d"}, {name: "e"}}
-	m := buildCatalog(t, mods...)
+	m := buildCatalog(t, asModules(mods)...)
 
 	tests := []struct {
 		name          string
@@ -816,5 +826,151 @@ func TestExecuteToolThroughServer(t *testing.T) {
 	}
 	if out.Total != 1 || len(out.Resources) != 1 || out.Resources[0].Filter != "platform:'Windows'" {
 		t.Errorf("got %+v, want the filter echoed back", out)
+	}
+}
+
+// progressToolModule registers a tool that emits one progress notification per
+// FetchDetails chunk, so dynamic-mode progress bridging can be asserted.
+type progressToolModule struct{}
+
+func (progressToolModule) Name() string                  { return "progress" }
+func (progressToolModule) Description() string           { return "fake progress module" }
+func (progressToolModule) RegisterResources(*mcp.Server) {}
+func (progressToolModule) RegisterPrompts(*mcp.Server)   {}
+func (progressToolModule) RegisterTools(r base.Registrar) {
+	base.AddTool(r, &mcp.Tool{
+		Name:        "fetch_chunked",
+		Description: "Fetch IDs in chunks and report progress.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, searchOut, error) {
+		_, err := base.FetchDetails(ctx, base.FetchDetailsParams[string]{
+			IDs:         []string{"0", "1", "2", "3"},
+			ChunkSize:   2,
+			Concurrency: 2,
+			Fetch:       func(_ context.Context, chunk []string) ([]string, error) { return chunk, nil },
+			Progress:    base.ProgressFunc(ctx, req),
+		})
+		if err != nil {
+			return nil, searchOut{}, err
+		}
+		return nil, searchOut{Total: 4}, nil
+	})
+}
+
+// TestExecuteToolProgressBridge proves falcon_execute_tool forwards catalog
+// progress notifications to the outer client when a progress token is set.
+func TestExecuteToolProgressBridge(t *testing.T) {
+	t.Parallel()
+
+	meta := buildCatalog(t, progressToolModule{})
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	meta.RegisterTools(base.ServerRegistrar(srv))
+
+	ctx := context.Background()
+	clientT, serverT := mcp.NewInMemoryTransports()
+	ss, err := srv.Connect(ctx, serverT, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Wait() })
+
+	var (
+		mu    sync.Mutex
+		count int
+	)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, &mcp.ClientOptions{
+		ProgressNotificationHandler: func(_ context.Context, _ *mcp.ProgressNotificationClientRequest) {
+			mu.Lock()
+			count++
+			mu.Unlock()
+		},
+	}).Connect(ctx, clientT, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name: "falcon_execute_tool",
+		Meta: mcp.Meta{"progressToken": "outer-tok"},
+		Arguments: map[string]any{
+			"tool_name": "falcon_fetch_chunked",
+			"parameters": map[string]any{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("execute returned error: %v", res.Content)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		got := count
+		mu.Unlock()
+		if got == 2 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("outer progress notifications = %d, want 2 (one per FetchDetails chunk)", got)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestExecuteToolProgressBridgeWithoutToken ensures no outer progress arrives
+// when falcon_execute_tool is invoked without a progress token.
+func TestExecuteToolProgressBridgeWithoutToken(t *testing.T) {
+	t.Parallel()
+
+	meta := buildCatalog(t, progressToolModule{})
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "test"}, nil)
+	meta.RegisterTools(base.ServerRegistrar(srv))
+
+	ctx := context.Background()
+	clientT, serverT := mcp.NewInMemoryTransports()
+	ss, err := srv.Connect(ctx, serverT, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	t.Cleanup(func() { _ = ss.Wait() })
+
+	var (
+		mu    sync.Mutex
+		count int
+	)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, &mcp.ClientOptions{
+		ProgressNotificationHandler: func(_ context.Context, _ *mcp.ProgressNotificationClientRequest) {
+			mu.Lock()
+			count++
+			mu.Unlock()
+		},
+	}).Connect(ctx, clientT, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name: "falcon_execute_tool",
+		Arguments: map[string]any{
+			"tool_name": "falcon_fetch_chunked",
+			"parameters": map[string]any{},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("execute returned error: %v", res.Content)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	got := count
+	mu.Unlock()
+	if got != 0 {
+		t.Fatalf("outer progress notifications = %d, want 0 without token", got)
 	}
 }

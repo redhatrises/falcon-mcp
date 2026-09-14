@@ -612,9 +612,10 @@ type progressNotifier interface {
 
 type progressSinkKey struct{}
 
-// WithProgressSink overrides the session ProgressFunc notifies, so dynamic-mode
-// catalog dispatch can report progress to the outer client instead of the
-// in-process catalog session.
+// WithProgressSink overrides the session ProgressFunc notifies. Prefer this for
+// same-process handlers that share a Go context. Dynamic-mode catalog dispatch
+// instead bridges progress via Catalog.registerProgressBridge, because context
+// values do not cross mcp.NewInMemoryTransports.
 func WithProgressSink(ctx context.Context, s progressNotifier) context.Context {
 	if s == nil {
 		return ctx
