@@ -57,6 +57,8 @@ Full docs are available at **[developer.crowdstrike.com/falcon-mcp](https://deve
 
 See the [Module Overview](https://developer.crowdstrike.com/falcon-mcp/modules/overview/) for required API scopes, available tools, and FQL resources.
 
+The server is a **Go binary**. `uvx` / `pip` and `npx` are install wrappers that download or vendor that binary; they are not a second MCP implementation.
+
 ## Quick Start
 
 ### Install
@@ -65,12 +67,36 @@ See the [Module Overview](https://developer.crowdstrike.com/falcon-mcp/modules/o
 
 ```bash
 uv tool install falcon-mcp
+# or run without installing:
+uvx falcon-mcp
 ```
 
-#### Using pip
+`uvx` / `pip` install a small Python wrapper that downloads the matching GitHub Release binary, verifies `checksums.txt`, and execs it.
+
+#### Using npm
 
 ```bash
-pip install falcon-mcp
+npx falcon-mcp
+```
+
+`npx` installs the platform binary as an optional native dependency (no runtime download).
+
+#### Using Go
+
+```bash
+go install github.com/crowdstrike/falcon-mcp/cmd/falcon-mcp@latest
+```
+
+Requires a Go toolchain that matches `go.mod` (currently Go 1.26.4).
+
+#### GitHub Release binaries
+
+Download `falcon-mcp-{version}-{macos|linux|windows}-{x86_64|arm64}` (plus `.exe` on Windows) from [GitHub Releases](https://github.com/CrowdStrike/falcon-mcp/releases). Verify against `checksums.txt`.
+
+#### Docker
+
+```bash
+docker pull quay.io/crowdstrike/falcon-mcp:latest
 ```
 
 ### Configure
@@ -149,7 +175,27 @@ See the [Getting Started guide](https://developer.crowdstrike.com/falcon-mcp/get
 }
 ```
 
-See the [Usage guide](https://developer.crowdstrike.com/falcon-mcp/usage/cli/) for all command line options, module configuration, and library usage.
+### Using `npx`
+
+```json
+{
+  "mcpServers": {
+    "falcon-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "falcon-mcp"
+      ],
+      "env": {
+        "FALCON_CLIENT_ID": "your-client-id",
+        "FALCON_CLIENT_SECRET": "your-client-secret"
+      }
+    }
+  }
+}
+```
+
+See the [Usage guide](https://developer.crowdstrike.com/falcon-mcp/usage/cli/) for all command line options and module configuration.
 
 ## Container Usage
 
@@ -264,18 +310,29 @@ guides are static field documentation carrying no tenant data.
 ## Deployment Options
 
 - [Amazon Bedrock AgentCore](https://developer.crowdstrike.com/falcon-mcp/deployment/amazon-bedrock/)
-- [Google Cloud Run](https://developer.crowdstrike.com/falcon-mcp/deployment/google-cloud/)
+- [Google Cloud (Agent Platform / Gemini Enterprise)](./examples/adk/README.md)
 
 ## Contributing
 
 ```bash
-# Clone and build
 git clone https://github.com/CrowdStrike/falcon-mcp.git
 cd falcon-mcp
-make build
 
-# Run unit tests
+# Unit tests (race + coverage)
 make test
+
+# Lint
+make lint
+
+# Regenerate factories, embedded guides, and module docs
+go generate ./...
+make gen-docs
+```
+
+The Python package under `python/` is only the `uvx` downloader. Its tests:
+
+```bash
+cd python && uv sync --extra dev && pytest
 ```
 
 > [!IMPORTANT]
@@ -283,9 +340,10 @@ make test
 
 ### Developer Documentation
 
+- [Go Module Development](docs/development/go-module-development.md): How to add tools, resources, and prompts
+- [Known Go-port diffs](docs/development/go-port-diffs.md): Intentional differences vs the former Python server
 - [Documentation Guide](docs/development/docs-site.md): Architecture and maintenance guide for the documentation
-- [Go Module Development Guide](docs/development/go-module-development.md): Instructions for implementing new modules
-- [Integration Testing Guide](docs/development/integration-testing.md): Guide for running live end-to-end tests
+- [Integration Testing](docs/development/integration-testing.md): Live e2e tests against a Falcon tenant
 
 ## Registries
 

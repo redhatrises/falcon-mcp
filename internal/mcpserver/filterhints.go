@@ -27,9 +27,8 @@ package mcpserver
 // These compact hints are appended to filter parameter descriptions when tools
 // are discovered via falcon_search_tools, so LLMs have the most common fields at
 // hand without needing to read the full FQL guide resource. This mirrors
-// upstream falcon-mcp's falcon_mcp/filter_hints.py verbatim; keys naming tools
-// that no Go module registers yet (e.g. cloud/policies) are inert until those
-// modules land.
+// upstream falcon-mcp's falcon_mcp/filter_hints.py; keys must cover every shipped
+// module that exposes an FQL filter. Unknown keys are inert.
 
 // fqlFilterHintSuffix is the universal FQL syntax reminder appended to every
 // filter description in dynamic mode. It mirrors upstream's

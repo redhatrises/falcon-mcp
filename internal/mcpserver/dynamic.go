@@ -425,7 +425,7 @@ type ExecuteToolInput struct {
 // packing. An unknown tool yields a tool-error result carrying a discovery
 // hint; parameter validation failures surface as the tool's own error result,
 // enriched with the expected parameters.
-func (m *MetaModule) executeTool(ctx context.Context, _ *mcp.CallToolRequest, in ExecuteToolInput) (*mcp.CallToolResult, any, error) {
+func (m *MetaModule) executeTool(ctx context.Context, req *mcp.CallToolRequest, in ExecuteToolInput) (*mcp.CallToolResult, any, error) {
 	ce, ok := m.catalog.lookup(in.ToolName)
 	if !ok {
 		var res mcp.CallToolResult
@@ -456,10 +456,18 @@ func (m *MetaModule) executeTool(ctx context.Context, _ *mcp.CallToolRequest, in
 		args = map[string]any{}
 	}
 
-	res, err := m.catalog.session.CallTool(ctx, &mcp.CallToolParams{
+	params := &mcp.CallToolParams{
 		Name:      ce.tool.Name,
 		Arguments: args,
-	})
+	}
+	if req != nil && req.Params != nil {
+		if tok := req.Params.GetProgressToken(); tok != nil {
+			params.SetProgressToken(tok)
+			ctx = base.WithProgressSink(ctx, req.Session)
+		}
+	}
+
+	res, err := m.catalog.session.CallTool(ctx, params)
 	if err != nil {
 		return nil, nil, err
 	}

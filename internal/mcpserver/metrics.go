@@ -24,6 +24,7 @@ package mcpserver
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -46,14 +47,37 @@ func toolMetricsMiddleware(rec *metrics.Recorder) mcp.Middleware {
 			}
 			start := time.Now()
 			res, err := next(ctx, method, req)
+			name := call.Params.Name
+			if isUnknownToolCall(res, err) {
+				name = "unknown"
+			}
 			rec.ObserveToolCall(metrics.ToolCall{
-				Tool:    call.Params.Name,
+				Tool:    name,
 				Outcome: toolOutcome(res, err),
 				Seconds: time.Since(start).Seconds(),
 			})
 			return res, err
 		}
 	}
+}
+
+// isUnknownToolCall reports whether the SDK treated this tools/call as a
+// missing tool. Client-supplied names must not become Prometheus labels.
+func isUnknownToolCall(res mcp.Result, err error) bool {
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
+		return true
+	}
+	ctr, ok := res.(*mcp.CallToolResult)
+	if !ok || !ctr.IsError {
+		return false
+	}
+	for _, c := range ctr.Content {
+		tc, ok := c.(*mcp.TextContent)
+		if ok && strings.Contains(strings.ToLower(tc.Text), "unknown tool") {
+			return true
+		}
+	}
+	return false
 }
 
 // toolOutcome classifies a tool call for the outcome metric label. A Go error is

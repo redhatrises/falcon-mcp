@@ -5,7 +5,7 @@
 
 # Go Module Development
 
-This is the architectural reference for the **Go** falcon-mcp server. Follow it when porting or adding tools, resources, and prompts.
+This is the architectural reference for the **Go** falcon-mcp server. Follow it when adding tools, resources, and prompts. The Python guides under this directory are historical archives of the deleted FastMCP tree.
 
 **Design goal:** adding a module is copy-adapt of an existing package. The official Go MCP SDK owns schema inference, validation, and result packing; modules only supply typed handlers and gofalcon calls.
 
@@ -215,21 +215,14 @@ Do not reintroduce a central Python-style operation→scope map unless a later p
 - [ ] Input structs + `SchemaFor` where bounds/defaults/backticks need it
 - [ ] Correct envelope: `SearchResult` / `EntitiesResult` / `ActionResult`
 - [ ] FQL resource (`fql_guide.md` + `//go:generate`) if the module has FQL search
-- [ ] Prompts only when the module needs them
+- [ ] Prompts only if the Python module had them
 - [ ] Unit tests with fake API (include annotation registration tests for mutators)
 - [ ] `go generate ./...` updates `factories_gen.go`
-- [ ] Tool names and descriptions stay stable for client compatibility
+- [ ] Tool names and descriptions stay 1:1 with Python for client compatibility
 
-## Porting order (remaining modules)
+## Porting status
 
-| Tier | Modules | Clone |
-|------|---------|-------|
-| A | `intel`, `spotlight`, `discover`, `sensor_usage`, `serverless` | `hosts` |
-| B | `ioc`, `quarantine`, `recon`, `exclusions` | `detections` |
-| C | `policies`, `firewall`, `custom_ioa`, `correlation_rules` | `host_groups` |
-| D | `rtr`, `ngsiem`, `idp`, `cloud`, `cases`, `shield`, `data_protection`, `scheduled_reports` | special cases; multi-API or atypical envelopes |
-
-Do **not** invent new base abstractions until Tier D proves the same gap twice.
+All domain modules that exist on the Python server are in `internal/modules/` and registered via `go generate`. Clone the golden modules in the table above when adding a new one. Do **not** invent new base abstractions until the same gap appears twice.
 
 ## Commands
 
@@ -249,5 +242,5 @@ make build
 ## See also
 
 - Official Go SDK: <https://pkg.go.dev/github.com/modelcontextprotocol/go-sdk/mcp>
-- Live e2e tests: [`test/e2e/README.md`](../../test/e2e/README.md)
-- Documentation site guide: [docs-site.md](docs-site.md)
+- Python module guide (legacy tree): [module-development.md](module-development.md)
+- Resource conventions (URI scheme shared with Python): [resource-development.md](resource-development.md)

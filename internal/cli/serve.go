@@ -24,6 +24,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -33,6 +34,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -54,6 +56,9 @@ func serve(ctx context.Context, cfg *config.Config) error {
 	api, err := falconapi.New(ctx, cfg)
 	if err != nil {
 		return err
+	}
+	if !falconapi.CheckConnectivity(ctx, cfg) {
+		return fmt.Errorf("falcon oauth: credentials were rejected or the Falcon API was unreachable")
 	}
 
 	// Metrics are collected only when the /metrics endpoint is enabled, so a
@@ -123,7 +128,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "streamable-http",
 			addr:        cfg.HTTPAddr,
-			handler:     withAPIKey(cfg.APIKey, h),
+			handler:     withHTTPCompat(withAPIKey(cfg.APIKey, h)),
 			idleTimeout: cfg.IdleTimeout,
 		})
 	case "sse":
@@ -132,7 +137,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "sse",
 			addr:        cfg.HTTPAddr,
-			handler:     withAPIKey(cfg.APIKey, h),
+			handler:     withHTTPCompat(withAPIKey(cfg.APIKey, h)),
 			idleTimeout: cfg.IdleTimeout,
 		})
 	default:
@@ -243,20 +248,57 @@ func pprofHandler() http.Handler {
 	return mux
 }
 
+// withHTTPCompat wraps next with the two ASGI-compat layers Python applied to
+// HTTP transports: trailing-slash strip and JSON-RPC Content-Type rewrite.
+// Order matches upstream (slash, then content-type, then auth): auth sees the
+// already-normalized request.
+func withHTTPCompat(next http.Handler) http.Handler {
+	return stripTrailingSlash(normalizeContentType(next))
+}
+
+// stripTrailingSlash rewrites a request whose path is not "/" but ends in "/"
+// so /mcp/ is served as /mcp. Python's strip_trailing_slash_middleware did
+// this; without it, clients that POST to /mcp/ 404 against the Go SDK handler.
+func stripTrailingSlash(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; len(p) > 1 && strings.HasSuffix(p, "/") {
+			clone := r.Clone(r.Context())
+			clone.URL.Path = strings.TrimSuffix(p, "/")
+			r = clone
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// normalizeContentType rewrites application/json-rpc (with or without a
+// charset) to application/json. Python's normalize_content_type_middleware did
+// this; the Go SDK's streamable-HTTP handler is strict about Content-Type.
+func normalizeContentType(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ct := r.Header.Get("Content-Type")
+		if ct != "" && strings.HasPrefix(strings.ToLower(strings.TrimSpace(ct)), "application/json-rpc") {
+			r = r.Clone(r.Context())
+			r.Header.Set("Content-Type", "application/json")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // withAPIKey guards next with a static-secret check when key is non-empty; an
 // empty key returns next unchanged, leaving the endpoint open (auth disabled).
 // A request must carry a matching x-api-key header or it gets 401 with a JSON
-// body. The compare is constant-time to avoid leaking the key through response
-// timing. Header, body, and env/flag naming match the upstream Python falcon-mcp
-// so existing clients and configs are wire-compatible.
+// body. Both sides are hashed before compare so a length mismatch cannot leak
+// the key length through response timing. Header, body, and env/flag naming
+// match the upstream Python falcon-mcp so existing clients and configs are
+// wire-compatible.
 func withAPIKey(key string, next http.Handler) http.Handler {
 	if key == "" {
 		return next
 	}
-	want := []byte(key)
+	want := sha256.Sum256([]byte(key))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		provided := []byte(r.Header.Get("x-api-key"))
-		if subtle.ConstantTimeCompare(provided, want) != 1 {
+		got := sha256.Sum256([]byte(r.Header.Get("x-api-key")))
+		if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))

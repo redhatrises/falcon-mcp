@@ -55,15 +55,14 @@ const defaultLimit = 10
 // net for callers that pass many IDs, not the common path.
 const recordBatchSize = 500
 
-// MCP resource URIs for the four recon FQL guides: the three
-// falcon://recon/{notifications,rules,exposed-data-records}/search/fql-guide
-// search guides plus the rule-preview guide, matching falcon-mcp's recon
-// resources.
+// MCP resource URIs for recon FQL and aggregation guides, matching falcon-mcp.
 const (
-	notificationsFQLGuideURI      = "falcon://recon/notifications/search/fql-guide"
-	rulesFQLGuideURI              = "falcon://recon/rules/search/fql-guide"
-	exposedDataRecordsFQLGuideURI = "falcon://recon/exposed-data-records/search/fql-guide"
-	previewRuleFQLGuideURI        = "falcon://recon/rules/preview-guide"
+	notificationsFQLGuideURI            = "falcon://recon/notifications/search/fql-guide"
+	rulesFQLGuideURI                    = "falcon://recon/rules/search/fql-guide"
+	exposedDataRecordsFQLGuideURI       = "falcon://recon/exposed-data-records/search/fql-guide"
+	previewRuleFQLGuideURI              = "falcon://recon/rules/preview-guide"
+	notificationsAggregateGuideURI      = "falcon://recon/notifications/aggregate-guide"
+	exposedDataRecordsAggregateGuideURI = "falcon://recon/exposed-data-records/aggregate-guide"
 )
 
 // scopeMonitoringRules is the CrowdStrike API scope required by every recon
@@ -224,9 +223,8 @@ func (m *Module) RegisterTools(r base.Registrar) {
 	}, m.previewRule)
 }
 
-// RegisterResources publishes the four recon FQL guides as MCP resources — the
-// three search-surface guides plus the rule-preview guide — mirroring
-// falcon-mcp's recon FQL guide resources.
+// RegisterResources publishes recon FQL and aggregation guides as MCP
+// resources, mirroring falcon-mcp's recon resource set.
 func (m *Module) RegisterResources(s *mcp.Server) {
 	base.TextResource(s, notificationsFQLGuideURI,
 		"search_recon_notifications_fql_guide",
@@ -247,6 +245,16 @@ func (m *Module) RegisterResources(s *mcp.Server) {
 		"preview_recon_rule_guide",
 		"Contains the rule-filter dialect, valid topics, and lookback values for the `falcon_preview_recon_rule` tool.",
 		"text/markdown", previewRuleFQLGuide)
+
+	base.TextResource(s, notificationsAggregateGuideURI,
+		"aggregate_recon_notifications_guide",
+		"Contains the aggregation dialect for the `falcon_aggregate_recon_notifications` tool.",
+		"text/markdown", notificationsAggregateGuide)
+
+	base.TextResource(s, exposedDataRecordsAggregateGuideURI,
+		"aggregate_recon_exposed_data_records_guide",
+		"Contains the aggregation dialect for the `falcon_aggregate_recon_exposed_data_records` tool.",
+		"text/markdown", exposedDataRecordsAggregateGuide)
 }
 
 // RegisterPrompts is a no-op: the recon module exposes no prompts.

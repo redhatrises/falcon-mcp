@@ -82,11 +82,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 Count and summarize Falcon Intelligence Recon notifications without retrieving each record.
 
-Use this for "how many" and "top N" questions over recon notifications — counts per status,
-rule priority, or topic, and notification volume over time — instead of paging through
-`falcon_search_recon_notifications`. Consult
-`falcon://recon/notifications/search/fql-guide` before constructing filter expressions.
-Returns aggregation buckets keyed by `label` with a `count`.
+Use this for "how many" and "top N" questions over recon notifications — counts per status, rule priority, or topic, and notification volume over time — instead of paging through `falcon_search_recon_notifications`. Consult `falcon://recon/notifications/aggregate-guide` for aggregation types and `falcon://recon/notifications/search/fql-guide` before constructing filter expressions. Returns aggregation buckets keyed by `label` with a `count`.
 
 **Example prompts:**
 
@@ -101,11 +97,7 @@ Returns aggregation buckets keyed by `label` with a `count`.
 
 Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.
 
-Use this for "how many" and "top N" questions over leaked credential and PII rows — counts
-per credential status, site, source category, or rule topic — instead of paging through
-`falcon_search_recon_exposed_data_records`. Consult
-`falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions.
-Returns aggregation buckets keyed by `label` with a `count`.
+Use this for "how many" and "top N" questions over leaked credential and PII rows — counts per credential status, site, source category, or rule topic — instead of paging through `falcon_search_recon_exposed_data_records`. Consult `falcon://recon/exposed-data-records/aggregate-guide` for aggregation types and `falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions. Returns aggregation buckets keyed by `label` with a `count`.
 
 **Example prompts:**
 
@@ -136,3 +128,5 @@ the historical match counts.
 - **`falcon://recon/rules/search/fql-guide`**: Contains the guide for the `filter` param of the `falcon_search_recon_rules` tool.
 - **`falcon://recon/exposed-data-records/search/fql-guide`**: Contains the guide for the `filter` param of the `falcon_search_recon_exposed_data_records` tool.
 - **`falcon://recon/rules/preview-guide`**: Contains the rule-filter dialect, valid topics, and lookback values for the `falcon_preview_recon_rule` tool.
+- **`falcon://recon/notifications/aggregate-guide`**: Contains the aggregation dialect for the `falcon_aggregate_recon_notifications` tool.
+- **`falcon://recon/exposed-data-records/aggregate-guide`**: Contains the aggregation dialect for the `falcon_aggregate_recon_exposed_data_records` tool.

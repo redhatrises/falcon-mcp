@@ -36,7 +36,7 @@ jobs:
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@39eb6c9dde236bbc368681611e63120a6eb4afac
         with:
-          version: "0.7.13"
+          version: "0.9.21"
           activate-environment: true
 
       - name: Install dependencies

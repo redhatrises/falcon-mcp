@@ -604,6 +604,24 @@ func FQLErrorDetailsFrom[E any](errs []E, code func(E) *int32, msg func(E) *stri
 // safe for concurrent use and must honor ctx cancellation.
 type DetailFetcher[T any] func(ctx context.Context, ids []string) ([]T, error)
 
+// progressNotifier is the NotifyProgress surface ProgressFunc needs. Both the
+// request's ServerSession and a context-injected outer session satisfy it.
+type progressNotifier interface {
+	NotifyProgress(context.Context, *mcp.ProgressNotificationParams) error
+}
+
+type progressSinkKey struct{}
+
+// WithProgressSink overrides the session ProgressFunc notifies, so dynamic-mode
+// catalog dispatch can report progress to the outer client instead of the
+// in-process catalog session.
+func WithProgressSink(ctx context.Context, s progressNotifier) context.Context {
+	if s == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, progressSinkKey{}, s)
+}
+
 // ProgressFunc returns a chunk-progress callback suitable for
 // FetchDetailsParams.Progress, or nil when the client did not request progress.
 // It reports progress only when req carries a progress token (nil req, or an
@@ -611,17 +629,27 @@ type DetailFetcher[T any] func(ctx context.Context, ids []string) ([]T, error)
 // notifications solely for requests that opted in with a token.
 //
 // The returned callback sends a best-effort progress/notification per completed
-// chunk over req.Session; notification errors are ignored, as progress is
-// telemetry and must never fail the tool call. It is safe for concurrent use.
+// chunk over req.Session, or over the session injected by WithProgressSink
+// when dispatching from falcon_execute_tool. Notification errors are ignored,
+// as progress is telemetry and must never fail the tool call. It is safe for
+// concurrent use.
 func ProgressFunc(ctx context.Context, req *mcp.CallToolRequest) func(done, total int) {
-	if req == nil || req.Session == nil || req.Params == nil {
+	if req == nil || req.Params == nil {
 		return nil
 	}
 	token := req.Params.GetProgressToken()
 	if token == nil {
 		return nil
 	}
-	session := req.Session
+	var session progressNotifier
+	if sink, ok := ctx.Value(progressSinkKey{}).(progressNotifier); ok {
+		session = sink
+	} else if req.Session != nil {
+		session = req.Session
+	}
+	if session == nil {
+		return nil
+	}
 	return func(done, total int) {
 		_ = session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
 			ProgressToken: token,

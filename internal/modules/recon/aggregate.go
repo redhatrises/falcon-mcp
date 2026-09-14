@@ -56,21 +56,21 @@ var reconPreviewTopics = []string{
 // applied via each schema's mutate func, since a jsonschema struct tag cannot
 // hold them.
 const (
-	aggregateNotificationsDescription = `Count and summarize Falcon Intelligence Recon notifications without retrieving each record.
+	aggregateNotificationsDescription = "Count and summarize Falcon Intelligence Recon notifications without retrieving each record.\n\n" +
+		"Use this for \"how many\" and \"top N\" questions over recon notifications — counts per status, " +
+		"rule priority, or topic, and notification volume over time — instead of paging through " +
+		"`falcon_search_recon_notifications`. Consult " +
+		"`falcon://recon/notifications/aggregate-guide` for aggregation types and " +
+		"`falcon://recon/notifications/search/fql-guide` before constructing filter expressions. " +
+		"Returns aggregation buckets keyed by `label` with a `count`."
 
-Use this for "how many" and "top N" questions over recon notifications — counts per status,
-rule priority, or topic, and notification volume over time — instead of paging through
-` + "`falcon_search_recon_notifications`" + `. Consult
-` + "`falcon://recon/notifications/search/fql-guide`" + ` before constructing filter expressions.
-Returns aggregation buckets keyed by ` + "`label`" + ` with a ` + "`count`" + `.`
-
-	aggregateExposedDataRecordsDescription = `Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.
-
-Use this for "how many" and "top N" questions over leaked credential and PII rows — counts
-per credential status, site, source category, or rule topic — instead of paging through
-` + "`falcon_search_recon_exposed_data_records`" + `. Consult
-` + "`falcon://recon/exposed-data-records/search/fql-guide`" + ` before constructing filter expressions.
-Returns aggregation buckets keyed by ` + "`label`" + ` with a ` + "`count`" + `.`
+	aggregateExposedDataRecordsDescription = "Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.\n\n" +
+		"Use this for \"how many\" and \"top N\" questions over leaked credential and PII rows — counts " +
+		"per credential status, site, source category, or rule topic — instead of paging through " +
+		"`falcon_search_recon_exposed_data_records`. Consult " +
+		"`falcon://recon/exposed-data-records/aggregate-guide` for aggregation types and " +
+		"`falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions. " +
+		"Returns aggregation buckets keyed by `label` with a `count`."
 
 	previewRuleDescription = `Preview how many Falcon Intelligence Recon notifications a monitoring rule would have generated.
 
@@ -79,11 +79,11 @@ against historical data for the chosen ` + "`topic`" + ` and reports the match v
 tune the filter without generating live notifications. Returns aggregation buckets describing
 the historical match counts.`
 
-	aggregateNotificationsFieldDescription = "Notification field to aggregate on, such as status, rule_priority, rule_topic, or created_date. See `falcon://recon/notifications/search/fql-guide` for the aggregatable fields."
+	aggregateNotificationsFieldDescription = "Notification field to aggregate on, such as status, rule_priority, rule_topic, or created_date. See `falcon://recon/notifications/aggregate-guide` for aggregatable fields."
 
-	aggregateExposedDataRecordsFieldDescription = "Exposed-data record field to aggregate on. Supported: cid, notification_id, notification_group_id, created_date, rule.id, rule.name, rule.topic, source_category, site, author, file.name, credential_status, bot.operating_system.hardware_id, bot.bot_id."
+	aggregateExposedDataRecordsFieldDescription = "Exposed-data record field to aggregate on. Supported: cid, notification_id, notification_group_id, created_date, rule.id, rule.name, rule.topic, source_category, site, author, file.name, credential_status, bot.operating_system.hardware_id, bot.bot_id. See `falcon://recon/exposed-data-records/aggregate-guide`."
 
-	aggregateTypeDescription = "Aggregation to run. Use terms to count records per distinct value, date_histogram for a time series, date_range or range for explicit buckets, cardinality for a distinct-value count, and max or min for a numeric extreme. The recon endpoint rejects sum, avg, and percentiles."
+	aggregateTypeDescription = "Aggregation to run. Use terms to count records per distinct value, date_histogram for a time series, date_range or range for explicit buckets, cardinality for a distinct-value count, and max or min for a numeric extreme. The recon endpoint rejects sum, avg, and percentiles. See `falcon://recon/notifications/aggregate-guide`."
 
 	aggregateNotificationsFilterDescription      = "FQL filter expression narrowing which notifications are counted. See `falcon://recon/notifications/search/fql-guide` for syntax."
 	aggregateExposedDataRecordsFilterDescription = "FQL filter expression narrowing which exposed-data records are counted. See `falcon://recon/exposed-data-records/search/fql-guide` for syntax."

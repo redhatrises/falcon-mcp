@@ -1,4 +1,6 @@
 """Download and execute the platform-appropriate falcon-mcp binary."""
+from __future__ import annotations
+
 import hashlib
 import os
 import platform
@@ -6,8 +8,12 @@ import signal
 import stat
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from urllib.request import urlopen  # (WHY: module-level so tests can patch falcon_mcp.falcon_mcp.urlopen)
+from typing import Any
+from urllib.request import (
+    urlopen,  # (WHY: module-level so tests can patch falcon_mcp.falcon_mcp.urlopen)
+)
 
 try:
     from importlib.metadata import version as _pkg_version
@@ -51,7 +57,13 @@ def _expected_digest(checksums_text: str, binary_name: str) -> str:
     raise RuntimeError(f"no checksum entry for {binary_name}")
 
 
-def download_binary(version: str, *, dest_dir=None, opener=urlopen, binary_name=None):
+def download_binary(
+    version: str,
+    *,
+    dest_dir: Path | str | None = None,
+    opener: Callable[[str], Any] = urlopen,
+    binary_name: str | None = None,
+) -> Path:
     """Download, verify (sha256), cache, and return the path to the binary."""
     if binary_name is None:
         binary_name = current_binary_name(version)
@@ -82,11 +94,11 @@ def download_binary(version: str, *, dest_dir=None, opener=urlopen, binary_name=
     return binary_path
 
 
-def _default_runner(cmd):
+def _default_runner(cmd: Sequence[str]) -> int:
     """Spawn cmd, forward termination signals to the child, return its exit code."""
     process = subprocess.Popen(cmd)  # (WHY: Popen not run() — need the handle to forward signals)
 
-    def handle_signal(signum, _frame):
+    def handle_signal(signum: int, _frame: object) -> None:
         try:
             process.send_signal(signum)
         except OSError:
@@ -105,7 +117,11 @@ def _default_runner(cmd):
         return process.wait()
 
 
-def execute(args=None, *, runner=_default_runner):
+def execute(
+    args: Sequence[str] | None = None,
+    *,
+    runner: Callable[[Sequence[str]], int] = _default_runner,
+) -> int:
     """Download (if needed) and run the falcon-mcp binary, returning its exit code."""
     if args is None:
         args = []
@@ -117,7 +133,7 @@ def execute(args=None, *, runner=_default_runner):
         return 1
 
 
-def main():
+def main() -> int:
     """Entry point: run the binary with args from the command line."""
     return execute(sys.argv[1:])
 

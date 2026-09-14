@@ -1,5 +1,6 @@
 import falcon_mcp.falcon_mcp as fm
 
+
 def test_execute_returns_child_code(monkeypatch):
     monkeypatch.setattr(fm, "download_binary", lambda v, **k: "/fake/falcon-mcp")
     seen = {}

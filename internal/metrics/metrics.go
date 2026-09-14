@@ -71,7 +71,10 @@ func New() *Recorder {
 		Namespace: "falconmcp",
 		Subsystem: "tool",
 		Name:      "calls_total",
-		Help:      "Total number of MCP tool calls, labeled by tool and outcome.",
+		Help: "Total number of MCP tool calls, labeled by tool and outcome. " +
+			"Unknown client-supplied names are recorded as tool=\"unknown\". " +
+			"In --dynamic mode one falcon_execute_tool call is counted twice: " +
+			"once as falcon_execute_tool on the served server and once under the dispatched tool name.",
 	}, []string{"tool", "outcome"})
 
 	callDurns := prometheus.NewHistogramVec(prometheus.HistogramOpts{

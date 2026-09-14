@@ -23,8 +23,11 @@
 package mcpserver
 
 import (
+	"context"
 	"errors"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -33,6 +36,7 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 func TestServerMCPNotNil(t *testing.T) {
@@ -155,5 +159,59 @@ func TestNewRegistersAllModules(t *testing.T) {
 	))
 	if got := moduleNames(srv.modules); !slices.Equal(got, want) {
 		t.Fatalf("modules = %v, want %v", got, want)
+	}
+}
+
+// TestGuideReferencesResolve asserts every falcon:// URI named in a served
+// tool description is registered as a resource under --read-only, matching
+// Python's "guides are not gated by the tool policy" rule.
+func TestGuideReferencesResolve(t *testing.T) {
+	t.Parallel()
+	srv, err := New(&config.Config{ReadOnly: true}, &client.CrowdStrikeAPISpecification{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
+
+	uris := map[string]struct{}{}
+	var cursor string
+	for {
+		res, err := cs.ListResources(ctx, &mcp.ListResourcesParams{Cursor: cursor})
+		if err != nil {
+			t.Fatalf("ListResources: %v", err)
+		}
+		for _, r := range res.Resources {
+			uris[r.URI] = struct{}{}
+		}
+		if res.NextCursor == "" {
+			break
+		}
+		cursor = res.NextCursor
+	}
+
+	re := regexp.MustCompile(`falcon://[^\s` + "`" + `]+`)
+	cursor = ""
+	var missing []string
+	for {
+		tools, err := cs.ListTools(ctx, &mcp.ListToolsParams{Cursor: cursor})
+		if err != nil {
+			t.Fatalf("ListTools: %v", err)
+		}
+		for _, tool := range tools.Tools {
+			for _, u := range re.FindAllString(tool.Description, -1) {
+				u = strings.TrimRight(u, ".,);")
+				if _, ok := uris[u]; !ok {
+					missing = append(missing, tool.Name+" -> "+u)
+				}
+			}
+		}
+		if tools.NextCursor == "" {
+			break
+		}
+		cursor = tools.NextCursor
+	}
+	if len(missing) > 0 {
+		t.Fatalf("unresolved falcon:// guide URIs under --read-only: %v", missing)
 	}
 }

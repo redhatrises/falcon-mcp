@@ -129,6 +129,61 @@ func TestWithAPIKey(t *testing.T) {
 	}
 }
 
+func TestStripTrailingSlash(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in, want string
+	}{
+		{in: "/", want: "/"},
+		{in: "/mcp", want: "/mcp"},
+		{in: "/mcp/", want: "/mcp"},
+		{in: "/mcp/foo/", want: "/mcp/foo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			var got string
+			h := stripTrailingSlash(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				got = r.URL.Path
+			}))
+			h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, tt.in, nil))
+			if got != tt.want {
+				t.Errorf("path = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeContentType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		in, want string
+	}{
+		{in: "application/json", want: "application/json"},
+		{in: "application/json-rpc", want: "application/json"},
+		{in: "application/json-rpc; charset=utf-8", want: "application/json"},
+		{in: "text/plain", want: "text/plain"},
+		{in: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			t.Parallel()
+			var got string
+			h := normalizeContentType(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				got = r.Header.Get("Content-Type")
+			}))
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			if tt.in != "" {
+				req.Header.Set("Content-Type", tt.in)
+			}
+			h.ServeHTTP(httptest.NewRecorder(), req)
+			if got != tt.want {
+				t.Errorf("Content-Type = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestOpsHandlers(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

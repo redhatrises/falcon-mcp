@@ -5,10 +5,12 @@ on:
     branches: [ main ]
     paths:
       - 'Dockerfile'
-      - 'cmd/**'
-      - 'internal/**'
+      - '.dockerignore'
       - 'go.mod'
       - 'go.sum'
+      - 'cmd/**'
+      - 'internal/**'
+      - '.goreleaser.yaml'
       - '.github/workflows/docker-build-test.yml'
 
 permissions:

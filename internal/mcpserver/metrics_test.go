@@ -145,6 +145,31 @@ func TestServerRecordsToolCallMetrics(t *testing.T) {
 	}
 }
 
+func TestUnknownToolNameRecordsUnknownLabel(t *testing.T) {
+	t.Parallel()
+
+	rec := metrics.New()
+	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx := context.Background()
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
+	_, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "falcon_does_not_exist"})
+	if err == nil {
+		t.Fatal("expected error for unknown tool")
+	}
+
+	body := metricsBody(t, rec)
+	if strings.Contains(body, `tool="falcon_does_not_exist"`) {
+		t.Errorf("client-supplied unknown name leaked into metrics:\n%s", body)
+	}
+	if !strings.Contains(body, `tool="unknown"`) {
+		t.Errorf("metrics missing unknown label in:\n%s", body)
+	}
+}
+
 // TestCatalogInstrumentRecordsToolCallMetrics verifies that Instrument wires the
 // metrics middleware onto the internal catalog server so dynamic-mode tool calls
 // are recorded under their real names. It registers a fake tool on a catalog and

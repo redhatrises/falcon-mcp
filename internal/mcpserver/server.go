@@ -219,8 +219,10 @@ type registerParams struct {
 // Dynamic mode: surviving module tools go on the catalog's internal server and
 // only the meta-tools (search_tools, execute_tool) reach the served server; the
 // returned catalog owns the in-process session and must be closed by the caller.
-// A module's resources and prompts are registered only when at least one of its
-// tools survived the policy.
+// A module's resources and prompts are registered whenever the module is
+// enabled (--modules) or at least one of its tools survived the tool policy, so
+// a live tool's falcon:// guide URI still resolves under --read-only /
+// --exclude-tools.
 //
 // Every module is iterated through a per-module policyRegistrar so the recorded
 // tool-name set is complete: this both lets an allow-listed tool from a module
@@ -244,10 +246,16 @@ func registerModules(p registerParams) (*Catalog, error) {
 		core.registerNormalOnly(served)
 	}
 
+	reportedNames := make(map[string]struct{}, len(p.reported))
+	for _, m := range p.reported {
+		reportedNames[m.Name()] = struct{}{}
+	}
+
 	for _, m := range p.all {
 		preg := &policyRegistrar{module: m.Name(), policy: p.policy, next: next(m), reg: reg}
 		m.RegisterTools(preg)
-		if len(reg.kept[m.Name()]) > 0 {
+		_, enabled := reportedNames[m.Name()]
+		if enabled || len(reg.kept[m.Name()]) > 0 {
 			m.RegisterResources(p.server)
 			m.RegisterPrompts(p.server)
 		}

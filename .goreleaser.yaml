@@ -32,8 +32,6 @@ builds:
       - s390x
     ignore:
       - goos: windows
-        goarch: 386
-      - goos: windows
         goarch: s390x
       - goos: darwin
         goarch: s390x
@@ -72,6 +70,11 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+
+# Attach binaries to the GitHub Release that release-please already opened
+# (notes/changelog live there). Do not create a second release.
+release:
+  mode: keep-existing
 
 changelog:
   disable: true

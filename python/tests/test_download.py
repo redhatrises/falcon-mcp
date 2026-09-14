@@ -3,6 +3,7 @@ import io
 from pathlib import Path
 
 import pytest
+
 from falcon_mcp.falcon_mcp import download_binary
 
 BIN = b"fake-binary-contents"

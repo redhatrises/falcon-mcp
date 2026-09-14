@@ -1,5 +1,7 @@
 import pytest
+
 from falcon_mcp.falcon_mcp import platform_binary_name
+
 
 @pytest.mark.parametrize("system,machine,expected", [
     ("Darwin", "arm64", "falcon-mcp-1.2.3-macos-arm64"),
