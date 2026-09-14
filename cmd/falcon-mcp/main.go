@@ -27,13 +27,13 @@
 package main
 
 import (
-	"os"
+	"log"
 
 	"github.com/crowdstrike/falcon-mcp/internal/cli"
 )
 
 func main() {
 	if err := cli.Execute(); err != nil {
-		os.Exit(1)
+		log.Fatal(err)
 	}
 }

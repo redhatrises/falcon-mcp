@@ -90,7 +90,7 @@ func TestExecuteDebugFlag(t *testing.T) {
 
 	orig := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(orig) })
-	slog.SetDefault(newLogger(slog.LevelInfo, "text"))
+	newLogger(slog.LevelInfo, "text")
 
 	if _, err := resolveArgs(t, []string{"-d"}); err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -697,7 +697,7 @@ func TestExecuteDebugEnv(t *testing.T) {
 
 	orig := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(orig) })
-	slog.SetDefault(newLogger(slog.LevelInfo, "text"))
+	newLogger(slog.LevelInfo, "text")
 
 	if _, err := resolveArgs(t, []string{}); err != nil {
 		t.Fatalf("resolve: %v", err)

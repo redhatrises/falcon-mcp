@@ -88,8 +88,7 @@ to the CrowdStrike Falcon platform, exposing detections, threat intelligence,
 host management, and more as MCP tools.
 
 It serves over stdio by default; the streamable-http and sse transports listen
-on a network address but serve a single credential set (not multi-tenant).
-Configuration precedence is flag > env > config file > default.`,
+on a network address but serve a single credential set (not multi-tenant).`,
 		Example: `  # stdio (default), credentials from the environment
   export FALCON_CLIENT_ID=... FALCON_CLIENT_SECRET=...
   falcon-mcp
@@ -106,6 +105,8 @@ Configuration precedence is flag > env > config file > default.`,
 			return err
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
 			return runE(cmd.Context(), cfg)
 		},
 	}
@@ -142,7 +143,7 @@ func preRunE(cmd *cobra.Command) (*config.Config, error) {
 	if logFormat != "text" && logFormat != "json" {
 		return nil, fmt.Errorf("%w %q", ErrInvalidLogFormat, logFormat)
 	}
-	slog.SetDefault(newLogger(level, logFormat))
+	newLogger(level, logFormat)
 
 	cfgFile, _ := cmd.Flags().GetString("config")
 	if err := readConfigFile(v, cfgFile); err != nil {
