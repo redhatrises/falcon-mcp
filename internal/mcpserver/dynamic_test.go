@@ -893,7 +893,7 @@ func TestExecuteToolProgressBridge(t *testing.T) {
 		Name: "falcon_execute_tool",
 		Meta: mcp.Meta{"progressToken": "outer-tok"},
 		Arguments: map[string]any{
-			"tool_name": "falcon_fetch_chunked",
+			"tool_name":  "falcon_fetch_chunked",
 			"parameters": map[string]any{},
 		},
 	})
@@ -955,7 +955,7 @@ func TestExecuteToolProgressBridgeWithoutToken(t *testing.T) {
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
 		Name: "falcon_execute_tool",
 		Arguments: map[string]any{
-			"tool_name": "falcon_fetch_chunked",
+			"tool_name":  "falcon_fetch_chunked",
 			"parameters": map[string]any{},
 		},
 	})

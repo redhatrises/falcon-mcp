@@ -41,11 +41,11 @@ jobs:
 
       - name: Lint imports
         run: |
-          ruff check . --select I
+          uv run ruff check . --select I
 
       - name: Lint with Ruff
         run: |
-          ruff check .
+          uv run ruff check .
 
       - name: Type check with mypy
         run: |
