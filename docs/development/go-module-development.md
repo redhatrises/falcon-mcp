@@ -5,7 +5,7 @@
 
 # Go Module Development
 
-This is the architectural reference for the **Go** falcon-mcp server. Follow it when porting or adding tools, resources, and prompts. The Python guide (`module-development.md`) remains for the Python tree only.
+This is the architectural reference for the **Go** falcon-mcp server. Follow it when porting or adding tools, resources, and prompts.
 
 **Design goal:** adding a module is copy-adapt of an existing package. The official Go MCP SDK owns schema inference, validation, and result packing; modules only supply typed handlers and gofalcon calls.
 
@@ -215,10 +215,10 @@ Do not reintroduce a central Python-style operation→scope map unless a later p
 - [ ] Input structs + `SchemaFor` where bounds/defaults/backticks need it
 - [ ] Correct envelope: `SearchResult` / `EntitiesResult` / `ActionResult`
 - [ ] FQL resource (`fql_guide.md` + `//go:generate`) if the module has FQL search
-- [ ] Prompts only if the Python module had them
+- [ ] Prompts only when the module needs them
 - [ ] Unit tests with fake API (include annotation registration tests for mutators)
 - [ ] `go generate ./...` updates `factories_gen.go`
-- [ ] Tool names and descriptions stay 1:1 with Python for client compatibility
+- [ ] Tool names and descriptions stay stable for client compatibility
 
 ## Porting order (remaining modules)
 
@@ -249,5 +249,5 @@ make build
 ## See also
 
 - Official Go SDK: <https://pkg.go.dev/github.com/modelcontextprotocol/go-sdk/mcp>
-- Python module guide (legacy tree): [module-development.md](module-development.md)
-- Resource conventions (URI scheme shared with Python): [resource-development.md](resource-development.md)
+- Live e2e tests: [`test/e2e/README.md`](../../test/e2e/README.md)
+- Documentation site guide: [docs-site.md](docs-site.md)

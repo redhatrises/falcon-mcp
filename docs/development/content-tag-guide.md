@@ -205,7 +205,7 @@ Adds a visible title/label above the code block on the site. Place on the line i
 ````markdown
 <!-- code-title: Import sorting -->
 ```bash
-uv run ruff check . --select I
+go fmt ./...
 ```
 ````
 

@@ -264,18 +264,18 @@ guides are static field documentation carrying no tenant data.
 ## Deployment Options
 
 - [Amazon Bedrock AgentCore](https://developer.crowdstrike.com/falcon-mcp/deployment/amazon-bedrock/)
-- [Google Cloud (Agent Platform / Gemini Enterprise)](./examples/adk/README.md)
+- [Google Cloud Run](https://developer.crowdstrike.com/falcon-mcp/deployment/google-cloud/)
 
 ## Contributing
 
 ```bash
-# Clone and install
+# Clone and build
 git clone https://github.com/CrowdStrike/falcon-mcp.git
 cd falcon-mcp
-uv sync --all-extras
+make build
 
-# Run tests
-uv run pytest
+# Run unit tests
+make test
 ```
 
 > [!IMPORTANT]
@@ -284,9 +284,8 @@ uv run pytest
 ### Developer Documentation
 
 - [Documentation Guide](docs/development/docs-site.md): Architecture and maintenance guide for the documentation
-- [Module Development Guide](docs/development/module-development.md): Instructions for implementing new modules
-- [Resource Development Guide](docs/development/resource-development.md): Instructions for implementing resources
-- [Integration Testing Guide](docs/development/integration-testing.md): Guide for running integration tests with real API calls
+- [Go Module Development Guide](docs/development/go-module-development.md): Instructions for implementing new modules
+- [Integration Testing Guide](docs/development/integration-testing.md): Guide for running live end-to-end tests
 
 ## Registries
 

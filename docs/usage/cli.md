@@ -179,39 +179,3 @@ falcon-mcp --transport streamable-http \
     (`127.0.0.1:PORT`) and reaching them through an SSH tunnel or
     `kubectl port-forward`. If you must use a non-loopback address, **configure
     firewall rules** to restrict access to trusted hosts only.
-
-## Using as a Library
-
-You can also embed the server directly in Python:
-
-```python
-from falcon_mcp.server import FalconMCPServer
-
-server = FalconMCPServer(
-    base_url="https://api.us-2.crowdstrike.com",  # Optional
-    debug=True,
-    enabled_modules=["detections", "spotlight"],
-    api_key="your-api-key"
-)
-
-# Run with stdio transport (default)
-server.run()
-
-# Or with a specific transport
-server.run("streamable-http")
-```
-
-For enterprise deployments using secret management systems (HashiCorp Vault, AWS Secrets Manager, etc.), you can pass credentials directly:
-
-```python
-server = FalconMCPServer(
-    client_id="your-client-id",
-    client_secret="your-client-secret",
-    base_url="https://api.us-2.crowdstrike.com",
-    enabled_modules=["detections", "hosts"],
-    proxy="http://proxy.corp.example.com:8080",
-)
-server.run()
-```
-
-When both direct parameters and environment variables are available, direct parameters take precedence.

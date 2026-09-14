@@ -81,11 +81,8 @@ falcon-mcp
 bin/
 cover.out
 
-# Python sources not needed for the Go build
+# Python wrapper package not needed for the Go image build
 python/
-falcon_mcp/
-uv.lock
-pyproject.toml
 
 # Security sensitive files
 *.pem
