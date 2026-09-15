@@ -856,6 +856,57 @@ func (progressToolModule) RegisterTools(r base.Registrar) {
 	})
 }
 
+// fakeProgressSink records the progress tokens delivered to one outer session.
+type fakeProgressSink struct {
+	mu     sync.Mutex
+	tokens []any
+}
+
+func (f *fakeProgressSink) NotifyProgress(_ context.Context, p *mcp.ProgressNotificationParams) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tokens = append(f.tokens, p.ProgressToken)
+	return nil
+}
+
+func (f *fakeProgressSink) seen() []any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]any(nil), f.tokens...)
+}
+
+// TestProgressBridgeTokenCollision proves two outer sessions that pick the same
+// progress token do not cross-wire. MCP only requires a token to be unique
+// within one session, so a shared value is legal and must not route one
+// session's progress to another. Each registration takes its own internal key,
+// and the outer token is restored before delivery.
+func TestProgressBridgeTokenCollision(t *testing.T) {
+	t.Parallel()
+
+	c := NewCatalog()
+	a, b := &fakeProgressSink{}, &fakeProgressSink{}
+
+	keyA := c.registerProgressBridge("1", a)
+	keyB := c.registerProgressBridge("1", b)
+	if keyA == keyB {
+		t.Fatalf("internal bridge keys collided (%v); a shared outer token must not share a key", keyA)
+	}
+
+	ctx := context.Background()
+	c.forwardProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: keyA, Progress: 1})
+	c.forwardProgress(ctx, &mcp.ProgressNotificationParams{ProgressToken: keyB, Progress: 2})
+
+	for name, got := range map[string][]any{"A": a.seen(), "B": b.seen()} {
+		if len(got) != 1 {
+			t.Errorf("sink %s got %d notifications, want 1", name, len(got))
+			continue
+		}
+		if got[0] != "1" {
+			t.Errorf("sink %s token = %v, want the outer token %q restored", name, got[0], "1")
+		}
+	}
+}
+
 // TestExecuteToolProgressBridge proves falcon_execute_tool forwards catalog
 // progress notifications to the outer client when a progress token is set.
 func TestExecuteToolProgressBridge(t *testing.T) {
@@ -874,13 +925,17 @@ func TestExecuteToolProgressBridge(t *testing.T) {
 	t.Cleanup(func() { _ = ss.Wait() })
 
 	var (
-		mu    sync.Mutex
-		count int
+		mu     sync.Mutex
+		count  int
+		tokens []any
 	)
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "test"}, &mcp.ClientOptions{
-		ProgressNotificationHandler: func(_ context.Context, _ *mcp.ProgressNotificationClientRequest) {
+		ProgressNotificationHandler: func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
 			mu.Lock()
 			count++
+			if req != nil && req.Params != nil {
+				tokens = append(tokens, req.Params.ProgressToken)
+			}
 			mu.Unlock()
 		},
 	}).Connect(ctx, clientT, nil)
@@ -908,8 +963,16 @@ func TestExecuteToolProgressBridge(t *testing.T) {
 	for {
 		mu.Lock()
 		got := count
+		gotTokens := append([]any(nil), tokens...)
 		mu.Unlock()
 		if got == 2 {
+			// The outer client must never observe the catalog's internal bridge
+			// key: the token it supplied is restored on the way out.
+			for _, tok := range gotTokens {
+				if tok != "outer-tok" {
+					t.Fatalf("forwarded progress token = %v, want %q", tok, "outer-tok")
+				}
+			}
 			return
 		}
 		if time.Now().After(deadline) {

@@ -48,6 +48,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -84,13 +85,27 @@ type Catalog struct {
 	session *mcp.ClientSession
 	ss      *mcp.ServerSession
 
-	// bridges maps an in-flight outer progress token to the outer session that
-	// should receive catalog progress notifications. falcon_execute_tool
-	// registers before CallTool and unregisters after; Connect's client
-	// ProgressNotificationHandler looks up the sink by token. Concurrent
-	// execute calls with distinct tokens are supported.
+	// bridges maps a catalog-internal progress key to the outer session that
+	// should receive catalog progress notifications, plus the outer token to
+	// restore on delivery. falcon_execute_tool registers before CallTool and
+	// unregisters after; Connect's client ProgressNotificationHandler looks up
+	// the sink by key.
+	//
+	// The key is minted here rather than reusing the client-supplied outer
+	// token. MCP only requires a progress token to be unique within one
+	// session, so two concurrent outer sessions may legally pick the same
+	// value; keying on it would route one session's progress to another and
+	// let one call's delayed unregister delete another call's live entry.
 	bridgesMu sync.Mutex
-	bridges   map[any]progressSink
+	bridgeSeq atomic.Uint64
+	bridges   map[any]progressBridge
+}
+
+// progressBridge is one in-flight falcon_execute_tool call's relay target: the
+// outer session to notify and the progress token that session supplied.
+type progressBridge struct {
+	sink  progressSink
+	outer any
 }
 
 // progressSink is the NotifyProgress surface the outer MCP session exposes.
@@ -173,50 +188,60 @@ func (c *Catalog) Connect(ctx context.Context) error {
 	return nil
 }
 
-// registerProgressBridge associates token with sink for the duration of a
-// falcon_execute_tool call so catalog progress notifications reach the outer
-// client. token and sink must both be non-nil.
-func (c *Catalog) registerProgressBridge(token any, sink progressSink) {
-	if token == nil || sink == nil {
-		return
+// registerProgressBridge associates a fresh catalog-internal progress key with
+// sink for the duration of a falcon_execute_tool call, so catalog progress
+// notifications reach the outer client. It returns the key to send as the
+// internal CallTool progress token, or nil if outer or sink is nil. outer is
+// restored on each forwarded notification, so the client never sees the key.
+func (c *Catalog) registerProgressBridge(outer any, sink progressSink) any {
+	if outer == nil || sink == nil {
+		return nil
 	}
+	// A string keeps the key stable across the JSON-RPC in-memory transport; a
+	// number would decode back as float64 and miss the map lookup.
+	key := fmt.Sprintf("falcon-mcp-bridge-%d", c.bridgeSeq.Add(1))
 	c.bridgesMu.Lock()
 	defer c.bridgesMu.Unlock()
 	if c.bridges == nil {
-		c.bridges = make(map[any]progressSink)
+		c.bridges = make(map[any]progressBridge)
 	}
-	c.bridges[token] = sink
+	c.bridges[key] = progressBridge{sink: sink, outer: outer}
+	return key
 }
 
-// unregisterProgressBridge drops the bridge for token after a short grace
+// unregisterProgressBridge drops the bridge for key after a short grace
 // period. Catalog progress notifications are delivered asynchronously on the
 // in-memory transport and may arrive after CallTool returns; deleting
-// immediately would drop trailing updates.
-func (c *Catalog) unregisterProgressBridge(token any) {
-	if token == nil {
+// immediately would drop trailing updates. Each key belongs to exactly one
+// call, so a late delete cannot disturb another call's bridge.
+func (c *Catalog) unregisterProgressBridge(key any) {
+	if key == nil {
 		return
 	}
 	time.AfterFunc(2*time.Second, func() {
 		c.bridgesMu.Lock()
 		defer c.bridgesMu.Unlock()
-		delete(c.bridges, token)
+		delete(c.bridges, key)
 	})
 }
 
 // forwardProgress relays a catalog-client progress notification to the outer
-// session registered for its progress token. Unknown tokens are ignored
-// (best-effort telemetry).
+// session registered for its progress token, restoring that session's own
+// token. Unknown keys are ignored (best-effort telemetry).
 func (c *Catalog) forwardProgress(ctx context.Context, params *mcp.ProgressNotificationParams) {
 	if params == nil {
 		return
 	}
 	c.bridgesMu.Lock()
-	sink := c.bridges[params.ProgressToken]
+	b, ok := c.bridges[params.ProgressToken]
 	c.bridgesMu.Unlock()
-	if sink == nil {
+	if !ok || b.sink == nil {
 		return
 	}
-	_ = sink.NotifyProgress(ctx, params)
+	// Copy before rewriting the token: params belongs to the SDK's caller.
+	out := *params
+	out.ProgressToken = b.outer
+	_ = b.sink.NotifyProgress(ctx, &out)
 }
 
 // Close tears down the in-process session established by Connect. It is safe to

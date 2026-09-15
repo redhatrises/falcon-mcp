@@ -462,16 +462,18 @@ func (m *MetaModule) executeTool(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	if req != nil && req.Params != nil {
 		if tok := req.Params.GetProgressToken(); tok != nil {
-			// Copy the outer token onto the catalog CallTool so ProgressFunc on
-			// the inner tool is allowed to emit notifications. Register a bridge
-			// so those notifications, received on the catalog client, are
-			// forwarded to the outer session (context values do not cross the
-			// in-memory JSON-RPC pipe).
-			params.SetProgressToken(tok)
+			// Put a progress token on the catalog CallTool so ProgressFunc on the
+			// inner tool is allowed to emit notifications, and register a bridge so
+			// those notifications, received on the catalog client, are forwarded to
+			// the outer session (context values do not cross the in-memory JSON-RPC
+			// pipe). The bridge mints its own key so two outer sessions that picked
+			// the same token value cannot cross-wire; it restores tok on delivery.
+			inner := tok
 			if req.Session != nil {
-				m.catalog.registerProgressBridge(tok, req.Session)
-				defer m.catalog.unregisterProgressBridge(tok)
+				inner = m.catalog.registerProgressBridge(tok, req.Session)
+				defer m.catalog.unregisterProgressBridge(inner)
 			}
+			params.SetProgressToken(inner)
 		}
 	}
 
