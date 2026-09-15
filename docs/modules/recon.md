@@ -82,7 +82,7 @@ Responses include `pagination.total` (the total number of records matching the f
 
 Count and summarize Falcon Intelligence Recon notifications without retrieving each record.
 
-Use this for "how many" and "top N" questions over recon notifications — counts per status, rule priority, or topic, and notification volume over time — instead of paging through `falcon_search_recon_notifications`. Consult `falcon://recon/notifications/aggregate-guide` for aggregation types and `falcon://recon/notifications/search/fql-guide` before constructing filter expressions. Returns aggregation buckets keyed by `label` with a `count`.
+Use this for "how many" and "top N" questions over recon notifications — counts per status, rule priority, or topic, and notification volume over time — instead of paging through `falcon_search_recon_notifications`. Consult `falcon://recon/notifications/aggregate-guide` for aggregation types and `falcon://recon/notifications/search/fql-guide` before constructing filter expressions. Returns `resources` as one entry per aggregation, each carrying a `name` and a `buckets` list whose entries hold `label`, `count`, and `sub_aggregates`. The counts sit one level below `resources`, not on it.
 
 **Example prompts:**
 
@@ -97,7 +97,7 @@ Use this for "how many" and "top N" questions over recon notifications — count
 
 Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.
 
-Use this for "how many" and "top N" questions over leaked credential and PII rows — counts per credential status, site, source category, or rule topic — instead of paging through `falcon_search_recon_exposed_data_records`. Consult `falcon://recon/exposed-data-records/aggregate-guide` for aggregation types and `falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions. Returns aggregation buckets keyed by `label` with a `count`.
+Use this for "how many" and "top N" questions over leaked credential and PII rows — counts per credential status, site, source category, or rule topic — instead of paging through `falcon_search_recon_exposed_data_records`. Consult `falcon://recon/exposed-data-records/aggregate-guide` for aggregation types and `falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions. Returns `resources` as one entry per aggregation, each carrying a `name` and a `buckets` list whose entries hold `label`, `count`, and `sub_aggregates`. The counts sit one level below `resources`, not on it.
 
 **Example prompts:**
 
@@ -113,8 +113,14 @@ Preview how many Falcon Intelligence Recon notifications a monitoring rule would
 
 Use this to size a candidate rule before creating it: it evaluates the rule's `filter`
 against historical data for the chosen `topic` and reports the match volume, so you can
-tune the filter without generating live notifications. Returns aggregation buckets describing
-the historical match counts.
+tune the filter without generating live notifications. Returns `resources` as one entry
+per named aggregation — `channel`, `count`, and `site` — each holding a
+`buckets` list of `label`/`count` pairs, plus `sum_other_doc_count`
+for the volume outside the returned buckets. Read the totals from the `count` entry.
+
+The endpoint is slow and can exceed the request timeout; retry before treating a timeout as
+a rule that matches nothing. `filter` must be real FQL — a bare value such as
+`example.com` is rejected as invalid FQL rather than treated as a keyword.
 
 **Example prompts:**
 

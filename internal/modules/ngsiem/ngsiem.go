@@ -128,8 +128,9 @@ func (m *Module) Description() string {
 	return "Run search queries against CrowdStrike Next-Gen SIEM via its asynchronous job-based search API"
 }
 
-// searchNGSIEMDescription mirrors the Python falcon-mcp ngsiem module's tool
-// docstring 1:1 for client compatibility.
+// searchNGSIEMDescription keeps the Python module's tool name and opening summary
+// for client compatibility, then documents the response envelope and the
+// parsed_query check that this module returns but the Python docstring omits.
 const searchNGSIEMDescription = "Execute a CQL (CrowdStrike Query Language) query against CrowdStrike Next-Gen SIEM.\n\n" +
 	"Use this to search security events, logs, and telemetry with CQL. CQL is a\n" +
 	"pipe-based language (`filter | command | command`): start from a tag or field\n" +
@@ -137,13 +138,18 @@ const searchNGSIEMDescription = "Execute a CQL (CrowdStrike Query Language) quer
 	"commands like `groupBy([...], function=count())` and `sort()`; keep the time\n" +
 	"range tight. Consult `falcon://ngsiem/search/cql-guide` to construct the query —\n" +
 	"it has the pipe model, core commands, and working examples (distinct count, time\n" +
-	"bucketing, regex match, filtering on an aggregate). Returns matching event\n" +
-	"records, or an error/empty dict carrying the CQL guide when the job fails,\n" +
-	"times out, or returns no rows. Note: the API does not return detailed CQL parser\n" +
-	"diagnostics — a malformed query may error or silently return unexpected/empty\n" +
-	"results rather than a helpful message, so a result is not proof the query parsed\n" +
-	"as intended. Search times out after FALCON_MCP_NGSIEM_TIMEOUT seconds\n" +
-	"(default: 300)."
+	"bucketing, regex match, filtering on an aggregate). Returns `results` with the\n" +
+	"matching event records, `query_used` echoing what you sent, and `job` carrying\n" +
+	"the run's `parsed_query`, `event_count`, `processed_events`, and `warnings`; on a\n" +
+	"failure, timeout, or empty result it returns an error/empty dict carrying the CQL\n" +
+	"guide. Note: the API does not return detailed CQL parser diagnostics — a\n" +
+	"malformed query may error or silently return unexpected/empty results rather\n" +
+	"than a helpful message, so a result is not proof the query parsed as intended.\n" +
+	"Compare `job.parsed_query` against the query you sent before trusting the rows:\n" +
+	"an unrecognized word becomes a free-text stage instead of an error, so\n" +
+	"`| limit 5` parses as `| limit | 5`, ignores the 5 entirely, and returns the\n" +
+	"API's default row cap with no error and no warning. Use `head(5)` to cap rows.\n" +
+	"Search times out after FALCON_MCP_NGSIEM_TIMEOUT seconds (default: 300)."
 
 // queryStringDescription is the schema description for the query_string param.
 // It carries backticks and embedded examples, so it lives as a const applied by
