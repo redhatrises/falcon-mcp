@@ -167,7 +167,7 @@ func TestNewRegistersAllModules(t *testing.T) {
 // Python's "guides are not gated by the tool policy" rule.
 func TestGuideReferencesResolve(t *testing.T) {
 	t.Parallel()
-	srv, err := New(&config.Config{ReadOnly: true}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(&config.Config{ReadOnly: true, Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

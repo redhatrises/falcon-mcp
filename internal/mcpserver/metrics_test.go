@@ -149,7 +149,7 @@ func TestUnknownToolNameRecordsUnknownLabel(t *testing.T) {
 	t.Parallel()
 
 	rec := metrics.New()
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
+	srv, err := New(&config.Config{Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestDynamicUnknownInnerToolKeepsOuterLabel(t *testing.T) {
 	t.Parallel()
 
 	rec := metrics.New()
-	srv, err := New(&config.Config{Dynamic: true}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
+	srv, err := New(&config.Config{Dynamic: true, Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
