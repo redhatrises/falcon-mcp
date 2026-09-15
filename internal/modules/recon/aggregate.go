@@ -117,14 +117,22 @@ a rule that matches nothing. ` + "`filter`" + ` must be real FQL — a bare valu
 	previewLookbackDescription = "How many days of history to evaluate the rule against. One of 7, 30, 180, or 365."
 )
 
+// aggregateSchemaDescriptions carries the per-surface property descriptions that
+// vary between the two aggregate tools.
+type aggregateSchemaDescriptions struct {
+	Field  string
+	Filter string
+	Type   string
+}
+
 // aggregateSchema builds an aggregate input schema, applying the recon
 // aggregation-type enum, the date_histogram interval enum, the size bounds, and
 // the backtick-bearing field/filter/type descriptions the struct tags cannot express.
-func aggregateSchema[In any](fieldDesc, filterDesc, typeDesc string) *jsonschema.Schema {
+func aggregateSchema[In any](desc aggregateSchemaDescriptions) *jsonschema.Schema {
 	return base.SchemaFor[In](func(s *jsonschema.Schema) {
-		s.Properties["field"].Description = fieldDesc
-		s.Properties["filter"].Description = filterDesc
-		s.Properties["type"].Description = typeDesc
+		s.Properties["field"].Description = desc.Field
+		s.Properties["filter"].Description = desc.Filter
+		s.Properties["type"].Description = desc.Type
 		s.Properties["interval"].Description = aggregateIntervalDescription
 		s.Properties["date_ranges"].Description = aggregateDateRangesDescription
 		s.Properties["ranges"].Description = aggregateRangesDescription
@@ -143,16 +151,16 @@ func aggregateSchema[In any](fieldDesc, filterDesc, typeDesc string) *jsonschema
 }
 
 var (
-	aggregateNotificationsSchema = aggregateSchema[AggregateInput](
-		aggregateNotificationsFieldDescription,
-		aggregateNotificationsFilterDescription,
-		aggregateNotificationsTypeDescription,
-	)
-	aggregateExposedDataRecordsSchema = aggregateSchema[AggregateInput](
-		aggregateExposedDataRecordsFieldDescription,
-		aggregateExposedDataRecordsFilterDescription,
-		aggregateExposedDataRecordsTypeDescription,
-	)
+	aggregateNotificationsSchema = aggregateSchema[AggregateInput](aggregateSchemaDescriptions{
+		Field:  aggregateNotificationsFieldDescription,
+		Filter: aggregateNotificationsFilterDescription,
+		Type:   aggregateNotificationsTypeDescription,
+	})
+	aggregateExposedDataRecordsSchema = aggregateSchema[AggregateInput](aggregateSchemaDescriptions{
+		Field:  aggregateExposedDataRecordsFieldDescription,
+		Filter: aggregateExposedDataRecordsFilterDescription,
+		Type:   aggregateExposedDataRecordsTypeDescription,
+	})
 
 	previewRuleSchema = base.SchemaFor[PreviewInput](func(s *jsonschema.Schema) {
 		s.Properties["filter"].Description = previewFilterDescription

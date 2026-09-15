@@ -24,8 +24,9 @@
 // the gofalcon recon client: searching Recon notifications (recon alerts),
 // monitoring rules, and exposed-data records; aggregating notifications and
 // exposed-data records into buckets; and previewing a candidate monitoring
-// rule's historical match volume. It registers four FQL guide resources: one
-// per search surface, plus a guide for the rule-preview filter dialect.
+// rule's historical match volume. It registers an FQL guide resource per search
+// surface, an aggregate guide per aggregate surface, and a guide for the
+// rule-preview filter dialect.
 //
 // The three search tools are each a two-step typed gofalcon call — a query for
 // matching IDs followed by a bulk detail fetch (base.FetchDetails) — so the
