@@ -310,7 +310,7 @@ guides are static field documentation carrying no tenant data.
 ## Deployment Options
 
 - [Amazon Bedrock AgentCore](https://developer.crowdstrike.com/falcon-mcp/deployment/amazon-bedrock/)
-- [Google Cloud (Agent Platform / Gemini Enterprise)](./examples/adk/README.md)
+- [Google Cloud Run](https://developer.crowdstrike.com/falcon-mcp/deployment/google-cloud/)
 
 ## Contributing
 
