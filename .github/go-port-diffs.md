@@ -7,7 +7,7 @@
 
 | Surface | Go (`go_port`) | Notes |
 |---------|----------------|-------|
-| Domain modules | 29 (`internal/modules`, via `go generate`) | Plus 3 built-in core tools (`falcon_check_connectivity`, `falcon_list_enabled_modules`, `falcon_list_enabled_tools`) |
+| Domain modules | 28 (`internal/modules`, via `go generate`) | Plus 3 built-in core tools (`falcon_check_connectivity`, `falcon_list_enabled_modules`, `falcon_list_enabled_tools`) |
 | Tools | 166 domain + 3 core ≈ 169 `falcon_*` tools | Names and descriptions tracked 1:1; `TestGuideReferencesResolve` requires every `falcon://` URI in a served tool description to resolve under `--read-only` |
 | Recon aggregate guides | Restored | `falcon://recon/notifications/aggregate-guide`, `falcon://recon/exposed-data-records/aggregate-guide` |
 

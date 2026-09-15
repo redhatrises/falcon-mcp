@@ -242,5 +242,3 @@ make build
 ## See also
 
 - Official Go SDK: <https://pkg.go.dev/github.com/modelcontextprotocol/go-sdk/mcp>
-- Python module guide (legacy tree): [module-development.md](module-development.md)
-- Resource conventions (URI scheme shared with Python): [resource-development.md](resource-development.md)

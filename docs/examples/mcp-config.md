@@ -3,7 +3,7 @@
 <!-- meta:section examples -->
 <!-- meta:link-base /falcon-mcp/ -->
 
-The `examples/mcp_config.json` file shows all three transport configurations in a single file.
+The example below shows all three transport configurations in a single file.
 
 ## All Transport Configurations
 
