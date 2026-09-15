@@ -56,7 +56,7 @@ jobs:
         with:
           # Keep in step with GOLANGCI_LINT_VERSION in the Makefile so a local
           # "make lint" and this gate agree on the rule set.
-          version: v2.11.3
+          version: v2.13.2
 
   build:
     strategy:

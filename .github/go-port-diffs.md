@@ -51,7 +51,7 @@ Dynamic mode uses one shared in-process `*mcp.ClientSession` for every `falcon_e
 
 ### Toolchain and gofalcon
 
-- `go 1.26.4` and `new(expr)`: keep unless CrowdStrike CI images cannot build it.
+- `go 1.27.1` and `new(expr)`: keep unless CrowdStrike CI images cannot build it.
 - `gofalcon` is a **pseudo-version** (`v0.22.1-0.20260909153957-2ca5ed2752fd`) because the port needs APIs not on a tagged release. Pin a tagged gofalcon before a 1.0 of falcon-mcp.
 
 ### E2E

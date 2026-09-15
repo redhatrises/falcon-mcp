@@ -1,6 +1,6 @@
 module github.com/crowdstrike/falcon-mcp
 
-go 1.26.4
+go 1.27.1
 
 require (
 	github.com/crowdstrike/gofalcon v0.22.1-0.20260909153957-2ca5ed2752fd

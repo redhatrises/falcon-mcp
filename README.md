@@ -87,7 +87,7 @@ npx falcon-mcp
 go install github.com/crowdstrike/falcon-mcp/cmd/falcon-mcp@latest
 ```
 
-Requires a Go toolchain that matches `go.mod` (currently Go 1.26.4).
+Requires a Go toolchain that matches `go.mod` (currently Go 1.27.1).
 
 #### GitHub Release binaries
 
