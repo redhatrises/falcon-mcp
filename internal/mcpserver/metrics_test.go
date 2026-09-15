@@ -128,7 +128,7 @@ func TestServerRecordsToolCallMetrics(t *testing.T) {
 	t.Parallel()
 
 	rec := metrics.New()
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
+	srv, err := New(&config.Config{Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -64,7 +64,7 @@ var normalModeCoreToolNames = []string{"falcon_check_connectivity", "falcon_list
 // normal-only core tools.
 func TestDynamicModeExposesOnlyMetaTools(t *testing.T) {
 	t.Parallel()
-	srv, err := New(&config.Config{Dynamic: true}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(&config.Config{Dynamic: true, Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestDynamicModeExposesOnlyMetaTools(t *testing.T) {
 // meta-tools.
 func TestNormalModeExposesRealToolsAndCore(t *testing.T) {
 	t.Parallel()
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(&config.Config{Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -134,7 +134,7 @@ func keys(m map[string]bool) []string {
 // read-only set). See docs/usage/dynamic-mode.md.
 func TestDynamicMetaToolAnnotations(t *testing.T) {
 	t.Parallel()
-	srv, err := New(&config.Config{Dynamic: true}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(&config.Config{Dynamic: true, Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

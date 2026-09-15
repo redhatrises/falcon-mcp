@@ -90,7 +90,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 		{"pprof", cfg.PprofAddr, pprofHandler(), true},
 	} {
 		if ops.sensitive && ops.addr != "" && !isLoopbackAddr(ops.addr) {
-			slog.Warn("ops endpoint bound to a non-loopback address; it is unauthenticated and intended for debugging only — restrict access with firewall rules",
+			cfg.Logger.Warn("ops endpoint bound to a non-loopback address; it is unauthenticated and intended for debugging only — restrict access with firewall rules",
 				"endpoint", ops.name, "addr", ops.addr)
 		}
 		if err := startOps(ctx, opsEndpoint{
@@ -98,6 +98,7 @@ func serve(ctx context.Context, cfg *config.Config) error {
 			addr:        ops.addr,
 			handler:     ops.handler,
 			idleTimeout: cfg.IdleTimeout,
+			logger:      cfg.Logger,
 		}); err != nil {
 			return err
 		}
@@ -107,33 +108,35 @@ func serve(ctx context.Context, cfg *config.Config) error {
 
 	switch cfg.Transport {
 	case "stdio":
-		slog.Info("falcon-mcp starting", "transport", "stdio")
+		cfg.Logger.Info("falcon-mcp starting", "transport", "stdio")
 		// Ctrl+C cancels ctx: a clean shutdown, not an error. Swallow
 		// context.Canceled so it isn't surfaced as a run failure, mirroring
 		// serveHTTP's clean-shutdown semantics.
 		if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
 			return err
 		}
-		slog.Info("falcon-mcp shutdown complete", "transport", "stdio")
+		cfg.Logger.Info("falcon-mcp shutdown complete", "transport", "stdio")
 		return nil
 	case "streamable-http":
 		opts := &mcp.StreamableHTTPOptions{Stateless: cfg.StatelessHTTP}
 		h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv.MCP() }, opts)
-		slog.Info("falcon-mcp starting", "transport", "streamable-http", "addr", cfg.HTTPAddr, "stateless", cfg.StatelessHTTP, "auth", cfg.APIKey != "")
+		cfg.Logger.Info("falcon-mcp starting", "transport", "streamable-http", "addr", cfg.HTTPAddr, "stateless", cfg.StatelessHTTP, "auth", cfg.APIKey != "")
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "streamable-http",
 			addr:        cfg.HTTPAddr,
 			handler:     withAPIKey(cfg.APIKey, h),
 			idleTimeout: cfg.IdleTimeout,
+			logger:      cfg.Logger,
 		})
 	case "sse":
 		h := mcp.NewSSEHandler(func(*http.Request) *mcp.Server { return srv.MCP() }, nil)
-		slog.Info("falcon-mcp starting", "transport", "sse", "addr", cfg.HTTPAddr, "auth", cfg.APIKey != "")
+		cfg.Logger.Info("falcon-mcp starting", "transport", "sse", "addr", cfg.HTTPAddr, "auth", cfg.APIKey != "")
 		return serveHTTP(ctx, httpServer{
 			endpoint:    "sse",
 			addr:        cfg.HTTPAddr,
 			handler:     withAPIKey(cfg.APIKey, h),
 			idleTimeout: cfg.IdleTimeout,
+			logger:      cfg.Logger,
 		})
 	default:
 		// Defense-in-depth: config.Load already validated the transport.
@@ -148,6 +151,7 @@ type opsEndpoint struct {
 	addr        string
 	handler     http.Handler
 	idleTimeout time.Duration
+	logger      *slog.Logger
 }
 
 // startOps binds ops.addr and serves ops.handler on it in a goroutine tied to
@@ -164,7 +168,7 @@ func startOps(ctx context.Context, ops opsEndpoint) error {
 	if err != nil {
 		return fmt.Errorf("bind %s endpoint %q: %w", ops.name, ops.addr, err)
 	}
-	slog.Info(fmt.Sprintf("falcon-mcp %s endpoint", ops.name), "endpoint", ops.name, "addr", ops.addr)
+	ops.logger.Info(fmt.Sprintf("falcon-mcp %s endpoint", ops.name), "endpoint", ops.name, "addr", ops.addr)
 	go func() {
 		if err := serveHTTP(ctx, httpServer{
 			endpoint:    ops.name,
@@ -172,8 +176,9 @@ func startOps(ctx context.Context, ops opsEndpoint) error {
 			handler:     ops.handler,
 			idleTimeout: ops.idleTimeout,
 			listener:    ln,
+			logger:      ops.logger,
 		}); err != nil {
-			slog.Error("ops endpoint exited", "endpoint", ops.name, "err", err)
+			ops.logger.Error("ops endpoint exited", "endpoint", ops.name, "err", err)
 		}
 	}()
 	return nil
@@ -188,7 +193,7 @@ func warnIfOpenBind(cfg *config.Config) {
 	if cfg.Transport == "stdio" || cfg.APIKey != "" || isLoopbackAddr(cfg.HTTPAddr) {
 		return
 	}
-	slog.Warn("network transport bound to a non-loopback address without an API key: the endpoint is reachable on the network with no authentication — set --api-key (or FALCON_MCP_API_KEY) when binding beyond loopback",
+	cfg.Logger.Warn("network transport bound to a non-loopback address without an API key: the endpoint is reachable on the network with no authentication — set --api-key (or FALCON_MCP_API_KEY) when binding beyond loopback",
 		"transport", cfg.Transport, "addr", cfg.HTTPAddr)
 }
 
@@ -277,6 +282,7 @@ type httpServer struct {
 	handler     http.Handler
 	idleTimeout time.Duration
 	listener    net.Listener
+	logger      *slog.Logger
 }
 
 // serveHTTP runs s until ctx is cancelled, then drains in-flight requests via a
@@ -313,7 +319,7 @@ func serveHTTP(ctx context.Context, s httpServer) error {
 		if err := srv.Shutdown(shutCtx); err != nil {
 			return fmt.Errorf("http shutdown: %w", err)
 		}
-		slog.Info("falcon-mcp shutdown complete", "endpoint", s.endpoint, "addr", s.addr)
+		s.logger.Info("falcon-mcp shutdown complete", "endpoint", s.endpoint, "addr", s.addr)
 		return nil
 	}
 }

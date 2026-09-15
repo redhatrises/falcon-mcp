@@ -381,7 +381,7 @@ func TestOffsetInputsAreIntegers(t *testing.T) {
 // register tools (see TestServerMCPNotNil), it makes no API calls.
 func TestModuleSelectionEndToEnd(t *testing.T) {
 	srv, err := New(
-		&config.Config{Modules: []string{"hosts"}},
+		&config.Config{Modules: []string{"hosts"}, Logger: testutil.DiscardLogger()},
 		&client.CrowdStrikeAPISpecification{},
 	)
 	if err != nil {
@@ -413,6 +413,9 @@ func TestModuleSelectionEndToEnd(t *testing.T) {
 // API calls) and returns a connected in-memory client session.
 func connectNewServer(t *testing.T, cfg *config.Config) *mcp.ClientSession {
 	t.Helper()
+	if cfg.Logger == nil {
+		cfg.Logger = testutil.DiscardLogger()
+	}
 	srv, err := New(cfg, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -588,7 +591,7 @@ func TestToolDenylistEndToEnd(t *testing.T) {
 // TestUnknownToolNameRejected asserts an allow/deny-list naming no registered
 // tool fails New with a wrapped ErrUnknownToolName.
 func TestUnknownToolNameRejected(t *testing.T) {
-	_, err := New(&config.Config{Tools: []string{"falcon_no_such_tool"}}, &client.CrowdStrikeAPISpecification{})
+	_, err := New(&config.Config{Tools: []string{"falcon_no_such_tool"}, Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if !errors.Is(err, ErrUnknownToolName) {
 		t.Fatalf("err = %v, want ErrUnknownToolName", err)
 	}
