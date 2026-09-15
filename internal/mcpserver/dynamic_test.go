@@ -529,6 +529,46 @@ func TestSearchToolsHintInjectionIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestEnrichParamHintsInjectsCQLHint proves a CQL tool's query_string parameter
+// receives the curated CQL hint, mirroring upstream's QUERY_STRING_HINTS
+// injection. NGSIEM takes query_string rather than an FQL filter, so the FQL
+// syntax suffix must stay off it.
+func TestEnrichParamHintsInjectsCQLHint(t *testing.T) {
+	t.Parallel()
+
+	in := []paramSummary{{Name: "query_string", Description: "CQL query to run."}}
+	out := enrichParamHints("falcon_search_ngsiem", in)
+
+	got := out[0].Description
+	if hint := queryStringHints["falcon_search_ngsiem"]; !strings.Contains(got, hint) {
+		t.Errorf("query_string desc %q missing the curated CQL hint", got)
+	}
+	if strings.Contains(got, fqlFilterHintSuffix) {
+		t.Errorf("query_string desc %q got the FQL suffix; NGSIEM uses CQL, not FQL", got)
+	}
+	// The catalog entry's slice is shared across searches, so it must not be
+	// mutated in place.
+	if in[0].Description != "CQL query to run." {
+		t.Errorf("input slice mutated in place: %q", in[0].Description)
+	}
+}
+
+// TestEnrichParamHintsLeavesUnknownQueryStringAlone verifies the CQL hint is
+// keyed by tool name: a query_string parameter on a tool with no curated entry
+// is returned untouched.
+func TestEnrichParamHintsLeavesUnknownQueryStringAlone(t *testing.T) {
+	t.Parallel()
+
+	if _, ok := queryStringHints["falcon_search_widgets"]; ok {
+		t.Fatal("test precondition broken: falcon_search_widgets unexpectedly has a CQL hint")
+	}
+	in := []paramSummary{{Name: "query_string", Description: "Query to run."}}
+	out := enrichParamHints("falcon_search_widgets", in)
+	if out[0].Description != "Query to run." {
+		t.Errorf("query_string desc = %q, want it unchanged", out[0].Description)
+	}
+}
+
 // TestSearchToolsNoFilterParamUnchanged verifies that a tool with no filter
 // parameter (the mutating update_* fixture takes only "id") is left untouched.
 func TestSearchToolsNoFilterParamUnchanged(t *testing.T) {

@@ -349,7 +349,7 @@ func leanSummary(ce catalogEntry) ToolSummary {
 // empty list, so the key is present (distinct from a lean entry's omission).
 func fullSummary(ce catalogEntry) ToolSummary {
 	s := baseSummary(ce)
-	params := enrichFilterHints(ce.tool.Name, ce.params)
+	params := enrichParamHints(ce.tool.Name, ce.params)
 	if params == nil {
 		params = []paramSummary{}
 	}
@@ -371,33 +371,43 @@ func baseSummary(ce catalogEntry) ToolSummary {
 	}
 }
 
-// enrichFilterHints returns params with the tool's curated FQL field hint (when
-// one exists) and the universal FQL syntax suffix appended to the "filter"
-// parameter's description, mirroring upstream falcon-mcp's dynamic.py. Tools
-// without a filter parameter are returned unchanged. The input slice is copied
+// enrichParamHints returns params with dynamic-mode hints appended, mirroring
+// upstream falcon-mcp's dynamic.py. A "filter" parameter gets the tool's curated
+// FQL field hint (when one exists) plus the universal FQL syntax suffix; a
+// "query_string" parameter gets the tool's curated CQL hint, and no FQL suffix.
+// Parameters the tool does not declare are skipped. The input slice is copied
 // before mutation so the shared catalog entry stays pristine across repeated
-// searches (otherwise the hint would compound on every call).
-func enrichFilterHints(toolName string, params []paramSummary) []paramSummary {
-	idx := -1
+// searches (otherwise the hints would compound on every call).
+func enrichParamHints(toolName string, params []paramSummary) []paramSummary {
+	filterIdx, queryIdx := -1, -1
 	for i, p := range params {
-		if p.Name == "filter" {
-			idx = i
-			break
+		switch p.Name {
+		case "filter":
+			filterIdx = i
+		case "query_string":
+			queryIdx = i
 		}
 	}
-	if idx == -1 {
+	// Nothing to enrich unless the tool declares a filter, or a query_string the
+	// tool has a curated CQL hint for.
+	cqlHint := queryStringHints[toolName]
+	if filterIdx == -1 && (queryIdx == -1 || cqlHint == "") {
 		return params
 	}
 
 	out := make([]paramSummary, len(params))
 	copy(out, params)
 
-	desc := out[idx].Description
-	if hint := filterHints[toolName]; hint != "" {
-		desc = appendHint(desc, hint)
+	if filterIdx != -1 {
+		desc := out[filterIdx].Description
+		if hint := filterHints[toolName]; hint != "" {
+			desc = appendHint(desc, hint)
+		}
+		out[filterIdx].Description = appendHint(desc, fqlFilterHintSuffix)
 	}
-	desc = appendHint(desc, fqlFilterHintSuffix)
-	out[idx].Description = desc
+	if queryIdx != -1 && cqlHint != "" {
+		out[queryIdx].Description = appendHint(out[queryIdx].Description, cqlHint)
+	}
 	return out
 }
 
