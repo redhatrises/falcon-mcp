@@ -225,9 +225,14 @@ func (m *Module) runReadOnlyCommandAndWait(ctx context.Context, req *mcp.CallToo
 		if anyComplete(chunks) {
 			return nil, completeResult(cloudRequestID, execution, chunks), nil
 		}
-		// Advance to the last chunk's sequence_id to page further output.
+		// Advance only when the last chunk reports a sequence_id greater than
+		// the cursor. SequenceID is a non-pointer with omitempty, so a chunk
+		// that omits it decodes as 0; treating that as a reset would re-request
+		// chunk 0 and duplicate stdout.
 		if n := len(chunks); n > 0 {
-			sequenceID = chunks[n-1].SequenceID
+			if next := chunks[n-1].SequenceID; next > sequenceID {
+				sequenceID = next
+			}
 		}
 
 		select {

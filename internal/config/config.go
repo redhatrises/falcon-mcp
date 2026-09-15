@@ -59,12 +59,6 @@ const (
 var (
 	// ErrMissingCredentials is returned when client id/secret are absent.
 	ErrMissingCredentials = errors.New("config: client id and client secret are required")
-	// ErrInvalidClientID is returned when the client id is present but not the
-	// expected 32-character alphanumeric format.
-	ErrInvalidClientID = errors.New("config: invalid client id format")
-	// ErrInvalidClientSecret is returned when the client secret is present but
-	// not the expected 40-character alphanumeric format.
-	ErrInvalidClientSecret = errors.New("config: invalid client secret format")
 	// ErrInvalidTransport is returned when the transport is not one of the
 	// supported values.
 	ErrInvalidTransport = errors.New("config: transport must be stdio, streamable-http, or sse")
@@ -99,10 +93,8 @@ var (
 
 // Validation patterns, compiled once at package scope.
 var (
-	clientIDRE     = regexp.MustCompile(`^[a-zA-Z0-9]{32}$`)
-	clientSecretRE = regexp.MustCompile(`^[a-zA-Z0-9]{40}$`)
-	cloudRE        = regexp.MustCompile(`^(autodiscover|us-?1|us-?2|us-?3|eu-?1|us-?gov-?1|us-?gov-?2|gov-?1|gov-?2)$`)
-	memberCIDRE    = regexp.MustCompile(`^[0-9a-fA-F]{32}(-[0-9a-fA-F]{2})?$`)
+	cloudRE     = regexp.MustCompile(`^(autodiscover|us-?1|us-?2|us-?3|eu-?1|us-?gov-?1|us-?gov-?2|gov-?1|gov-?2)$`)
+	memberCIDRE = regexp.MustCompile(`^[0-9a-fA-F]{32}(-[0-9a-fA-F]{2})?$`)
 )
 
 // Config is the server configuration. The cli package populates it from flags,
@@ -211,12 +203,6 @@ type Config struct {
 func Load(cfg Config) (*Config, error) {
 	if cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return nil, ErrMissingCredentials
-	}
-	if !clientIDRE.MatchString(cfg.ClientID) {
-		return nil, fmt.Errorf("%w: expected 32 alphanumeric characters", ErrInvalidClientID)
-	}
-	if !clientSecretRE.MatchString(cfg.ClientSecret) {
-		return nil, fmt.Errorf("%w: expected 40 alphanumeric characters", ErrInvalidClientSecret)
 	}
 
 	if cfg.Transport == "" {

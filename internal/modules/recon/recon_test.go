@@ -573,5 +573,7 @@ func TestRegisterResourcesServesFQLGuides(t *testing.T) {
 		testutil.FQLGuideExpectation{Name: "falcon_search_recon_rules_fql_guide", URI: rulesFQLGuideURI, Body: rulesFQLGuide},
 		testutil.FQLGuideExpectation{Name: "falcon_search_recon_exposed_data_records_fql_guide", URI: exposedDataRecordsFQLGuideURI, Body: exposedDataRecordsFQLGuide},
 		testutil.FQLGuideExpectation{Name: "falcon_preview_recon_rule_guide", URI: previewRuleFQLGuideURI, Body: previewRuleFQLGuide},
+		testutil.FQLGuideExpectation{Name: "falcon_aggregate_recon_notifications_guide", URI: notificationsAggregateGuideURI, Body: notificationsAggregateGuide},
+		testutil.FQLGuideExpectation{Name: "falcon_aggregate_recon_exposed_data_records_guide", URI: exposedDataRecordsAggregateGuideURI, Body: exposedDataRecordsAggregateGuide},
 	)
 }

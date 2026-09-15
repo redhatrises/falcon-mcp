@@ -72,19 +72,28 @@ falcon-mcp --help
 
 | Flag | Env Variable | Default | Description |
 |------|-------------|---------|-------------|
+| `--config` | — | — | Path to a config file (YAML, TOML, JSON, or INI) |
+| `--client-id` | `FALCON_CLIENT_ID` | — | Falcon OAuth2 client ID |
+| `--client-secret` | `FALCON_CLIENT_SECRET` | — | Falcon OAuth2 client secret |
+| `--cloud` | `FALCON_CLOUD` | `autodiscover` | Falcon cloud: `autodiscover`, `us-1`, `us-2`, `eu-1`, `us-gov-1`, … |
+| `--base-url` | `FALCON_BASE_URL` | — | Falcon API URL; overrides `--cloud` |
 | `--transport` | `FALCON_MCP_TRANSPORT` | `stdio` | Transport method: `stdio`, `sse`, `streamable-http` |
 | `--host` | `FALCON_MCP_HOST` | `127.0.0.1` | Host for HTTP transports |
 | `--port` | `FALCON_MCP_PORT` | `8000` | Port for HTTP transports |
 | `--modules` | `FALCON_MCP_MODULES` | all | Comma-separated list of modules to enable |
 | `--debug` | `FALCON_MCP_DEBUG` | `false` | Enable debug logging |
+| `--log-format` | `FALCON_MCP_LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `--api-key` | `FALCON_MCP_API_KEY` | — | API key for HTTP transport auth |
 | `--stateless-http` | `FALCON_MCP_STATELESS_HTTP` | `false` | Stateless mode for scalable deployments |
 | `--member-cid` | `FALCON_MEMBER_CID` | — | Flight Control child CID |
-| `--proxy` | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy for outbound API connections |
+| `--proxy` | `FALCON_MCP_PROXY` / `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy for outbound API connections |
 | `--dynamic` | `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools (list-enabled-tools, search, execute) instead of all module tools to reduce context usage |
 | `--read-only` | `FALCON_MCP_READ_ONLY` | `false` | Register only read-only tools, disabling every tool that mutates tenant state |
 | `--tools` | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `--exclude-tools` | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names to withhold |
+| `--keep-alive` | `FALCON_MCP_KEEP_ALIVE` | — | Interval to ping idle sessions and hold HTTP/SSE connections open (Go duration, e.g. `30s`) |
+| `--api-response-timeout` | `FALCON_MCP_API_RESPONSE_TIMEOUT` | `30s` | Max wait for Falcon API response headers |
+| `--http-idle-timeout` | `FALCON_MCP_HTTP_IDLE_TIMEOUT` | `120s` | Max idle time for keep-alive HTTP/SSE connections |
 | `--health-addr` | `FALCON_MCP_HEALTH_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/healthz` liveness probe. Empty disables it. |
 | `--metrics-addr` | `FALCON_MCP_METRICS_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/metrics` (Prometheus) endpoint. Empty disables it. |
 | `--pprof-addr` | `FALCON_MCP_PPROF_ADDR` | — | [Operational endpoint](#operational-endpoints): `host:port` for the `/debug/pprof/` profiling endpoints. Empty disables it. |
@@ -179,3 +188,21 @@ falcon-mcp --transport streamable-http \
     (`127.0.0.1:PORT`) and reaching them through an SSH tunnel or
     `kubectl port-forward`. If you must use a non-loopback address, **configure
     firewall rules** to restrict access to trusted hosts only.
+
+## Running from Go
+
+The server is the `falcon-mcp` binary (`cmd/falcon-mcp`). There is no public Python `FalconMCPServer` library.
+
+```bash
+go install github.com/crowdstrike/falcon-mcp/cmd/falcon-mcp@latest
+falcon-mcp --modules detections,hosts
+```
+
+From a clone:
+
+```bash
+make run
+# or: go run ./cmd/falcon-mcp
+```
+
+Pass credentials as flags, process environment, or a `.env` file. Flags win over env; env wins over file. For secret managers, export `FALCON_CLIENT_ID` / `FALCON_CLIENT_SECRET` (or pass `--client-id` / `--client-secret`) before starting the process.

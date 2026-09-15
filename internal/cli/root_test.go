@@ -37,9 +37,9 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/version"
 )
 
-// Valid-format credentials for tests: config.Load enforces a 32-char
-// alphanumeric client id and a 40-char alphanumeric client secret. The distinct
-// *ID constants let precedence tests tell one credential source from another.
+// Valid-format credentials for tests. config.Load only requires non-empty
+// id/secret; the distinct *ID constants let precedence tests tell one
+// credential source from another.
 const (
 	validID     = "abcdef0123456789abcdef0123456789"
 	validSecret = "abcdef0123456789abcdef0123456789abcdef01"
@@ -1047,5 +1047,140 @@ func TestExecuteEnvBeatsDotEnv(t *testing.T) {
 	}
 	if cfg == nil || cfg.ClientID != envID {
 		t.Fatalf("env should beat .env: got %+v", cfg)
+	}
+}
+
+func TestExecuteModulesCSVEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_MODULES", "detections,intel")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	want := []string{"detections", "intel"}
+	if cfg == nil || len(cfg.Modules) != 2 || cfg.Modules[0] != "detections" || cfg.Modules[1] != "intel" {
+		t.Fatalf("Modules = %v, want %v", cfgModules(cfg), want)
+	}
+}
+
+func TestExecuteToolsCSVEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_TOOLS", "falcon_search_hosts,falcon_search_detections")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || len(cfg.Tools) != 2 || cfg.Tools[0] != "falcon_search_hosts" || cfg.Tools[1] != "falcon_search_detections" {
+		t.Fatalf("Tools = %v, want [falcon_search_hosts falcon_search_detections]", cfg.Tools)
+	}
+}
+
+func TestExecuteExcludeToolsCSVEnv(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+	t.Setenv("FALCON_MCP_EXCLUDE_TOOLS", "falcon_delete_host_groups,falcon_delete_policies")
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || len(cfg.ExcludeTools) != 2 || cfg.ExcludeTools[0] != "falcon_delete_host_groups" || cfg.ExcludeTools[1] != "falcon_delete_policies" {
+		t.Fatalf("ExcludeTools = %v, want two names", cfg.ExcludeTools)
+	}
+}
+
+func TestExecuteModulesFlagStillSplits(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", validID)
+	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
+
+	cfg, err := resolveArgs(t, []string{"-m", "detections,intel"})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil || len(cfg.Modules) != 2 || cfg.Modules[0] != "detections" || cfg.Modules[1] != "intel" {
+		t.Fatalf("Modules from flag = %v, want [detections intel]", cfgModules(cfg))
+	}
+}
+
+func cfgModules(c *config.Config) []string {
+	if c == nil {
+		return nil
+	}
+	return c.Modules
+}
+
+func TestNormalizeFalconPrefixStripsMCP(t *testing.T) {
+	t.Parallel()
+	v := newTestViper(t)
+	v.Set("falcon_mcp_api_key", "k")
+	v.Set("falcon_mcp_read_only", true)
+	v.Set("falcon_mcp_modules", "detections,intel")
+	normalizeFalconPrefix(v)
+	if got := v.GetString("api_key"); got != "k" {
+		t.Errorf("api_key = %q, want k", got)
+	}
+	if !v.GetBool("read_only") {
+		t.Errorf("read_only = false, want true")
+	}
+	if got := v.GetString("modules"); got != "detections,intel" {
+		t.Errorf("modules = %q, want detections,intel", got)
+	}
+	if v.IsSet("mcp_api_key") || v.IsSet("mcp_read_only") || v.IsSet("mcp_modules") {
+		t.Errorf("unexpected mcp_* junk keys after falcon_mcp_ strip: %#v", v.AllSettings())
+	}
+}
+
+func TestMergeDotEnvUnreadableIsError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".env"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	v := newTestViper(t)
+	if err := mergeDotEnv(v); err == nil {
+		t.Fatal("expected error when .env is a directory")
+	}
+}
+
+func TestExecuteReadsDotEnvMCPKeys(t *testing.T) {
+	t.Setenv("FALCON_CLIENT_ID", "")
+	t.Setenv("FALCON_CLIENT_SECRET", "")
+	t.Setenv("FALCON_MCP_API_KEY", "")
+	t.Setenv("FALCON_MCP_READ_ONLY", "")
+	t.Setenv("FALCON_MCP_MODULES", "")
+	t.Setenv("FALCON_MCP_TRANSPORT", "")
+
+	dir := t.TempDir()
+	writeDotEnv(t, dir, ""+
+		"FALCON_CLIENT_ID="+dotenvID+"\n"+
+		"FALCON_CLIENT_SECRET="+validSecret+"\n"+
+		"FALCON_MCP_TRANSPORT=streamable-http\n"+
+		"FALCON_MCP_API_KEY=from-dotenv-key\n"+
+		"FALCON_MCP_READ_ONLY=true\n"+
+		"FALCON_MCP_MODULES=detections,intel\n")
+	t.Chdir(dir)
+
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("cfg is nil")
+	}
+	if cfg.APIKey != "from-dotenv-key" {
+		t.Errorf("APIKey = %q, want from-dotenv-key", cfg.APIKey)
+	}
+	if !cfg.ReadOnly {
+		t.Errorf("ReadOnly = false, want true")
+	}
+	if len(cfg.Modules) != 2 || cfg.Modules[0] != "detections" || cfg.Modules[1] != "intel" {
+		t.Errorf("Modules = %v, want [detections intel]", cfg.Modules)
+	}
+	if cfg.Transport != "streamable-http" {
+		t.Errorf("Transport = %q, want streamable-http", cfg.Transport)
 	}
 }

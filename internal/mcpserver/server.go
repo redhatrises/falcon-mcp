@@ -137,14 +137,14 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification, opts ...Op
 		KeepAlive: cfg.KeepAlive,
 	})
 
-	// A single metrics middleware is applied to the served server here and,
-	// below, to the dynamic-mode catalog server so real tool names are recorded
-	// in both modes.
-	var mw mcp.Middleware
+	// Middleware is applied to the served server here and, below, to the
+	// dynamic-mode catalog server, so both modes behave the same: real tool names
+	// in the metrics, and 403 scope guidance intact in the tool result.
+	mw := []mcp.Middleware{errorEnvelopeMiddleware()}
 	if o.metrics != nil {
-		mw = toolMetricsMiddleware(o.metrics)
-		s.AddReceivingMiddleware(mw)
+		mw = append(mw, toolMetricsMiddleware(o.metrics))
 	}
+	s.AddReceivingMiddleware(mw...)
 
 	// The process logger's level was already set by the CLI (preRunE) before we
 	// are called; injecting it here keeps handlers free of the slog global.
@@ -202,9 +202,10 @@ type registerParams struct {
 	policy   toolPolicy
 	check    ConnectivityChecker
 	dynamic  bool
-	// middleware, when non-nil, is applied to the dynamic-mode catalog server so
-	// tool calls dispatched through it are instrumented with their real names.
-	middleware mcp.Middleware
+	// middleware is applied to the dynamic-mode catalog server so tool calls
+	// dispatched through it are instrumented with their real names and keep their
+	// scope guidance.
+	middleware []mcp.Middleware
 }
 
 // registerModules registers the core tools and every module tool that survives
@@ -217,8 +218,10 @@ type registerParams struct {
 // Dynamic mode: surviving module tools go on the catalog's internal server and
 // only the meta-tools (search_tools, execute_tool) reach the served server; the
 // returned catalog owns the in-process session and must be closed by the caller.
-// A module's resources and prompts are registered only when at least one of its
-// tools survived the policy.
+// A module's resources and prompts are registered whenever the module is
+// enabled (--modules) or at least one of its tools survived the tool policy, so
+// a live tool's falcon:// guide URI still resolves under --read-only /
+// --exclude-tools.
 //
 // Every module is iterated through a per-module policyRegistrar so the recorded
 // tool-name set is complete: this both lets an allow-listed tool from a module
@@ -234,18 +237,24 @@ func registerModules(p registerParams) (*Catalog, error) {
 	next := func(base.Module) base.Registrar { return served }
 	if p.dynamic {
 		cat = NewCatalog()
-		if p.middleware != nil {
-			cat.Instrument(p.middleware)
+		if len(p.middleware) > 0 {
+			cat.Instrument(p.middleware...)
 		}
 		next = func(m base.Module) base.Registrar { return cat.ForModule(m.Name()) }
 	} else {
 		core.registerNormalOnly(served)
 	}
 
+	reportedNames := make(map[string]struct{}, len(p.reported))
+	for _, m := range p.reported {
+		reportedNames[m.Name()] = struct{}{}
+	}
+
 	for _, m := range p.all {
 		preg := &policyRegistrar{module: m.Name(), policy: p.policy, next: next(m), reg: reg}
 		m.RegisterTools(preg)
-		if len(reg.kept[m.Name()]) > 0 {
+		_, enabled := reportedNames[m.Name()]
+		if enabled || len(reg.kept[m.Name()]) > 0 {
 			m.RegisterResources(p.server)
 			m.RegisterPrompts(p.server)
 		}

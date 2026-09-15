@@ -23,8 +23,9 @@
 go.work
 go.work.sum
 
-bin/
-dist/
+# Only the repo-root tool install dir (LOCALBIN), not npm/*/bin package contents.
+/bin/
+/dist/
 
 # Compiled binary (default `make build` output)
 /falcon-mcp

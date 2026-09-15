@@ -28,6 +28,8 @@ import _ "embed"
 //go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in fql_guide_rules.md
 //go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in fql_guide_exposed_data_records.md
 //go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in fql_guide_preview.md
+//go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in aggregate_guide_notifications.md
+//go:generate go run github.com/crowdstrike/falcon-mcp/tools/genfqlguide -in aggregate_guide_exposed_data_records.md
 
 // notificationsFQLGuide is the FQL documentation for searching recon
 // notifications. It is served as the search_recon_notifications FQL guide
@@ -57,3 +59,15 @@ var exposedDataRecordsFQLGuide string
 //
 //go:embed fql_guide_preview.md
 var previewRuleFQLGuide string
+
+// notificationsAggregateGuide explains how to summarize recon notifications
+// with the aggregate tool (intervals, date_range buckets, and types).
+//
+//go:embed aggregate_guide_notifications.md
+var notificationsAggregateGuide string
+
+// exposedDataRecordsAggregateGuide explains how to summarize exposed-data
+// records with the aggregate tool.
+//
+//go:embed aggregate_guide_exposed_data_records.md
+var exposedDataRecordsAggregateGuide string

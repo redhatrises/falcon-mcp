@@ -679,6 +679,39 @@ func TestWaitAggregatesChunksAcrossPolls(t *testing.T) {
 	}
 }
 
+func TestWaitKeepsCursorWhenSequenceIDOmitted(t *testing.T) {
+	t.Parallel()
+	// A later chunk that omits sequence_id decodes as 0. Resetting the cursor
+	// to 0 would re-request the first chunk and duplicate stdout.
+	f := &fakeRTR{
+		execResp: execOK(),
+		statusResps: []*real_time_response.RTRCheckCommandStatusOK{
+			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
+				{Complete: new(false), Stdout: new("part1"), SequenceID: 42},
+			}}},
+			{Payload: &models.DomainStatusResponseWrapper{Resources: []*models.DomainStatusResponse{
+				{Complete: new(true), Stdout: new("part2")},
+			}}},
+		},
+	}
+	m := newModule(f, nil)
+	_, out, err := m.runReadOnlyCommandAndWait(context.Background(), nil, WaitInput{
+		SessionID: "s1", BaseCommand: "cat", PollIntervalSeconds: 0.5,
+	})
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if !out.Complete {
+		t.Fatalf("expected complete, got %+v", out)
+	}
+	if out.Stdout != "part1part2" {
+		t.Fatalf("expected aggregated stdout, got %q", out.Stdout)
+	}
+	if len(f.lastSeqIDs) != 2 || f.lastSeqIDs[0] != 0 || f.lastSeqIDs[1] != 42 {
+		t.Fatalf("expected second poll to keep cursor 42, got %v", f.lastSeqIDs)
+	}
+}
+
 func TestWaitPropagatesMidPollError(t *testing.T) {
 	t.Parallel()
 	// A genuine API error mid-poll (not a deadline) must surface as a hard error,

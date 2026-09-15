@@ -11,100 +11,93 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      release_created: ${{ steps.release-please.outputs.release_created }}
-      tag_name: ${{ steps.release-please.outputs.tag_name }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      pr: ${{ steps.release.outputs.pr }}
     permissions:
       contents: write
       pull-requests: write
       issues: write
     steps:
-      - uses: google-github-actions/release-please-action@db8f2c60ee802b3748b512940dde88eabd7b7e01 # v3.7.13
-        id: release-please
+      # Conventional-commit release PRs + tags. Version stamps live in
+      # release-please-config.json (python/pyproject.toml, server.json,
+      # gemini-extension.json). Uses GITHUB_TOKEN only — no org secrets.
+      # v5.0.0 → release-please ^17 on Node 24; do not also set release-type (manifest mode).
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
         with:
-          release-type: python
-          package-name: falcon-mcp
-          path: python
-          pull-request-header: ':rocket: New Release Incoming! :rocket:'
-          changelog-types: '[{"type":"feat","section":"Features","hidden":false},{"type":"fix","section":"Bug Fixes","hidden":false},{"type":"refactor","section":"Refactoring","hidden":false},{"type":"chore","section":"Miscellaneous","hidden":true}]'
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-      - name: Checkout PR branch
-        if: ${{ steps.release-please.outputs.pr }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      # Release-please does not own these derived files; keep one post-PR sync.
+      - name: Checkout release PR
+        if: ${{ steps.release.outputs.pr }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ fromJSON(steps.release-please.outputs.pr).headBranchName }}
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          token: ${{ github.token }}
 
-      - name: Sync gemini-extension.json version
-        if: ${{ steps.release-please.outputs.pr }}
+      - name: Sync derived release files
+        if: ${{ steps.release.outputs.pr }}
         run: |
-          # Extract version from python/pyproject.toml (already updated by release-please)
-          VERSION=$(grep -Po '(?<=^version = ")[^"]*' python/pyproject.toml)
-          CURRENT=$(jq -r '.version' gemini-extension.json)
-          if [ "$VERSION" != "$CURRENT" ]; then
-            jq --arg v "$VERSION" '.version = $v' gemini-extension.json > tmp.json && mv tmp.json gemini-extension.json
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add gemini-extension.json
-            git commit -m "chore: sync gemini-extension.json version to $VERSION"
-            git push
-          fi
-
-      - name: Sync server.json version
-        if: ${{ steps.release-please.outputs.pr }}
-        run: |
-          VERSION=$(grep -Po '(?<=^version = ")[^"]*' python/pyproject.toml)
-          CURRENT=$(jq -r '.version' server.json)
-          if [ "$VERSION" != "$CURRENT" ]; then
-            jq --arg v "$VERSION" '
-              .version = $v |
-              .packages = [.packages[] |
-                if .registryType == "pypi" then .version = $v
-                elif .registryType == "oci" then .identifier = (.identifier | sub(":[^:]+$"; ":" + $v))
-                else . end
-              ]
-            ' server.json > tmp.json && mv tmp.json server.json
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add server.json
-            git commit -m "chore: sync server.json version to $VERSION"
-            git push
-          fi
-
-      - name: Update python/uv.lock
-        if: ${{ steps.release-please.outputs.pr }}
-        run: |
-          pip install uv==0.9.21
-          (cd python && uv lock)
-          if git diff --quiet python/uv.lock; then
-            echo "python/uv.lock is already up to date"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add python/uv.lock
-            git commit -m "chore: update python/uv.lock"
-            git push
-          fi
-
-      - name: Sync docs changelog
-        if: ${{ steps.release-please.outputs.pr }}
-        run: |
+          set -euo pipefail
           {
             echo '<!-- meta:title Changelog -->'
             echo '<!-- meta:description Release history for the Falcon MCP Server. -->'
             echo ''
             cat CHANGELOG.md
           } > docs/changelog.md
-          if git diff --quiet docs/changelog.md; then
-            echo "docs/changelog.md is already up to date"
+
+          pip install uv==0.9.21
+          (cd python && uv lock)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/changelog.md python/uv.lock
+          if git diff --cached --quiet; then
+            echo "derived release files already up to date"
           else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add docs/changelog.md
-            git commit -m "chore: sync docs changelog"
+            git commit -m "chore: sync docs changelog and python/uv.lock"
             git push
           fi
 
-  pypi-publish:
+  # One build: GitHub Release binaries + checksums (names match the uvx downloader).
+  goreleaser:
     needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: goreleaser-dist
+          path: dist/
+          if-no-files-found: error
+
+  # PyPI trusted publishing (OIDC). Needs the GitHub Release assets from goreleaser
+  # so uvx can download the matching binary after install.
+  pypi-publish:
+    needs: [release-please, goreleaser]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -113,30 +106,75 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: '3.11'
 
-      - name: Build package
+      - name: Build Python wrapper
         working-directory: python
         run: |
           pip install uv==0.9.21
           uv pip install --system build==1.3.0
           python -m build
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+      - uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           packages-dir: python/dist
 
+  # npm trusted publishing (OIDC). No NPM_TOKEN. Reuses goreleaser dist — no rebuild.
+  # Configure each published package on npmjs.com → Trusted Publisher:
+  #   org/user: CrowdStrike, repo: falcon-mcp, workflow: release-please.yml,
+  #   environment: release. Requires npm CLI ≥ 11.5.1 (Node 24).
+  npm-publish:
+    needs: [release-please, goreleaser]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: goreleaser-dist
+          path: dist
+
+      # upload-artifact zips normalize modes to 0644; restore +x before assemble/publish.
+      - name: Restore executable bits on release binaries
+        run: find dist -type f ! -name '*.txt' ! -name '*.json' ! -name '*.yaml' ! -name '*.yml' -exec chmod +x {} +
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Assemble and publish npm packages
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG_NAME#v}"
+          make npm-assemble VERSION="$VERSION"
+          # Platform packages first, then the meta-package that optionalDepends on them.
+          # Do not set NODE_AUTH_TOKEN — npm falls back to OIDC trusted publishing.
+          for dir in npm/falcon-mcp-*; do
+            (cd "$dir" && npm publish --access public)
+          done
+          (cd npm/falcon-mcp && npm publish --access public)
+
   mcp-registry-publish:
-    needs: [release-please, pypi-publish]
+    # Wait for both registry packages server.json advertises (PyPI + npm).
+    needs: [release-please, pypi-publish, npm-publish]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -144,8 +182,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 

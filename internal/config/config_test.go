@@ -31,8 +31,8 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/version"
 )
 
-// Valid-format credentials for tests: Load enforces a 32-char alphanumeric
-// client id and a 40-char alphanumeric client secret.
+// Valid-format credentials for tests. Load only requires non-empty id/secret;
+// these 32/40-char values match what operators typically paste from Falcon.
 const (
 	validID     = "abcdef0123456789abcdef0123456789"
 	validSecret = "abcdef0123456789abcdef0123456789abcdef01"
@@ -59,14 +59,16 @@ func TestLoad(t *testing.T) {
 			wantErr: ErrMissingCredentials,
 		},
 		{
-			name:    "malformed client id rejected",
-			in:      Config{ClientID: "too-short", ClientSecret: validSecret},
-			wantErr: ErrInvalidClientID,
-		},
-		{
-			name:    "malformed client secret rejected",
-			in:      Config{ClientID: validID, ClientSecret: "too-short"},
-			wantErr: ErrInvalidClientSecret,
+			name: "odd-shaped credentials accepted",
+			in:   Config{ClientID: "too-short", ClientSecret: "also-not-40-chars"}, //nolint:gosec // G101: intentional non-credential test values (shape validation removed)
+			check: func(t *testing.T, c *Config) {
+				if c.ClientID != "too-short" {
+					t.Errorf("ClientID = %q, want too-short", c.ClientID)
+				}
+				if c.ClientSecret != "also-not-40-chars" {
+					t.Errorf("ClientSecret = %q, want also-not-40-chars", c.ClientSecret)
+				}
+			},
 		},
 		{
 			name: "defaults applied",

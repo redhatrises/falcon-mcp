@@ -21,21 +21,32 @@ Never made an open source contribution before? Wondering how contributions work 
 
     ``git checkout -b BRANCH-NAME-HERE``
 
-1. **Install dependencies / build:**
+1. **Install dependencies:**
+
+    The MCP server is Go. You need a toolchain matching `go.mod`.
 
     ```bash
-    make build
+    go mod download
+    ```
+
+    The `python/` tree is only the `uvx` install wrapper. If you change it:
+
+    ```bash
+    cd python && uv sync --extra dev
     ```
 
 1. Make the appropriate changes for the issue you are trying to address or the feature you would like to add.
 
-1. Follow existing Go module patterns in `internal/modules/` and the [Go Module Development Guide](../docs/development/go-module-development.md).
+1. Follow [Go Module Development](../docs/development/go-module-development.md) when adding tools or modules. After changing modules, run `go generate ./...` and `make gen-docs`.
 
-1. Run formatting, vet, and lint:
+1. Format and lint Go:
 
     ```bash
-    make fmt vet lint
+    make fmt
+    make lint
     ```
+
+    For the Python wrapper only: `cd python && ruff check .`
 
 1. Add the file contents of the changed files to the "snapshot" git uses to manage the state of the project (also known as the index). Here is the git command that will add your changes:
 
@@ -131,6 +142,10 @@ Never made an open source contribution before? Wondering how contributions work 
 
     For more details, see the [Conventional Commits specification](https://www.conventionalcommits.org/).
 
+### Releases
+
+Releases are automated: **release-please** opens a changelog PR from conventional commits, then **GoReleaser** attaches binaries to the GitHub Release. Install wrappers publish over **OIDC trusted publishing** only (PyPI and npm) — no long-lived registry tokens in GitHub secrets. Temporary Go-port cutover notes (including the release pipeline checklist) live in [go-port-diffs.md](go-port-diffs.md#release-pipeline).
+
 1. Push your local changes back to your account on github.com:
 
     ``git push origin BRANCH-NAME-HERE``
@@ -146,11 +161,14 @@ Never made an open source contribution before? Wondering how contributions work 
 Before submitting your pull request, verify your changes pass the test suite:
 
 ```bash
-# Unit tests
+# Unit tests (race detector + coverage)
 make test
 
-# Live e2e tests (requires API credentials; see test/e2e/README.md)
+# Live e2e against a Falcon tenant (needs FALCON_CLIENT_ID / FALCON_CLIENT_SECRET)
 make test-e2e
+
+# Python wrapper tests
+cd python && uv sync --extra dev && pytest
 ```
 
 ### Rebase Early, Rebase Often

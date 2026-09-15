@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Python wrapper package dependencies (uv ecosystem)
+  # Python wrapper (uvx / PyPI downloader) — not the MCP server
   - package-ecosystem: "uv"
     directory: "/python"
     schedule:
@@ -18,6 +18,28 @@ updates:
         patterns:
           - "*"
       python-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Go module (the MCP server)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps(go):"
+    labels:
+      - "dependencies"
+      - "go"
+    groups:
+      go-all:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      go-security:
         applies-to: security-updates
         patterns:
           - "*"

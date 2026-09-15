@@ -56,34 +56,48 @@ var reconPreviewTopics = []string{
 // applied via each schema's mutate func, since a jsonschema struct tag cannot
 // hold them.
 const (
-	aggregateNotificationsDescription = `Count and summarize Falcon Intelligence Recon notifications without retrieving each record.
+	aggregateNotificationsDescription = "Count and summarize Falcon Intelligence Recon notifications without retrieving each record.\n\n" +
+		"Use this for \"how many\" and \"top N\" questions over recon notifications — counts per status, " +
+		"rule priority, or topic, and notification volume over time — instead of paging through " +
+		"`falcon_search_recon_notifications`. Consult " +
+		"`falcon://recon/notifications/aggregate-guide` for aggregation types and " +
+		"`falcon://recon/notifications/search/fql-guide` before constructing filter expressions. " +
+		"Returns `resources` as one entry per aggregation, each carrying a `name` and a `buckets` " +
+		"list whose entries hold `label`, `count`, and `sub_aggregates`. The counts sit one level " +
+		"below `resources`, not on it."
 
-Use this for "how many" and "top N" questions over recon notifications — counts per status,
-rule priority, or topic, and notification volume over time — instead of paging through
-` + "`falcon_search_recon_notifications`" + `. Consult
-` + "`falcon://recon/notifications/search/fql-guide`" + ` before constructing filter expressions.
-Returns aggregation buckets keyed by ` + "`label`" + ` with a ` + "`count`" + `.`
-
-	aggregateExposedDataRecordsDescription = `Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.
-
-Use this for "how many" and "top N" questions over leaked credential and PII rows — counts
-per credential status, site, source category, or rule topic — instead of paging through
-` + "`falcon_search_recon_exposed_data_records`" + `. Consult
-` + "`falcon://recon/exposed-data-records/search/fql-guide`" + ` before constructing filter expressions.
-Returns aggregation buckets keyed by ` + "`label`" + ` with a ` + "`count`" + `.`
+	aggregateExposedDataRecordsDescription = "Count and summarize Falcon Intelligence Recon exposed-data records without retrieving each record.\n\n" +
+		"Use this for \"how many\" and \"top N\" questions over leaked credential and PII rows — counts " +
+		"per credential status, site, source category, or rule topic — instead of paging through " +
+		"`falcon_search_recon_exposed_data_records`. Consult " +
+		"`falcon://recon/exposed-data-records/aggregate-guide` for aggregation types and " +
+		"`falcon://recon/exposed-data-records/search/fql-guide` before constructing filter expressions. " +
+		"Returns `resources` as one entry per aggregation, each carrying a `name` and a `buckets` " +
+		"list whose entries hold `label`, `count`, and `sub_aggregates`. The counts sit one level " +
+		"below `resources`, not on it."
 
 	previewRuleDescription = `Preview how many Falcon Intelligence Recon notifications a monitoring rule would have generated.
 
 Use this to size a candidate rule before creating it: it evaluates the rule's ` + "`filter`" + `
 against historical data for the chosen ` + "`topic`" + ` and reports the match volume, so you can
-tune the filter without generating live notifications. Returns aggregation buckets describing
-the historical match counts.`
+tune the filter without generating live notifications. Returns ` + "`resources`" + ` as one entry
+per named aggregation — ` + "`channel`" + `, ` + "`count`" + `, and ` + "`site`" + ` — each holding a
+` + "`buckets`" + ` list of ` + "`label`" + `/` + "`count`" + ` pairs, plus ` + "`sum_other_doc_count`" + `
+for the volume outside the returned buckets. Read the totals from the ` + "`count`" + ` entry.
 
-	aggregateNotificationsFieldDescription = "Notification field to aggregate on, such as status, rule_priority, rule_topic, or created_date. See `falcon://recon/notifications/search/fql-guide` for the aggregatable fields."
+The endpoint is slow and can exceed the request timeout; retry before treating a timeout as
+a rule that matches nothing. ` + "`filter`" + ` must be real FQL — a bare value such as
+` + "`example.com`" + ` is rejected as invalid FQL rather than treated as a keyword.`
 
-	aggregateExposedDataRecordsFieldDescription = "Exposed-data record field to aggregate on. Supported: cid, notification_id, notification_group_id, created_date, rule.id, rule.name, rule.topic, source_category, site, author, file.name, credential_status, bot.operating_system.hardware_id, bot.bot_id."
+	aggregateNotificationsFieldDescription = "Notification field to aggregate on, such as status, rule_priority, rule_topic, or created_date. See `falcon://recon/notifications/aggregate-guide` for aggregatable fields."
+
+	aggregateExposedDataRecordsFieldDescription = "Exposed-data record field to aggregate on. Supported: cid, notification_id, notification_group_id, created_date, rule.id, rule.name, rule.topic, source_category, site, author, file.name, credential_status, bot.operating_system.hardware_id, bot.bot_id. See `falcon://recon/exposed-data-records/aggregate-guide`."
 
 	aggregateTypeDescription = "Aggregation to run. Use terms to count records per distinct value, date_histogram for a time series, date_range or range for explicit buckets, cardinality for a distinct-value count, and max or min for a numeric extreme. The recon endpoint rejects sum, avg, and percentiles."
+
+	aggregateNotificationsTypeDescription = aggregateTypeDescription + " See `falcon://recon/notifications/aggregate-guide`."
+
+	aggregateExposedDataRecordsTypeDescription = aggregateTypeDescription + " See `falcon://recon/exposed-data-records/aggregate-guide`."
 
 	aggregateNotificationsFilterDescription      = "FQL filter expression narrowing which notifications are counted. See `falcon://recon/notifications/search/fql-guide` for syntax."
 	aggregateExposedDataRecordsFilterDescription = "FQL filter expression narrowing which exposed-data records are counted. See `falcon://recon/exposed-data-records/search/fql-guide` for syntax."
@@ -103,14 +117,22 @@ the historical match counts.`
 	previewLookbackDescription = "How many days of history to evaluate the rule against. One of 7, 30, 180, or 365."
 )
 
+// aggregateSchemaDescriptions carries the per-surface property descriptions that
+// vary between the two aggregate tools.
+type aggregateSchemaDescriptions struct {
+	Field  string
+	Filter string
+	Type   string
+}
+
 // aggregateSchema builds an aggregate input schema, applying the recon
 // aggregation-type enum, the date_histogram interval enum, the size bounds, and
-// the backtick-bearing field/filter descriptions the struct tags cannot express.
-func aggregateSchema[In any](fieldDesc, filterDesc string) *jsonschema.Schema {
+// the backtick-bearing field/filter/type descriptions the struct tags cannot express.
+func aggregateSchema[In any](desc aggregateSchemaDescriptions) *jsonschema.Schema {
 	return base.SchemaFor[In](func(s *jsonschema.Schema) {
-		s.Properties["field"].Description = fieldDesc
-		s.Properties["filter"].Description = filterDesc
-		s.Properties["type"].Description = aggregateTypeDescription
+		s.Properties["field"].Description = desc.Field
+		s.Properties["filter"].Description = desc.Filter
+		s.Properties["type"].Description = desc.Type
 		s.Properties["interval"].Description = aggregateIntervalDescription
 		s.Properties["date_ranges"].Description = aggregateDateRangesDescription
 		s.Properties["ranges"].Description = aggregateRangesDescription
@@ -129,8 +151,16 @@ func aggregateSchema[In any](fieldDesc, filterDesc string) *jsonschema.Schema {
 }
 
 var (
-	aggregateNotificationsSchema      = aggregateSchema[AggregateInput](aggregateNotificationsFieldDescription, aggregateNotificationsFilterDescription)
-	aggregateExposedDataRecordsSchema = aggregateSchema[AggregateInput](aggregateExposedDataRecordsFieldDescription, aggregateExposedDataRecordsFilterDescription)
+	aggregateNotificationsSchema = aggregateSchema[AggregateInput](aggregateSchemaDescriptions{
+		Field:  aggregateNotificationsFieldDescription,
+		Filter: aggregateNotificationsFilterDescription,
+		Type:   aggregateNotificationsTypeDescription,
+	})
+	aggregateExposedDataRecordsSchema = aggregateSchema[AggregateInput](aggregateSchemaDescriptions{
+		Field:  aggregateExposedDataRecordsFieldDescription,
+		Filter: aggregateExposedDataRecordsFilterDescription,
+		Type:   aggregateExposedDataRecordsTypeDescription,
+	})
 
 	previewRuleSchema = base.SchemaFor[PreviewInput](func(s *jsonschema.Schema) {
 		s.Properties["filter"].Description = previewFilterDescription

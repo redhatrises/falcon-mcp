@@ -47,6 +47,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -76,9 +79,39 @@ type Catalog struct {
 
 	// session is the in-process client connected to internal, established by
 	// Connect and used by falcon_execute_tool to dispatch by name. It is nil
-	// until Connect succeeds.
+	// until Connect succeeds. stdio is a single client; HTTP transports may
+	// dispatch concurrently on this shared session. The Go MCP SDK is assumed
+	// to allow concurrent ClientSession.CallTool (see .github/go-port-diffs.md).
 	session *mcp.ClientSession
 	ss      *mcp.ServerSession
+
+	// bridges maps a catalog-internal progress key to the outer session that
+	// should receive catalog progress notifications, plus the outer token to
+	// restore on delivery. falcon_execute_tool registers before CallTool and
+	// unregisters after; Connect's client ProgressNotificationHandler looks up
+	// the sink by key.
+	//
+	// The key is minted here rather than reusing the client-supplied outer
+	// token. MCP only requires a progress token to be unique within one
+	// session, so two concurrent outer sessions may legally pick the same
+	// value; keying on it would route one session's progress to another and
+	// let one call's delayed unregister delete another call's live entry.
+	bridgesMu sync.Mutex
+	bridgeSeq atomic.Uint64
+	bridges   map[any]progressBridge
+}
+
+// progressBridge is one in-flight falcon_execute_tool call's relay target: the
+// outer session to notify and the progress token that session supplied.
+type progressBridge struct {
+	sink  progressSink
+	outer any
+}
+
+// progressSink is the NotifyProgress surface the outer MCP session exposes.
+// *mcp.ServerSession satisfies it.
+type progressSink interface {
+	NotifyProgress(context.Context, *mcp.ProgressNotificationParams) error
 }
 
 // catalogEntry is one real tool captured for dynamic dispatch: its SDK
@@ -109,9 +142,10 @@ func NewCatalog() *Catalog {
 
 // Instrument applies mw as receiving middleware on the internal catalog server
 // so tool calls dispatched by falcon_execute_tool are recorded under their real
-// names. It must be called before Connect.
-func (c *Catalog) Instrument(mw mcp.Middleware) {
-	c.internal.AddReceivingMiddleware(mw)
+// names and keep the error envelope the served server would have produced. It
+// must be called before Connect.
+func (c *Catalog) Instrument(mw ...mcp.Middleware) {
+	c.internal.AddReceivingMiddleware(mw...)
 }
 
 // ForModule returns a base.Registrar that registers each tool the named module
@@ -128,13 +162,24 @@ func (c *Catalog) ForModule(name string) base.Registrar {
 // falcon_execute_tool can dispatch tools by name. It must be called once, after
 // all modules have registered and before the meta-tools are invoked. The
 // session lives until Close; ctx governs only the connection handshake.
+//
+// The catalog client installs a ProgressNotificationHandler that relays
+// notifications to whichever outer session falcon_execute_tool registered for
+// the notification's progress token (see registerProgressBridge).
 func (c *Catalog) Connect(ctx context.Context) error {
 	clientT, serverT := mcp.NewInMemoryTransports()
 	ss, err := c.internal.Connect(ctx, serverT, nil)
 	if err != nil {
 		return fmt.Errorf("dynamic: connect internal server: %w", err)
 	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "falcon-mcp-dynamic", Version: "internal"}, nil).Connect(ctx, clientT, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "falcon-mcp-dynamic", Version: "internal"}, &mcp.ClientOptions{
+		ProgressNotificationHandler: func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
+			if req != nil {
+				c.forwardProgress(ctx, req.Params)
+			}
+		},
+	})
+	cs, err := client.Connect(ctx, clientT, nil)
 	if err != nil {
 		_ = ss.Close()
 		return fmt.Errorf("dynamic: connect internal client: %w", err)
@@ -142,6 +187,62 @@ func (c *Catalog) Connect(ctx context.Context) error {
 	c.ss = ss
 	c.session = cs
 	return nil
+}
+
+// registerProgressBridge associates a fresh catalog-internal progress key with
+// sink for the duration of a falcon_execute_tool call, so catalog progress
+// notifications reach the outer client. It returns the key to send as the
+// internal CallTool progress token, or nil if outer or sink is nil. outer is
+// restored on each forwarded notification, so the client never sees the key.
+func (c *Catalog) registerProgressBridge(outer any, sink progressSink) any {
+	if outer == nil || sink == nil {
+		return nil
+	}
+	// A string keeps the key stable across the JSON-RPC in-memory transport; a
+	// number would decode back as float64 and miss the map lookup.
+	key := fmt.Sprintf("falcon-mcp-bridge-%d", c.bridgeSeq.Add(1))
+	c.bridgesMu.Lock()
+	defer c.bridgesMu.Unlock()
+	if c.bridges == nil {
+		c.bridges = make(map[any]progressBridge)
+	}
+	c.bridges[key] = progressBridge{sink: sink, outer: outer}
+	return key
+}
+
+// unregisterProgressBridge drops the bridge for key after a short grace
+// period. Catalog progress notifications are delivered asynchronously on the
+// in-memory transport and may arrive after CallTool returns; deleting
+// immediately would drop trailing updates. Each key belongs to exactly one
+// call, so a late delete cannot disturb another call's bridge.
+func (c *Catalog) unregisterProgressBridge(key any) {
+	if key == nil {
+		return
+	}
+	time.AfterFunc(2*time.Second, func() {
+		c.bridgesMu.Lock()
+		defer c.bridgesMu.Unlock()
+		delete(c.bridges, key)
+	})
+}
+
+// forwardProgress relays a catalog-client progress notification to the outer
+// session registered for its progress token, restoring that session's own
+// token. Unknown keys are ignored (best-effort telemetry).
+func (c *Catalog) forwardProgress(ctx context.Context, params *mcp.ProgressNotificationParams) {
+	if params == nil {
+		return
+	}
+	c.bridgesMu.Lock()
+	b, ok := c.bridges[params.ProgressToken]
+	c.bridgesMu.Unlock()
+	if !ok || b.sink == nil {
+		return
+	}
+	// Copy before rewriting the token: params belongs to the SDK's caller.
+	out := *params
+	out.ProgressToken = b.outer
+	_ = b.sink.NotifyProgress(ctx, &out)
 }
 
 // Close tears down the in-process session established by Connect. It is safe to

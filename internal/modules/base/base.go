@@ -611,10 +611,14 @@ type DetailFetcher[T any] func(ctx context.Context, ids []string) ([]T, error)
 // notifications solely for requests that opted in with a token.
 //
 // The returned callback sends a best-effort progress/notification per completed
-// chunk over req.Session; notification errors are ignored, as progress is
+// chunk over req.Session. Notification errors are ignored, as progress is
 // telemetry and must never fail the tool call. It is safe for concurrent use.
+//
+// Dynamic-mode dispatch needs no special handling here: the catalog relays the
+// inner notifications to the outer session itself, because a Go context value
+// cannot cross mcp.NewInMemoryTransports.
 func ProgressFunc(ctx context.Context, req *mcp.CallToolRequest) func(done, total int) {
-	if req == nil || req.Session == nil || req.Params == nil {
+	if req == nil || req.Params == nil || req.Session == nil {
 		return nil
 	}
 	token := req.Params.GetProgressToken()

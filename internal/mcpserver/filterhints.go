@@ -27,9 +27,8 @@ package mcpserver
 // These compact hints are appended to filter parameter descriptions when tools
 // are discovered via falcon_search_tools, so LLMs have the most common fields at
 // hand without needing to read the full FQL guide resource. This mirrors
-// upstream falcon-mcp's falcon_mcp/filter_hints.py verbatim; keys naming tools
-// that no Go module registers yet (e.g. cloud/policies) are inert until those
-// modules land.
+// upstream falcon-mcp's falcon_mcp/filter_hints.py; keys must cover every shipped
+// module that exposes an FQL filter. Unknown keys are inert.
 
 // fqlFilterHintSuffix is the universal FQL syntax reminder appended to every
 // filter description in dynamic mode. It mirrors upstream's
@@ -320,4 +319,22 @@ var filterHints = map[string]string{
 		"status (unset|ok|error), name (exact match), duration_ms (number), " +
 		"start_time (UTC datetime, last ~90 days, also the sort field). " +
 		"Ex: trace_id:'abc123'+status:'error'",
+}
+
+// queryStringHints maps a "falcon_"-prefixed tool name to its curated inline
+// hint for a "query_string" parameter. It mirrors upstream falcon-mcp's
+// QUERY_STRING_HINTS dict. CQL tools take a query_string instead of an FQL
+// filter, so their guidance is injected there and the FQL syntax suffix is not
+// appended.
+var queryStringHints = map[string]string{
+	// === NGSIEM ===
+	"falcon_search_ngsiem": "CQL is pipe-based: `filter | command | command` — not SQL or Splunk SPL " +
+		"(no SELECT/WHERE/stats/`| limit`). Start from a tag filter " +
+		"`#event_simpleName=ProcessRollup2`, then pipe into `groupBy([field], " +
+		"function=count())`, `sort(_count, order=desc)`, and `head(n)` to cap raw " +
+		"events. Unrecognized words become free-text stages instead of an error, so " +
+		"check `job.parsed_query` against your intent; on zero rows, " +
+		"`job.processed_events` above zero means a real negative. " +
+		"For distinct count, time bucketing, regex/contains match, or " +
+		"filtering on an aggregate, see `falcon://ngsiem/search/cql-guide`.",
 }

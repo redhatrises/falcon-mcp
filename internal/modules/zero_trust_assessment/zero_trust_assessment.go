@@ -114,11 +114,13 @@ Use this when you already hold an AID: a detection reports one as its ` + "`devi
 ` + "`falcon_search_hosts`" + ` resolves a hostname to one. No Zero Trust tool accepts a
 hostname, so resolve the name with ` + "`falcon_search_hosts`" + ` first.
 Returns ` + "`resources`" + ` holding one record per assessed host — the Zero Trust score plus the
-full sensor and OS hardening signals — and ` + "`not_found`" + ` listing the AIDs with no
-assessment.
+full sensor and OS hardening signals — alongside ` + "`total`" + ` and ` + "`not_found`" + `.
 
-` + "`not_found`" + ` is always present, even when empty, because the API reports an unknown or
-never-assessed AID by omitting its record from an otherwise successful response.`
+One unassessed AID fails the whole request: the API answers
+` + "`Assessment not found for aid=<AID>`" + ` instead of returning the records that did resolve,
+so a single bad AID costs the entire batch. Send AIDs you know carry an assessment, and
+retry a doubtful set one AID at a time to find the offender. ` + "`not_found`" + ` is always
+present, but it stays empty on that path.`
 
 	auditDescription = `Get the tenant-wide Zero Trust Assessment summary.
 

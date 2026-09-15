@@ -1,13 +1,20 @@
 <!-- meta:title Installation -->
-<!-- meta:description Install the Falcon MCP Server using uv or pip. -->
+<!-- meta:description Install the Falcon MCP Server via uvx, npm, Go, GitHub Releases, or Docker. -->
 <!-- meta:section getting-started -->
 <!-- meta:link-base /falcon-mcp/ -->
 
+The MCP server is a **Go binary**. Python and npm packages are wrappers around that binary.
+
 ## Prerequisites
 
-- Python 3.11 or higher
-- [`uv`](https://docs.astral.sh/uv/) or pip
 - CrowdStrike Falcon API credentials ([see API Credentials](/falcon-mcp/getting-started/credentials))
+- One of:
+  - [`uv`](https://docs.astral.sh/uv/) or pip (downloads the GitHub Release binary)
+  - Node.js / npm (`npx`)
+  - A Go toolchain matching `go.mod`
+  - Docker
+
+Python 3.8+ is required **only** if you install via `uv` / `pip`. It is not required to run the server itself.
 
 ## Install using uv
 
@@ -26,13 +33,36 @@ pip install falcon-mcp
 
 ## Run without installing
 
-You can run the server directly without a permanent install using `uvx`:
+You can run the server directly without a permanent install using `uvx` or `npx`:
 
 ```bash
 uvx falcon-mcp
+npx falcon-mcp
 ```
 
-This is the recommended approach for editor integrations.
+`uvx` is the recommended approach for editor integrations that already use uv.
+
+## Install with Go
+
+```bash
+go install github.com/crowdstrike/falcon-mcp/cmd/falcon-mcp@latest
+```
+
+## GitHub Release binaries
+
+Download the matching asset from [GitHub Releases](https://github.com/CrowdStrike/falcon-mcp/releases):
+
+`falcon-mcp-{version}-{macos|linux|windows}-{x86_64|arm64}` (`.exe` suffix on Windows)
+
+Verify the SHA-256 against `checksums.txt` in the same release.
+
+## Docker
+
+```bash
+docker pull quay.io/crowdstrike/falcon-mcp:latest
+```
+
+See [Docker Deployment](/falcon-mcp/deployment/docker/).
 
 > [!NOTE]
 > If you just want to interact with falcon-mcp via an agent chat interface rather than running the server yourself, see the [Deployment](/falcon-mcp/deployment/docker/) options.

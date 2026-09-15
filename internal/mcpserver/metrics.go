@@ -24,8 +24,10 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/crowdstrike/falcon-mcp/internal/metrics"
@@ -34,6 +36,18 @@ import (
 // methodCallTool is the JSON-RPC method the SDK dispatches for a tool call. The
 // SDK keeps its own constant unexported, so it is duplicated here.
 const methodCallTool = "tools/call"
+
+// toolErrorResult returns the tool-error result carried by res, or nil when res
+// is absent or reports success. Every tools/call middleware in this package
+// shares it: a handler that fails before producing a result yields a typed nil,
+// which satisfies the type assertion, so the nil check must precede IsError.
+func toolErrorResult(res mcp.Result) *mcp.CallToolResult {
+	ctr, ok := res.(*mcp.CallToolResult)
+	if !ok || ctr == nil || !ctr.IsError {
+		return nil
+	}
+	return ctr
+}
 
 // toolMetricsMiddleware returns receiving middleware that records a metric for
 // every tools/call request and passes all other methods through untouched.
@@ -46,14 +60,29 @@ func toolMetricsMiddleware(rec *metrics.Recorder) mcp.Middleware {
 			}
 			start := time.Now()
 			res, err := next(ctx, method, req)
+			name := call.Params.Name
+			if isUnknownToolCall(err) {
+				name = "unknown"
+			}
 			rec.ObserveToolCall(metrics.ToolCall{
-				Tool:    call.Params.Name,
+				Tool:    name,
 				Outcome: toolOutcome(res, err),
 				Seconds: time.Since(start).Seconds(),
 			})
 			return res, err
 		}
 	}
+}
+
+// isUnknownToolCall reports whether the SDK rejected this tools/call because no
+// tool of that name is registered. The SDK answers that with an invalid-params
+// JSON-RPC error, so the condition is read from the error type rather than from
+// any rendered message. A tool that ran and reported a business error is not an
+// unknown tool, however its text reads. Client-supplied names must not become
+// Prometheus labels.
+func isUnknownToolCall(err error) bool {
+	var rpcErr *jsonrpc.Error
+	return errors.As(err, &rpcErr) && rpcErr.Code == jsonrpc.CodeInvalidParams
 }
 
 // toolOutcome classifies a tool call for the outcome metric label. A Go error is
@@ -63,7 +92,7 @@ func toolOutcome(res mcp.Result, err error) string {
 	if err != nil {
 		return metrics.OutcomeError
 	}
-	if ctr, ok := res.(*mcp.CallToolResult); ok && ctr.IsError {
+	if toolErrorResult(res) != nil {
 		return metrics.OutcomeToolError
 	}
 	return metrics.OutcomeOK

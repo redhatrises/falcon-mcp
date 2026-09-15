@@ -25,13 +25,18 @@ filter (e.g. `#event_simpleName=ProcessRollup2`, `UserName=*`) and pipe into
 commands like `groupBy([...], function=count())` and `sort()`; keep the time
 range tight. Consult `falcon://ngsiem/search/cql-guide` to construct the query —
 it has the pipe model, core commands, and working examples (distinct count, time
-bucketing, regex match, filtering on an aggregate). Returns matching event
-records, or an error/empty dict carrying the CQL guide when the job fails,
-times out, or returns no rows. Note: the API does not return detailed CQL parser
-diagnostics — a malformed query may error or silently return unexpected/empty
-results rather than a helpful message, so a result is not proof the query parsed
-as intended. Search times out after FALCON_MCP_NGSIEM_TIMEOUT seconds
-(default: 300).
+bucketing, regex match, filtering on an aggregate). Returns `results` with the
+matching event records, `query_used` echoing what you sent, and `job` carrying
+the run's `parsed_query`, `event_count`, `processed_events`, and `warnings`; on a
+failure, timeout, or empty result it returns an error/empty dict carrying the CQL
+guide. Note: the API does not return detailed CQL parser diagnostics — a
+malformed query may error or silently return unexpected/empty results rather
+than a helpful message, so a result is not proof the query parsed as intended.
+Compare `job.parsed_query` against the query you sent before trusting the rows:
+an unrecognized word becomes a free-text stage instead of an error, so
+`| limit 5` parses as `| limit | 5`, ignores the 5 entirely, and returns the
+API's default row cap with no error and no warning. Use `head(5)` to cap rows.
+Search times out after FALCON_MCP_NGSIEM_TIMEOUT seconds (default: 300).
 
 **Example prompts:**
 

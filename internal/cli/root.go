@@ -31,6 +31,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"os"
@@ -312,10 +313,10 @@ func resolve(v *viper.Viper) config.Config {
 		Dynamic:       v.GetBool("dynamic"),
 		StatelessHTTP: v.GetBool("stateless_http"),
 		APIKey:        v.GetString("api_key"),
-		Modules:       v.GetStringSlice("modules"),
+		Modules:       csvStringSlice(v, "modules"),
 		ReadOnly:      v.GetBool("read_only"),
-		Tools:         v.GetStringSlice("tools"),
-		ExcludeTools:  v.GetStringSlice("exclude_tools"),
+		Tools:         csvStringSlice(v, "tools"),
+		ExcludeTools:  csvStringSlice(v, "exclude_tools"),
 		UserAgent:     v.GetString("user_agent"),
 		KeepAlive:     v.GetDuration("keep_alive"),
 
@@ -330,6 +331,23 @@ func resolve(v *viper.Viper) config.Config {
 		AgentworksPollInterval: secondsDuration(v.GetString("agentworks_poll_interval")),
 		AgentworksTimeout:      secondsDuration(v.GetString("agentworks_timeout")),
 	}
+}
+
+// csvStringSlice reads a string-slice viper key and splits any comma-joined
+// elements. Flags already arrive as separate items (pflag StringSlice);
+// env vars and .env values arrive as a single "a,b,c" string because viper's
+// GetStringSlice does not split CSV from those sources. Splitting here makes
+// FALCON_MCP_MODULES=detections,intel work the way the docs and Python do.
+func csvStringSlice(v *viper.Viper, key string) []string {
+	var out []string
+	for _, item := range v.GetStringSlice(key) {
+		for _, p := range strings.Split(item, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
 }
 
 // secondsDuration parses a whole-seconds count and returns it as a Duration,
@@ -397,7 +415,10 @@ func readConfigFile(v *viper.Viper, path string) error {
 func mergeDotEnv(v *viper.Viper) error {
 	f, err := os.Open(".env")
 	if err != nil {
-		return nil // no .env is fine
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("open .env: %w", err)
 	}
 	defer f.Close()
 
@@ -424,18 +445,24 @@ func hoistFalconSection(v *viper.Viper) {
 	}
 }
 
-// normalizeFalconPrefix strips a leading "falcon_" from any key, setting the
-// stripped key only when it is not already set (non-prefixed wins). This lets a
-// config file use falcon_client_id (matching the FALCON_CLIENT_ID env var)
-// interchangeably with the bare client_id key.
+// normalizeFalconPrefix strips a leading falcon_mcp_ or falcon_ from any key,
+// setting the stripped key only when it is not already set (non-prefixed
+// wins). falcon_mcp_ is stripped first so a .env FALCON_MCP_API_KEY becomes
+// api_key rather than mcp_api_key. falcon_ covers FALCON_CLIENT_ID-style keys
+// and must skip falcon_mcp_* so the second pass does not invent mcp_* junk.
 func normalizeFalconPrefix(v *viper.Viper) {
-	for k, val := range v.AllSettings() {
-		stripped, ok := strings.CutPrefix(k, "falcon_")
-		if !ok || stripped == "" {
-			continue
-		}
-		if !v.IsSet(stripped) {
-			v.Set(stripped, val)
+	for _, prefix := range []string{"falcon_mcp_", "falcon_"} {
+		for k, val := range v.AllSettings() {
+			if prefix == "falcon_" && strings.HasPrefix(k, "falcon_mcp_") {
+				continue
+			}
+			stripped, ok := strings.CutPrefix(k, prefix)
+			if !ok || stripped == "" {
+				continue
+			}
+			if !v.IsSet(stripped) {
+				v.Set(stripped, val)
+			}
 		}
 	}
 }
