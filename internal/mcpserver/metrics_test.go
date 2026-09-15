@@ -165,8 +165,54 @@ func TestUnknownToolNameRecordsUnknownLabel(t *testing.T) {
 	if strings.Contains(body, `tool="falcon_does_not_exist"`) {
 		t.Errorf("client-supplied unknown name leaked into metrics:\n%s", body)
 	}
-	if !strings.Contains(body, `tool="unknown"`) {
-		t.Errorf("metrics missing unknown label in:\n%s", body)
+	// The metric's own HELP text quotes tool="unknown", so match the counter
+	// sample rather than the whole exposition body.
+	want := `falconmcp_tool_calls_total{outcome="error",tool="unknown"} 1`
+	if !strings.Contains(body, want) {
+		t.Errorf("metrics missing %q in:\n%s", want, body)
+	}
+}
+
+// TestDynamicUnknownInnerToolKeepsOuterLabel guards the documented dynamic-mode
+// contract: falcon_execute_tool is a real served tool, so a call that names a
+// tool the catalog does not hold is still recorded under falcon_execute_tool.
+// The dispatch failure is reported in the result content, and result text must
+// not decide the metric label.
+func TestDynamicUnknownInnerToolKeepsOuterLabel(t *testing.T) {
+	t.Parallel()
+
+	rec := metrics.New()
+	srv, err := New(&config.Config{Dynamic: true}, &client.CrowdStrikeAPISpecification{}, WithMetrics(rec))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ctx := context.Background()
+	cs := testutil.NewClientSession(ctx, t, srv.MCP())
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "falcon_execute_tool",
+		Arguments: map[string]any{"tool_name": "falcon_does_not_exist"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("expected a tool-error result for an unknown inner tool")
+	}
+
+	body := metricsBody(t, rec)
+	want := `falconmcp_tool_calls_total{outcome="tool_error",tool="falcon_execute_tool"} 1`
+	if !strings.Contains(body, want) {
+		t.Errorf("metrics missing %q in:\n%s", want, body)
+	}
+	// The metric's own HELP text quotes tool="unknown", so match the counter
+	// sample the mislabel would emit rather than the whole exposition body.
+	mislabeled := `falconmcp_tool_calls_total{outcome="tool_error",tool="unknown"}`
+	if strings.Contains(body, mislabeled) {
+		t.Errorf("served outer tool mislabeled as unknown in:\n%s", body)
+	}
+	if strings.Contains(body, `tool="falcon_does_not_exist"`) {
+		t.Errorf("client-supplied inner name leaked into metrics:\n%s", body)
 	}
 }
 

@@ -51,10 +51,8 @@ func errorEnvelopeMiddleware() mcp.Middleware {
 			if method != methodCallTool {
 				return res, err
 			}
-			// A handler that fails before producing a result yields a typed nil, which
-			// satisfies the assertion, so the nil check must come first.
-			ctr, ok := res.(*mcp.CallToolResult)
-			if !ok || ctr == nil || !ctr.IsError {
+			ctr := toolErrorResult(res)
+			if ctr == nil {
 				return res, err
 			}
 			var apiErr *base.Error
