@@ -67,8 +67,10 @@ func isUnknownToolCall(res mcp.Result, err error) bool {
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "unknown tool") {
 		return true
 	}
+	// A handler that fails before producing a result yields a typed nil, which
+	// satisfies the assertion, so the nil check must come first.
 	ctr, ok := res.(*mcp.CallToolResult)
-	if !ok || !ctr.IsError {
+	if !ok || ctr == nil || !ctr.IsError {
 		return false
 	}
 	for _, c := range ctr.Content {
@@ -87,7 +89,7 @@ func toolOutcome(res mcp.Result, err error) string {
 	if err != nil {
 		return metrics.OutcomeError
 	}
-	if ctr, ok := res.(*mcp.CallToolResult); ok && ctr.IsError {
+	if ctr, ok := res.(*mcp.CallToolResult); ok && ctr != nil && ctr.IsError {
 		return metrics.OutcomeToolError
 	}
 	return metrics.OutcomeOK

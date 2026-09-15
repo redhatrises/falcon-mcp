@@ -138,14 +138,14 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification, opts ...Op
 		KeepAlive: cfg.KeepAlive,
 	})
 
-	// A single metrics middleware is applied to the served server here and,
-	// below, to the dynamic-mode catalog server so real tool names are recorded
-	// in both modes.
-	var mw mcp.Middleware
+	// Middleware is applied to the served server here and, below, to the
+	// dynamic-mode catalog server, so both modes behave the same: real tool names
+	// in the metrics, and 403 scope guidance intact in the tool result.
+	mw := []mcp.Middleware{errorEnvelopeMiddleware()}
 	if o.metrics != nil {
-		mw = toolMetricsMiddleware(o.metrics)
-		s.AddReceivingMiddleware(mw)
+		mw = append(mw, toolMetricsMiddleware(o.metrics))
 	}
+	s.AddReceivingMiddleware(mw...)
 
 	// The process logger's level was already set by the CLI (preRunE) before we
 	// are called; injecting it here keeps handlers free of the slog global.
@@ -204,9 +204,10 @@ type registerParams struct {
 	policy   toolPolicy
 	check    ConnectivityChecker
 	dynamic  bool
-	// middleware, when non-nil, is applied to the dynamic-mode catalog server so
-	// tool calls dispatched through it are instrumented with their real names.
-	middleware mcp.Middleware
+	// middleware is applied to the dynamic-mode catalog server so tool calls
+	// dispatched through it are instrumented with their real names and keep their
+	// scope guidance.
+	middleware []mcp.Middleware
 }
 
 // registerModules registers the core tools and every module tool that survives
@@ -238,8 +239,8 @@ func registerModules(p registerParams) (*Catalog, error) {
 	next := func(base.Module) base.Registrar { return served }
 	if p.dynamic {
 		cat = NewCatalog()
-		if p.middleware != nil {
-			cat.Instrument(p.middleware)
+		if len(p.middleware) > 0 {
+			cat.Instrument(p.middleware...)
 		}
 		next = func(m base.Module) base.Registrar { return cat.ForModule(m.Name()) }
 	} else {

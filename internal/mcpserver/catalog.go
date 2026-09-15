@@ -142,9 +142,10 @@ func NewCatalog() *Catalog {
 
 // Instrument applies mw as receiving middleware on the internal catalog server
 // so tool calls dispatched by falcon_execute_tool are recorded under their real
-// names. It must be called before Connect.
-func (c *Catalog) Instrument(mw mcp.Middleware) {
-	c.internal.AddReceivingMiddleware(mw)
+// names and keep the error envelope the served server would have produced. It
+// must be called before Connect.
+func (c *Catalog) Instrument(mw ...mcp.Middleware) {
+	c.internal.AddReceivingMiddleware(mw...)
 }
 
 // ForModule returns a base.Registrar that registers each tool the named module
