@@ -72,7 +72,7 @@ func TestBuildPropagatesDeps(t *testing.T) {
 		},
 	}
 
-	logger := slog.Default()
+	logger := slog.New(slog.DiscardHandler)
 	api := &client.CrowdStrikeAPISpecification{}
 	Build(Deps{API: api, Concurrency: 7, Logger: logger}, factories)
 

@@ -136,7 +136,7 @@ func TestListEnabledModulesSubset(t *testing.T) {
 func TestNormalModeCoreToolsCallable(t *testing.T) {
 	t.Parallel()
 	srv, err := New(
-		&config.Config{Modules: []string{"hosts"}},
+		&config.Config{Modules: []string{"hosts"}, Logger: testutil.DiscardLogger()},
 		&client.CrowdStrikeAPISpecification{},
 	)
 	if err != nil {
@@ -222,7 +222,7 @@ checked:
 func TestDynamicModeMetaToolSurface(t *testing.T) {
 	t.Parallel()
 	srv, err := New(
-		&config.Config{Dynamic: true, Modules: []string{"hosts", "detections"}},
+		&config.Config{Dynamic: true, Modules: []string{"hosts", "detections"}, Logger: testutil.DiscardLogger()},
 		&client.CrowdStrikeAPISpecification{},
 	)
 	if err != nil {

@@ -24,7 +24,6 @@ package base
 
 import (
 	"encoding/json"
-	"log/slog"
 	"reflect"
 	"strconv"
 )
@@ -212,12 +211,10 @@ func normalizeMeta(v any) *Meta {
 
 	raw, err := json.Marshal(v)
 	if err != nil {
-		slog.Default().Warn("dropping unmarshalable response meta", "type", reflect.TypeOf(v).String(), "error", err)
 		return nil
 	}
 	var m Meta
 	if err := json.Unmarshal(raw, &m); err != nil {
-		slog.Default().Warn("dropping undecodable response meta", "type", reflect.TypeOf(v).String(), "error", err)
 		return nil
 	}
 	if m.isEmpty() {

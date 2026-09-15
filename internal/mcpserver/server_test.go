@@ -33,13 +33,14 @@ import (
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/base"
 	"github.com/crowdstrike/falcon-mcp/internal/modules/registry"
+	"github.com/crowdstrike/falcon-mcp/internal/testutil"
 )
 
 func TestServerMCPNotNil(t *testing.T) {
 	// api can be a zero *client.CrowdStrikeAPISpecification for this wiring test;
 	// New only reads sub-client fields to register tools, does not call the API.
 	// (WHY: exercises accessor wiring, not live API calls.)
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(&config.Config{Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestSelectModules(t *testing.T) {
 func TestNewSelectsModules(t *testing.T) {
 	t.Parallel()
 	srv, err := New(
-		&config.Config{Modules: []string{"hosts"}},
+		&config.Config{Modules: []string{"hosts"}, Logger: testutil.DiscardLogger()},
 		&client.CrowdStrikeAPISpecification{},
 	)
 	if err != nil {
@@ -130,7 +131,7 @@ func TestNewSelectsModules(t *testing.T) {
 func TestNewUnknownModule(t *testing.T) {
 	t.Parallel()
 	_, err := New(
-		&config.Config{Modules: []string{"bogus"}},
+		&config.Config{Modules: []string{"bogus"}, Logger: testutil.DiscardLogger()},
 		&client.CrowdStrikeAPISpecification{},
 	)
 	if !errors.Is(err, ErrUnknownModule) {
@@ -145,7 +146,7 @@ func TestNewUnknownModule(t *testing.T) {
 // TestModuleFactoriesDiscovered already canonicalizes.
 func TestNewRegistersAllModules(t *testing.T) {
 	t.Parallel()
-	srv, err := New(&config.Config{}, &client.CrowdStrikeAPISpecification{})
+	srv, err := New(&config.Config{Logger: testutil.DiscardLogger()}, &client.CrowdStrikeAPISpecification{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

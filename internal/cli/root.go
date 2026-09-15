@@ -57,14 +57,16 @@ var (
 var ErrInvalidLogFormat = errors.New("cli: invalid log format")
 
 // Execute is the process entry point for falcon-mcp. It builds the root command
-// and runs it. preRunE installs the logger, at debug level when --debug is set
-// and INFO otherwise; serve derives the os.Interrupt-cancelled context.
+// and runs it. preRunE builds the logger — at debug level when --debug is set
+// and INFO otherwise — and stores it on the resolved config; serve derives the
+// os.Interrupt-cancelled context.
 func Execute() error {
 	return newRootCmd().ExecuteContext(context.Background())
 }
 
-// newLogger returns the process's logger emitting to stderr at level. format
-// selects the handler: "json" emits JSON, anything else emits text.
+// newLogger builds the process's logger emitting to stderr at level. format
+// selects the handler: "json" emits JSON, anything else emits text. It returns
+// the logger without installing it.
 func newLogger(level slog.Level, format string) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: level}
 	if format == "json" {
@@ -88,8 +90,7 @@ to the CrowdStrike Falcon platform, exposing detections, threat intelligence,
 host management, and more as MCP tools.
 
 It serves over stdio by default; the streamable-http and sse transports listen
-on a network address but serve a single credential set (not multi-tenant).
-Configuration precedence is flag > env > config file > default.`,
+on a network address but serve a single credential set (not multi-tenant).`,
 		Example: `  # stdio (default), credentials from the environment
   export FALCON_CLIENT_ID=... FALCON_CLIENT_SECRET=...
   falcon-mcp
@@ -106,6 +107,8 @@ Configuration precedence is flag > env > config file > default.`,
 			return err
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
 			return runE(cmd.Context(), cfg)
 		},
 	}
@@ -114,13 +117,13 @@ Configuration precedence is flag > env > config file > default.`,
 	return cmd
 }
 
-// preRunE resolves configuration: when --debug is set it reinstalls the logger
-// at debug level, then builds a fresh viper from cmd's flags and the
-// environment, reads any config file (explicit --config or discovery),
-// normalizes falcon_-prefixed keys, and loads the validated config. viper is
-// scoped to this call so each invocation is independent (hermetic tests). Flags
-// have parsed cleanly by PreRunE, so any error here is a config error, not a
-// usage error.
+// preRunE resolves configuration: it builds a fresh viper from cmd's flags and
+// the environment, builds the process logger from the resolved --debug and
+// --log-format values, reads any config file (explicit --config or discovery),
+// normalizes falcon_-prefixed keys, and loads the validated config with that
+// logger attached. viper is scoped to this call so each invocation is independent
+// (hermetic tests). Flags have parsed cleanly by PreRunE, so any error here is a
+// config error, not a usage error.
 func preRunE(cmd *cobra.Command) (*config.Config, error) {
 	v, err := newViper()
 	if err != nil {
@@ -130,10 +133,10 @@ func preRunE(cmd *cobra.Command) (*config.Config, error) {
 	bindEnv(v)
 
 	// Resolve debug through viper so it honors the same flag > env precedence as
-	// every other key, then install the logger before config-file discovery so
-	// that work logs at the requested level. The handler is always installed (not
-	// only under --debug) so the log format stays identical regardless of the
-	// flag; only the level changes.
+	// every other key, then build the logger before config-file discovery so that
+	// work logs at the requested level. The handler is always built (not only
+	// under --debug) so the log format stays identical regardless of the flag;
+	// only the level changes.
 	level := slog.LevelInfo
 	if v.GetBool("debug") {
 		level = slog.LevelDebug
@@ -142,7 +145,7 @@ func preRunE(cmd *cobra.Command) (*config.Config, error) {
 	if logFormat != "text" && logFormat != "json" {
 		return nil, fmt.Errorf("%w %q", ErrInvalidLogFormat, logFormat)
 	}
-	slog.SetDefault(newLogger(level, logFormat))
+	logger := newLogger(level, logFormat)
 
 	cfgFile, _ := cmd.Flags().GetString("config")
 	if err := readConfigFile(v, cfgFile); err != nil {
@@ -157,7 +160,9 @@ func preRunE(cmd *cobra.Command) (*config.Config, error) {
 	}
 	normalizeFalconPrefix(v)
 
-	cfg, err := config.Load(resolve(v))
+	in := resolve(v)
+	in.Logger = logger
+	cfg, err := config.Load(in)
 	if err != nil {
 		return nil, err
 	}
