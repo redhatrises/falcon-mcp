@@ -29,6 +29,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"regexp"
@@ -105,6 +106,10 @@ type Config struct {
 	Cloud        string
 	HostOverride string
 	MemberCID    string
+	// Logger is the process logger. The cli package builds it from the --debug
+	// and --log-format flags and assigns it after Load returns; consumers inject
+	// it into modules and HTTP lifecycle logging instead of reading a slog global.
+	Logger *slog.Logger
 	// Proxy is an optional outbound HTTP/HTTPS proxy URL for Falcon API calls.
 	// When set it forces both the OAuth token exchange and all API traffic
 	// through the proxy. When empty, the default transport is used, which honors
@@ -264,6 +269,14 @@ func Load(cfg Config) (*Config, error) {
 	cfg.HostOverride = normalizeHostOverride(cfg.HostOverride)
 
 	cfg.UserAgent = composeUserAgent(cfg.UserAgent)
+
+	// Guarantee a usable logger so callers can dereference cfg.Logger without a
+	// nil check. The cli overrides this with the logger built from --debug and
+	// --log-format; a discard logger keeps a config built by any other caller
+	// (or a test) safe to log through.
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
 
 	return &cfg, nil
 }

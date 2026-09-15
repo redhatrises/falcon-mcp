@@ -46,7 +46,7 @@ func TestServeHTTPGracefulShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errc := make(chan error, 1)
 	go func() {
-		errc <- serveHTTP(ctx, httpServer{addr: "127.0.0.1:0", handler: h, idleTimeout: 120 * time.Second}) // :0 = OS-assigned free port, no collisions
+		errc <- serveHTTP(ctx, httpServer{addr: "127.0.0.1:0", handler: h, idleTimeout: 120 * time.Second, logger: slog.New(slog.DiscardHandler)}) // :0 = OS-assigned free port, no collisions
 	}()
 
 	time.Sleep(50 * time.Millisecond)
@@ -66,7 +66,7 @@ func TestServeHTTPInvalidAddr(t *testing.T) {
 	h := http.NewServeMux()
 	// An unparseable address fails to bind and surfaces through the error channel
 	// before ctx is cancelled.
-	if err := serveHTTP(t.Context(), httpServer{addr: "bad:addr:99", handler: h, idleTimeout: 120 * time.Second}); err == nil {
+	if err := serveHTTP(t.Context(), httpServer{addr: "bad:addr:99", handler: h, idleTimeout: 120 * time.Second, logger: slog.New(slog.DiscardHandler)}); err == nil {
 		t.Fatal("expected error for invalid listen address")
 	}
 }
@@ -222,7 +222,7 @@ func TestStartOpsDisabled(t *testing.T) {
 		reached.Store(true)
 		w.WriteHeader(http.StatusOK)
 	})
-	if err := startOps(t.Context(), opsEndpoint{name: "test", addr: "", handler: h, idleTimeout: 120 * time.Second}); err != nil {
+	if err := startOps(t.Context(), opsEndpoint{name: "test", addr: "", handler: h, idleTimeout: 120 * time.Second, logger: slog.New(slog.DiscardHandler)}); err != nil {
 		t.Fatalf("startOps with empty addr: %v", err)
 	}
 	// Give any (erroneously) launched goroutine a moment to bind and serve.
@@ -242,7 +242,7 @@ func TestStartOpsBindFailureReturnsError(t *testing.T) {
 	t.Cleanup(func() { _ = ln.Close() })
 	addr := ln.Addr().String() // still bound: startOps will collide on it
 
-	err := startOps(t.Context(), opsEndpoint{name: "health", addr: addr, handler: healthHandler(), idleTimeout: 120 * time.Second})
+	err := startOps(t.Context(), opsEndpoint{name: "health", addr: addr, handler: healthHandler(), idleTimeout: 120 * time.Second, logger: slog.New(slog.DiscardHandler)})
 	if err == nil {
 		t.Fatal("startOps on an in-use addr should return a bind error")
 	}
@@ -255,7 +255,7 @@ func TestStartOpsServes(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	addr := startOpsOnFreePort(ctx, t, "health", healthHandler())
+	addr := startOpsOnFreePort(ctx, t, "health", healthHandler(), slog.New(slog.DiscardHandler))
 
 	// Poll until the listener is up (goroutine bind is asynchronous).
 	var resp *http.Response
@@ -285,12 +285,10 @@ func TestStartOpsServes(t *testing.T) {
 // observe the line; that timing is a test artifact, not a promised drain.
 func TestStartOpsShutdownLogNamesEndpoint(t *testing.T) {
 	var buf syncBuffer
-	orig := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(orig) })
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	addr := startOpsOnFreePort(ctx, t, "metrics", healthHandler())
+	addr := startOpsOnFreePort(ctx, t, "metrics", healthHandler(), logger)
 
 	// Wait for the listener to bind before cancelling so the shutdown path runs.
 	for range 50 {
@@ -361,13 +359,13 @@ func newLocalListener(t *testing.T) net.Listener {
 // on it, returning the bound addr. Discovery closes the probe listener before
 // startOps re-binds, so another process can steal the port in the gap; a few
 // retries on that collision keep the test hermetic under parallel load.
-func startOpsOnFreePort(ctx context.Context, t *testing.T, name string, h http.Handler) string {
+func startOpsOnFreePort(ctx context.Context, t *testing.T, name string, h http.Handler, logger *slog.Logger) string {
 	t.Helper()
 	for attempt := range 5 {
 		ln := newLocalListener(t)
 		addr := ln.Addr().String()
 		_ = ln.Close() // free the port; startOps re-binds it
-		err := startOps(ctx, opsEndpoint{name: name, addr: addr, handler: h, idleTimeout: 120 * time.Second})
+		err := startOps(ctx, opsEndpoint{name: name, addr: addr, handler: h, idleTimeout: 120 * time.Second, logger: logger})
 		if err == nil {
 			return addr
 		}
@@ -406,8 +404,7 @@ func TestIsLoopbackAddr(t *testing.T) {
 }
 
 func TestWarnIfOpenBind(t *testing.T) {
-	// Mutates the global slog default, so it cannot run in parallel with tests
-	// that also swap the default logger.
+	t.Parallel()
 	tests := []struct {
 		name     string
 		cfg      config.Config
@@ -441,10 +438,9 @@ func TestWarnIfOpenBind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf syncBuffer
-			orig := slog.Default()
-			t.Cleanup(func() { slog.SetDefault(orig) })
-			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+			tt.cfg.Logger = slog.New(slog.NewTextHandler(&buf, nil))
 
 			warnIfOpenBind(&tt.cfg)
 

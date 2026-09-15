@@ -25,6 +25,7 @@ package falconapi
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -156,6 +157,7 @@ func TestNewWithProxy(t *testing.T) {
 		ClientSecret: "secret",
 		Cloud:        "us-2",
 		Proxy:        "http://proxy.example.com:8080",
+		Logger:       slog.New(slog.DiscardHandler),
 	}
 	c, err := New(context.Background(), cfg)
 	if err != nil {
@@ -172,6 +174,7 @@ func TestNewWithoutProxy(t *testing.T) {
 		ClientID:     "id",
 		ClientSecret: "secret",
 		Cloud:        "us-2",
+		Logger:       slog.New(slog.DiscardHandler),
 	}
 	c, err := New(context.Background(), cfg)
 	if err != nil {
@@ -223,6 +226,7 @@ func TestCheckConnectivitySuccess(t *testing.T) {
 		ClientSecret: "testsecret012345678901234567890123456",
 		MemberCID:    "aabbccddeeff00112233445566778899",
 		HostOverride: strings.TrimPrefix(srv.URL, "https://"),
+		Logger:       slog.New(slog.DiscardHandler),
 	}
 	if !checkConnectivity(context.Background(), cfg, srv.Client()) {
 		t.Fatal("want connected=true when the token endpoint issues a token")
@@ -244,6 +248,7 @@ func TestCheckConnectivityAuthFailure(t *testing.T) {
 		ClientID:     "testid01234567890123456789012",
 		ClientSecret: "testsecret012345678901234567890123456",
 		HostOverride: strings.TrimPrefix(srv.URL, "https://"),
+		Logger:       slog.New(slog.DiscardHandler),
 	}
 	if checkConnectivity(context.Background(), cfg, srv.Client()) {
 		t.Fatal("want connected=false on HTTP 401")
@@ -259,6 +264,7 @@ func TestCheckConnectivityNetworkError(t *testing.T) {
 		ClientID:     "testid01234567890123456789012",
 		ClientSecret: "testsecret012345678901234567890123456",
 		HostOverride: strings.TrimPrefix(srv.URL, "https://"),
+		Logger:       slog.New(slog.DiscardHandler),
 	}
 	c := srv.Client()
 	srv.Close()
@@ -282,6 +288,7 @@ func TestCheckConnectivityFailClosed(t *testing.T) {
 	cfg := &config.Config{
 		Cloud:        "us-2",
 		HostOverride: "127.0.0.1:1", // nothing listening
+		Logger:       slog.New(slog.DiscardHandler),
 	}
 	if CheckConnectivity(context.Background(), cfg) {
 		t.Fatal("empty credentials / dead host must return false")

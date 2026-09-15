@@ -28,7 +28,6 @@ package falconapi
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -77,7 +76,7 @@ func New(ctx context.Context, cfg *config.Config) (*client.CrowdStrikeAPISpecifi
 	// Log the client shape at construction, never the secret. MemberCID
 	// is reported only by presence; the proxy URL is reported only by presence
 	// because it can embed credentials in userinfo.
-	slog.Default().Debug("falcon client constructed",
+	cfg.Logger.Debug("falcon client constructed",
 		"cloud", cfg.Cloud,
 		"host_override", cfg.HostOverride,
 		"user_agent", cfg.UserAgent,
@@ -152,7 +151,7 @@ func checkConnectivity(ctx context.Context, cfg *config.Config, httpClient *http
 		var err error
 		httpClient, err = apiHTTPClient(cfg.Proxy, cfg.ResponseHeaderTimeout, cfg.MaxIdleConnsPerHost)
 		if err != nil {
-			slog.Warn("connectivity check failed", "err", err)
+			cfg.Logger.Warn("connectivity check failed", "err", err)
 			return false
 		}
 	}
@@ -162,7 +161,7 @@ func checkConnectivity(ctx context.Context, cfg *config.Config, httpClient *http
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
 
 	if _, err := conf.Token(ctx); err != nil {
-		slog.Warn("connectivity check failed", "err", err)
+		cfg.Logger.Warn("connectivity check failed", "err", err)
 		return false
 	}
 	return true

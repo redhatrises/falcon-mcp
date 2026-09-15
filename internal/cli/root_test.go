@@ -81,22 +81,18 @@ func TestExecuteResolvesFlags(t *testing.T) {
 	}
 }
 
-// TestExecuteDebugFlag verifies --debug reinstalls the default logger at Debug
-// level during PreRunE. It mutates the global default logger, so it must not run
-// in parallel; it restores the original logger via t.Cleanup.
+// TestExecuteDebugFlag verifies --debug builds the config's logger at Debug
+// level during PreRunE.
 func TestExecuteDebugFlag(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", validID)
 	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
-	orig := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(orig) })
-	slog.SetDefault(newLogger(slog.LevelInfo, "text"))
-
-	if _, err := resolveArgs(t, []string{"-d"}); err != nil {
+	cfg, err := resolveArgs(t, []string{"-d"})
+	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-		t.Errorf("default logger not enabled at Debug after --debug")
+	if !cfg.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		t.Errorf("config logger not enabled at Debug after --debug")
 	}
 }
 
@@ -618,9 +614,6 @@ func TestExecuteLogFormatJSONAccepted(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", validID)
 	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 
-	orig := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(orig) })
-
 	cfg, err := resolveArgs(t, []string{"--log-format", "json"})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -687,23 +680,19 @@ func TestExecuteUserAgentMCPCommentEnvAlias(t *testing.T) {
 	}
 }
 
-// TestExecuteDebugEnv verifies FALCON_MCP_DEBUG reinstalls the default logger at
-// Debug level. Like TestExecuteDebugFlag it mutates the global logger, so it
-// must not run in parallel and restores the original via t.Cleanup.
+// TestExecuteDebugEnv verifies FALCON_MCP_DEBUG builds the config's logger at
+// Debug level.
 func TestExecuteDebugEnv(t *testing.T) {
 	t.Setenv("FALCON_CLIENT_ID", validID)
 	t.Setenv("FALCON_CLIENT_SECRET", validSecret)
 	t.Setenv("FALCON_MCP_DEBUG", "true")
 
-	orig := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(orig) })
-	slog.SetDefault(newLogger(slog.LevelInfo, "text"))
-
-	if _, err := resolveArgs(t, []string{}); err != nil {
+	cfg, err := resolveArgs(t, []string{})
+	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
-	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
-		t.Errorf("default logger not enabled at Debug after FALCON_MCP_DEBUG")
+	if !cfg.Logger.Enabled(context.Background(), slog.LevelDebug) {
+		t.Errorf("config logger not enabled at Debug after FALCON_MCP_DEBUG")
 	}
 }
 

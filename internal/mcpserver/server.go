@@ -28,7 +28,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 
 	"github.com/crowdstrike/gofalcon/falcon/client"
@@ -149,11 +148,10 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification, opts ...Op
 
 	// The process logger's level was already set by the CLI (preRunE) before we
 	// are called; injecting it here keeps handlers free of the slog global.
-	logger := slog.Default()
 	allModules := registry.Build(registry.Deps{
 		API:                    api,
 		Concurrency:            cfg.DetailFetchConcurrency,
-		Logger:                 logger,
+		Logger:                 cfg.Logger,
 		NgsiemPollInterval:     cfg.NgsiemPollInterval,
 		NgsiemTimeout:          cfg.NgsiemTimeout,
 		AgentworksPollInterval: cfg.AgentworksPollInterval,
@@ -191,7 +189,7 @@ func New(cfg *config.Config, api *client.CrowdStrikeAPISpecification, opts ...Op
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("modules enabled", "modules", moduleNames(reported), "dynamic", cfg.Dynamic, "tool_filters", policy.describe())
+	cfg.Logger.Info("modules enabled", "modules", moduleNames(reported), "dynamic", cfg.Dynamic, "tool_filters", policy.describe())
 
 	return &Server{mcp: s, modules: reported, catalog: cat}, nil
 }
