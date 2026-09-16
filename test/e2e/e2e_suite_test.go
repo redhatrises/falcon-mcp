@@ -24,18 +24,23 @@
 // server over an in-memory MCP transport against a real CrowdStrike Falcon
 // tenant. The suite authenticates once (SynchronizedBeforeSuite) and skips
 // entirely when FALCON_CLIENT_ID/FALCON_CLIENT_SECRET are absent, so it is safe
-// to run without credentials. It is excluded from the default `make test` by
-// directory and invoked via `make test-e2e`.
+// to run without credentials. Credentials come from the environment, or from the
+// repository .env when the environment does not carry them. It is excluded from
+// the default `make test` by directory and invoked via `make test-e2e`.
 package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/viper"
 
 	"github.com/crowdstrike/falcon-mcp/internal/config"
 	falconapi "github.com/crowdstrike/falcon-mcp/internal/falcon"
@@ -60,10 +65,72 @@ func credCheck() (clientID, clientSecret string, ok bool) {
 	return clientID, clientSecret, clientID != "" && clientSecret != ""
 }
 
+// findDotEnv returns the path to the nearest .env at or above the working
+// directory. `go test` sets the working directory to the package directory, so
+// the repository-root .env is only reachable by walking up.
+func findDotEnv() (string, bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	for {
+		path := filepath.Join(dir, ".env")
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// loadDotEnv copies the repository .env into the process environment so a plain
+// `go test` authenticates with the same credentials the server binary reads.
+// Parsing goes through viper's "env" format, the same decoder the cli package
+// uses, so a file that works for the binary works here. An existing environment
+// variable is never overwritten, matching the cli's non-overriding merge, and a
+// missing file is not an error: the suite then skips on the credential gate.
+// Values are never logged.
+func loadDotEnv() error {
+	path, ok := findDotEnv()
+	if !ok {
+		return nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	v := viper.New()
+	v.SetConfigType("env")
+	if err := v.ReadConfig(f); err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	// viper lower-cases its keys; environment variables are upper-case.
+	for _, key := range v.AllKeys() {
+		name := strings.ToUpper(key)
+		if _, set := os.LookupEnv(name); set {
+			continue
+		}
+		if err := os.Setenv(name, v.GetString(key)); err != nil {
+			return fmt.Errorf("set %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // TestE2E is the single stdlib entry point that hands off to Ginkgo. `go test`
 // discovers it; Ginkgo runs the registered specs.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
+	// Every Ginkgo parallel process runs this entry point, so loading here gives
+	// each one the credentials before its suite hooks check for them.
+	if err := loadDotEnv(); err != nil {
+		t.Fatalf("load .env: %v", err)
+	}
 	// Live API calls are slow and occasionally eventually-consistent; give
 	// Eventually assertions room without masking real hangs.
 	SetDefaultEventuallyTimeout(30 * time.Second)

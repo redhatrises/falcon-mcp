@@ -32,9 +32,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// bogusAID is a well-formed but unassigned agent ID. The assessment API reports
-// an unknown or never-assessed AID by omitting its record from an otherwise
-// successful response, so this drives the not_found path without an error.
+// bogusAID is a well-formed but unassigned agent ID. The assessment API fails a
+// request that names an AID it holds no assessment for, so this drives the error
+// path rather than a not_found listing.
 const bogusAID = "00000000000000000000000000000000"
 
 // The zero_trust_assessment specs exercise the ZTA posture tools against the
@@ -106,12 +106,15 @@ var _ = Describe("zero_trust_assessment module", Label("integration", "zero_trus
 			Expect(assessment).To(HaveKey("overall"))
 		})
 
-		It("reports an unknown AID as not_found without erroring", func() {
-			// A never-assessed AID is omitted from the response rather than erroring,
-			// so the call succeeds with an empty resources set and the AID listed.
-			res := callOK(ctx, "falcon_get_zta_assessments", map[string]any{"ids": []string{bogusAID}})
-			Expect(resources(res)).To(BeEmpty())
-			Expect(notFound(res)).To(ConsistOf(bogusAID))
+		It("errors when an AID has no assessment", func() {
+			// One unassessed AID fails the whole request: the API answers
+			// "Assessment not found for aid=<AID>" instead of omitting that record
+			// and listing it under not_found.
+			cs := newSession(ctx)
+			res := callTool(ctx, cs, "falcon_get_zta_assessments", map[string]any{"ids": []string{bogusAID}})
+			Expect(res.IsError).To(BeTrue(), "an unassessed AID should error: %v", res.Content)
+			Expect(strings.ToLower(toolErrorText(res))).To(ContainSubstring("assessment not found"))
+			Expect(toolErrorText(res)).To(ContainSubstring(bogusAID), "the error should name the offending AID")
 		})
 	})
 
